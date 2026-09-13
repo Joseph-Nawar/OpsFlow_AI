@@ -26,7 +26,6 @@ def test_domain_imports_are_infrastructure_independent() -> None:
     loaded = set(result.stdout.splitlines())
 
     assert "opsflow.domain" in loaded
-    assert "opsflow.domain.order" not in loaded
     assert not any(
         module == forbidden or module.startswith(f"{forbidden}.")
         for module in loaded

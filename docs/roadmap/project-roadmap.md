@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `IN PROGRESS` with M1A–M1B complete and M1C–M1F not started; Phases 2–12 remain `NOT STARTED`. The independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md), and the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md).
+The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `IN PROGRESS` with M1A–M1C complete and M1D–M1F not started; Phases 2–12 remain `NOT STARTED`. The independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md), and the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md).
 
 ## 1. Project goal
 
@@ -128,7 +128,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | --- | --- |
 | M1A — Domain Contract & Implementation Plan | COMPLETE |
 | M1B — Supporting Domain Records | COMPLETE |
-| M1C — Order Aggregate | NOT STARTED |
+| M1C — Order Aggregate | COMPLETE |
 | M1D — State Machine & Recovery Semantics | NOT STARTED |
 | M1E — Domain Scenario Verification & Contract Hardening | NOT STARTED |
 | M1F — Independent Phase 1 Audit | NOT STARTED |
