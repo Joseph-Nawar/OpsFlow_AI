@@ -17,6 +17,7 @@ LLM output may extract fields and evidence, but it must not approve orders, vali
 
 - `docs/roadmap/project-roadmap.md` is the durable product and engineering roadmap.
 - `docs/architecture/system-overview.md` is the durable architecture boundary reference.
+- `docs/architecture/domain-model.md` is the authoritative Phase 1 domain contract.
 - `docs/development/development-guide.md` is the current development workflow and convention reference.
 - The current milestone or phase brief and user request define the active scope.
 - Code, tests, and committed configuration are authoritative for behavior that has already been implemented.

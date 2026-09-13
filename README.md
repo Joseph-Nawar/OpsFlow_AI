@@ -6,9 +6,9 @@ The project is intentionally sized as a portfolio project, not an enterprise pla
 
 ## Current status
 
-**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit** are `COMPLETE`. Phase 0 is `COMPLETE`; Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend, infrastructure, frontend, and developer-workflow foundations; no later-milestone functionality exists.
+**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit** are `COMPLETE`. Phase 0 is `COMPLETE`. Phase 1 is `COMPLETE`; **M1A — Domain Contract & Implementation Plan**, **M1B — Supporting Domain Records**, **M1C — Order Aggregate**, **M1D — State Machine & Recovery Semantics**, **M1E — Domain Scenario Verification & Contract Hardening**, and **M1F — Independent Phase 1 Audit** are `COMPLETE`. The repository contains the minimal backend, infrastructure, frontend, developer-workflow foundations, the completed Phase 1 domain model and state machine, and its independent audit record; Phase 2 is next, while Phases 2–12 remain `NOT STARTED`.
 
-The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md). The independent closeout evidence is recorded in [the Phase 0 audit](docs/audits/phase-0-audit.md). Phase 1 — Domain Model & State Machine is the next project phase and remains `NOT STARTED`.
+The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md). Independent closeout evidence is recorded in [the Phase 0 audit](docs/audits/phase-0-audit.md) and [the Phase 1 audit](docs/audits/phase-1-audit.md). The approved Phase 1 contract is in [the domain model specification](docs/architecture/domain-model.md), with its implementation sequence in [the Phase 1 plan](docs/superpowers/plans/2026-09-13-phase-1-domain-model.md).
 
 ## Architectural guardrails
 
