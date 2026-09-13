@@ -42,8 +42,7 @@ Thumbs.db
 
 # Generated reports and local artifacts
 *.log
-*.pdf
-*.png
-*.jpg
-*.jpeg
-*.zip
+.artifacts/
+coverage/
+docs/_build/
+evals/output/

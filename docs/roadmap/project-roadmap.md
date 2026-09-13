@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestone is **M0A — Repository Intelligence & Project Specification**. M0A establishes durable documentation before coding begins. It is tracked separately from the broader Phase 0 implementation scope below; therefore Phase 0 remains `NOT STARTED` until its application and engineering setup work begins.
+The current repository milestone is **M0A — Repository Intelligence & Project Specification**, which is `COMPLETE`. M0A establishes durable documentation before coding begins. Because M0A is a milestone within Phase 0, **Phase 0 — Product & Engineering Foundation** is now `IN PROGRESS`; Phases 1–12 remain `NOT STARTED`.
 
 ## 1. Project goal
 
@@ -91,8 +91,8 @@ Each completed implementation unit should end with applicable tests, lint, type 
 
 | Phase | Name | Primary outcome | Status |
 | --- | --- | --- | --- |
-| M0A | Repository Intelligence & Project Specification | Durable project context before coding | COMPLETE — documentation bootstrap delivered |
-| 0 | Product & Engineering Foundation | Clean repository and development environment | NOT STARTED |
+| M0A | Repository Intelligence & Project Specification | Durable project context before coding | COMPLETE |
+| 0 | Product & Engineering Foundation | Clean repository and development environment | IN PROGRESS |
 | 1 | Domain Model & State Machine | Correct business representation | NOT STARTED |
 | 2 | Persistence & Core API | Durable order intake and retrieval | NOT STARTED |
 | 3 | Document Ingestion | Reliable handling of PDF/XLSX/email inputs | NOT STARTED |

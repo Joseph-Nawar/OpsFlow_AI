@@ -36,7 +36,7 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 ## Planned repository conventions
 
-The intended baseline is Python 3.12 for backend and business logic, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
+The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
 Expected future top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. They are intentionally absent until an applicable phase requires them.
 
@@ -45,13 +45,12 @@ Expected future top-level areas are described by the roadmap, including `src/ops
 These commands are the expected shape of the development workflow after the corresponding tools exist. They are documentation of intent, not verified commands for the current repository.
 
 ```bash
-# Backend environment and quality checks — planned after Phase 0 tooling exists
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev]'
-ruff check .
-mypy src
-pytest
+# Backend dependency and quality checks — planned after M0B creates pyproject.toml and uv.lock
+uv sync --dev
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src/opsflow
+uv run pytest
 
 # Frontend checks — planned after the frontend skeleton exists
 cd web

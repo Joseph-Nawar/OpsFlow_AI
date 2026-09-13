@@ -6,7 +6,7 @@ The project is intentionally sized as a portfolio project, not an enterprise pla
 
 ## Current status
 
-The repository is completing **M0A — Repository Intelligence & Project Specification**, a documentation bootstrap within the Phase 0 foundation effort. The broader **Phase 0 — Product & Engineering Foundation** remains `NOT STARTED` until application/tooling setup begins. No application implementation, runtime, database, workflow, integration, or future-phase code exists yet.
+**M0A — Repository Intelligence & Project Specification** is `COMPLETE`. Because M0A is a milestone within **Phase 0 — Product & Engineering Foundation**, Phase 0 is `IN PROGRESS`; its application/tooling setup has not yet begun. Phases 1–12 remain `NOT STARTED`. No application implementation, runtime, database, workflow, integration, or future-phase code exists yet.
 
 The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md).
 
