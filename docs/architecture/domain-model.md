@@ -135,6 +135,11 @@ Initial `ValidationSeverity` values are exactly:
 
 Planned record: immutable `ValidationIssue`.
 
+Structural invariants are that `rule_code` is non-blank, `explanation` is
+non-blank, and a supplied `field` is non-blank. `expected` and `actual` retain
+their `object | None` representation and have no additional Phase 1 shape
+requirement.
+
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `rule_code` | `str` | Identifier of the rule that produced the issue. |
@@ -195,6 +200,27 @@ currency, or line before extraction.
 mutable list collections are not accepted as the snapshot representation.
 Optional business text remains optional and Phase 1 does not infer or enrich
 its content.
+
+Every constructed `Order` snapshot must satisfy the state/origin consistency
+invariant:
+
+- when `state` is `FAILED_RETRYABLE` or `FAILED_FINAL`,
+  `failure_origin` must be exactly one of `PROCESSING`, `EXTRACTED`, or
+  `SYNCING`;
+- for every other state, `failure_origin` must be `None`.
+
+Therefore construction rejects `FAILED_RETRYABLE` with no origin,
+`FAILED_FINAL` with `COMPLETED` as its origin, `RECEIVED` with `SYNCING` as
+its origin, and `COMPLETED` with any failure origin, using
+`DomainValidationError`. Failure transitions create valid snapshots by
+recording the previous operational state. `FAILED_FINAL` retains that valid
+origin for information only; it never authorizes retry or reopening.
+
+`Order.received(...)` is the normal business creation path for a new order and
+always creates `state=RECEIVED` and `failure_origin=None`. Direct aggregate
+construction, if retained as a low-level snapshot mechanism for tests and
+future persistence rehydration, is not a lifecycle operation and must satisfy
+all structural and state/origin invariants as well.
 
 ## 5. Currency boundary
 
@@ -345,6 +371,8 @@ The M1B–M1E implementation must add focused tests under
 - missing both SKU and meaningful description is rejected;
 - a valid `SourceDocument` is accepted;
 - malformed SHA-256, blank name, and blank MIME type are rejected;
+- blank `rule_code`, blank `explanation`, and supplied blank `field` are
+  rejected for `ValidationIssue`;
 - a timezone-aware `AuditEvent` is accepted;
 - a naive audit timestamp is rejected;
 - supporting records and metadata are immutable;

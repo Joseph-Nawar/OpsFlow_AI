@@ -37,17 +37,14 @@
 
 The public interfaces produced by the implementation are:
 
+The error interfaces are textual: `DomainValidationError` extends
+`ValueError`; `InvalidStateTransitionError` extends `DomainValidationError`
+and exposes `current_state: OrderState`, `requested_state: OrderState | None`,
+and `operation: str`.
+
+The state interface is:
+
 ```python
-class DomainValidationError(ValueError):
-    pass
-
-
-class InvalidStateTransitionError(DomainValidationError):
-    current_state: OrderState
-    requested_state: OrderState | None
-    operation: str
-
-
 class OrderState(Enum):
     RECEIVED = "RECEIVED"
     PROCESSING = "PROCESSING"
@@ -61,36 +58,14 @@ class OrderState(Enum):
     REJECTED = "REJECTED"
     FAILED_RETRYABLE = "FAILED_RETRYABLE"
     FAILED_FINAL = "FAILED_FINAL"
-
-
-class Order:
-    @classmethod
-    def received(
-        cls,
-        *,
-        id: UUID,
-        customer_reference: str | None = None,
-        po_number: str | None = None,
-        order_date: date | None = None,
-        requested_delivery_date: date | None = None,
-        currency: str | None = None,
-        lines: tuple[OrderLine, ...] = (),
-        source_documents: tuple[SourceDocument, ...] = (),
-    ) -> "Order":
-        raise NotImplementedError
-
-    def transition_to(self, target: OrderState) -> "Order":
-        raise NotImplementedError
-
-    def retry(self) -> "Order":
-        raise NotImplementedError
-
-    def reopen(self) -> "Order":
-        raise NotImplementedError
 ```
 
-The method bodies above are shown as explicit implementation boundaries; their
-behavior is defined by the task sections and the authoritative domain spec.
+M1C produces the `OrderState` enum, immutable `Order` aggregate,
+`Order.received(...)` construction path, and Order structural validation. M1C
+does not add `transition_to`, `retry`, or `reopen` methods. M1D introduces
+those lifecycle methods for the first time, together with their tests and
+complete behavior; their signatures are documented in the M1D interface
+section below rather than represented by production stubs here.
 
 ---
 
@@ -100,6 +75,8 @@ behavior is defined by the task sections and the authoritative domain spec.
 - Create: `src/opsflow/domain/__init__.py`
 - Create: `src/opsflow/domain/errors.py`
 - Create: `src/opsflow/domain/records.py`
+- Modify: `README.md`
+- Modify: `docs/roadmap/project-roadmap.md`
 - Create: `tests/unit/domain/test_records.py`
 - Create: `tests/unit/domain/test_domain_imports.py`
 
@@ -172,7 +149,8 @@ class AuditEvent:
 Add tests for positive quantity, zero/negative quantity, NaN/infinity,
 negative prices, and missing SKU plus useful description. Add tests for a
 valid source, malformed SHA-256, blank name, blank MIME type, valid severity
-and source-type enum members, timezone-aware audit time, and naive audit time.
+and source-type enum members, blank `rule_code`, blank `explanation`, supplied
+blank `field`, timezone-aware audit time, and naive audit time.
 Use real values such as:
 
 ```python
@@ -209,6 +187,8 @@ the four frozen dataclasses and two enums. Validate in `__post_init__`:
 - source name and MIME type are non-blank;
 - SHA-256 matches exactly 64 ASCII hexadecimal characters;
 - required audit strings are non-blank and `occurred_at` is timezone-aware;
+- `ValidationIssue.rule_code` and `.explanation` are non-blank, and supplied
+  `.field` is non-blank;
 - metadata is already a tuple of string pairs and remains unchanged.
 
 Do not parse files, normalize external metadata, inspect MIME content, emit
@@ -236,32 +216,47 @@ domain package imports none of `fastapi`, `sqlalchemy`, `asyncpg`, `alembic`,
 AI-provider, or integration modules. The test must run without PostgreSQL or
 Docker.
 
-- [ ] **Step 6: Run the import test and commit M1B**
+- [ ] **Step 6: Run the import test**
 
 Run:
 
 ```bash
 uv run pytest tests/unit/domain/test_domain_imports.py -q
+```
+
+- [ ] **Step 7: Update canonical status before committing M1B**
+
+Modify only `README.md` and `docs/roadmap/project-roadmap.md` as needed so
+the durable status reads: M1A `COMPLETE`, M1B `COMPLETE`, M1C–M1F `NOT
+STARTED`, Phase 1 `IN PROGRESS`, and Phases 2–12 `NOT STARTED`.
+
+- [ ] **Step 8: Commit M1B**
+
+```bash
 git diff --check
-git add src/opsflow/domain tests/unit/domain
+git add src/opsflow/domain tests/unit/domain README.md docs/roadmap/project-roadmap.md
 git commit -m "feat: add Phase 1 supporting domain records"
 ```
 
-The commit must contain only M1B domain records, errors, exports, and their
-focused tests.
+The commit includes the M1B implementation and the status update. It must
+leave M1A `COMPLETE`, M1B `COMPLETE`, M1C–M1F `NOT STARTED`, Phase 1
+`IN PROGRESS`, and Phases 2–12 `NOT STARTED`.
 
 ### Task 2: M1C — Order Aggregate
 
 **Files:**
 - Create: `src/opsflow/domain/order.py`
 - Modify: `src/opsflow/domain/__init__.py`
+- Modify: `README.md`
+- Modify: `docs/roadmap/project-roadmap.md`
 - Create: `tests/unit/domain/test_order.py`
 
 **Interfaces:**
 - Consumes: `OrderLine`, `SourceDocument`, and `DomainValidationError` from
   M1B.
-- Produces: `OrderState`, immutable `Order`, and the `Order.received`,
-  `transition_to`, `retry`, and `reopen` method names used by M1D.
+- Produces: `OrderState`, immutable `Order`, `Order.received(...)`, and Order
+  structural validation. M1C does not add `transition_to`, `retry`, or
+  `reopen`; M1D introduces those methods for the first time.
 
 Use these exact aggregate fields:
 
@@ -286,6 +281,12 @@ tuples, and always returns a `RECEIVED` snapshot. Direct construction remains
 validated so every returned aggregate is safe. Currency validation accepts
 `None` or exactly three uppercase ASCII letters and has no supported-currency
 allowlist. A `RECEIVED` aggregate may have no business fields and no lines.
+Every directly constructed snapshot must set `failure_origin` to exactly one
+of `PROCESSING`, `EXTRACTED`, or `SYNCING` when its state is
+`FAILED_RETRYABLE` or `FAILED_FINAL`; every other state requires
+`failure_origin=None`. Direct construction is a low-level snapshot mechanism,
+not a lifecycle operation, and rejects malformed state/origin combinations
+with `DomainValidationError`.
 
 - [ ] **Step 1: Write the failing aggregate tests**
 
@@ -309,9 +310,10 @@ do not yet exist.
 
 Define the twelve exact `OrderState` values from the spec. Implement the
 frozen `Order` dataclass, the `received` constructor, tuple/type validation,
-currency-shape validation, and nested-record validation. Keep transition
-logic centralized for M1D; M1C only supplies the aggregate and its
-structural invariants.
+currency-shape validation, nested-record validation, and state/origin
+consistency validation. `Order.received` always sets `RECEIVED` with no
+failure origin. Keep lifecycle methods out of M1C; M1C only supplies the
+aggregate and its structural invariants.
 
 - [ ] **Step 4: Run aggregate tests and the existing suite**
 
@@ -325,13 +327,22 @@ uv run mypy src/opsflow/domain
 ```
 
 Expected: focused and existing domain tests pass, with no infrastructure
-connection attempted.
+connection attempted. The tests must include malformed snapshot construction
+cases for `FAILED_RETRYABLE` with `failure_origin=None`, `FAILED_FINAL` with
+`failure_origin=COMPLETED`, `RECEIVED` with `failure_origin=SYNCING`, and
+`COMPLETED` with a failure origin; each must raise `DomainValidationError`.
 
-- [ ] **Step 5: Commit M1C**
+- [ ] **Step 5: Update canonical status before committing M1C**
+
+Modify only `README.md` and `docs/roadmap/project-roadmap.md` as needed so
+the durable status reads: M1A–M1C `COMPLETE`; M1D–M1F `NOT STARTED`; Phase 1
+`IN PROGRESS`; Phases 2–12 `NOT STARTED`.
+
+- [ ] **Step 6: Commit M1C**
 
 ```bash
 git diff --check
-git add src/opsflow/domain/order.py src/opsflow/domain/__init__.py tests/unit/domain/test_order.py
+git add src/opsflow/domain/order.py src/opsflow/domain/__init__.py tests/unit/domain/test_order.py README.md docs/roadmap/project-roadmap.md
 git commit -m "feat: add immutable Order aggregate"
 ```
 
@@ -341,13 +352,23 @@ git commit -m "feat: add immutable Order aggregate"
 - Modify: `src/opsflow/domain/order.py`
 - Modify: `src/opsflow/domain/errors.py`
 - Modify: `src/opsflow/domain/__init__.py`
+- Modify: `README.md`
+- Modify: `docs/roadmap/project-roadmap.md`
 - Create: `tests/unit/domain/test_transitions.py`
 
 **Interfaces:**
 - Consumes: `Order` and `OrderState` from M1C.
-- Produces: `Order.transition_to(target)`, `Order.retry()`,
-  `Order.reopen()`, and `InvalidStateTransitionError` with public
-  `current_state`, `requested_state`, and `operation` attributes.
+- Produces for the first time: `Order.transition_to(target: OrderState) ->
+  Order`, `Order.retry() -> Order`, `Order.reopen() -> Order`, and
+  `InvalidStateTransitionError` with public `current_state`,
+  `requested_state`, and `operation` attributes. These are complete methods,
+  not stubs or deferred interfaces.
+
+M1D is the first milestone that adds `transition_to`, `retry`, or `reopen` to
+`Order`. M1C must not provide lifecycle stubs. M1D must preserve the M1C
+construction invariant: `FAILED_RETRYABLE` and `FAILED_FINAL` snapshots have
+an origin in exactly `PROCESSING`, `EXTRACTED`, or `SYNCING`, while every
+other state has `failure_origin=None`.
 
 Use one centralized immutable transition mapping with exactly these 17 pairs:
 
@@ -421,7 +442,8 @@ exact recorded origin. Test `retry()` returns the original operational state,
 clears `failure_origin`, leaves the failed snapshot unchanged, and cannot
 accept a destination argument. Test `retry()` raises from every state other
 than `FAILED_RETRYABLE`, including `FAILED_FINAL`, `COMPLETED`, and
-`REJECTED`. Test a malformed missing origin raises a domain transition error.
+`REJECTED`. Invalid failure snapshots are rejected by Order construction in
+M1C; these retry tests must not construct a malformed order.
 
 - [ ] **Step 5: Run retry tests to verify RED, then implement retry**
 
@@ -454,7 +476,7 @@ uv run pytest tests/unit/domain/test_transitions.py -q
 Expected: the new reopen tests fail until the explicit operation exists.
 Implement `reopen()` with only the `REJECTED -> NEEDS_REVIEW` behavior.
 
-- [ ] **Step 8: Run the complete M1D verification and commit**
+- [ ] **Step 8: Run the complete M1D verification**
 
 Run:
 
@@ -464,12 +486,24 @@ uv run pytest tests/unit/domain -q
 uv run ruff check src/opsflow/domain tests/unit/domain
 uv run mypy src/opsflow/domain
 git diff --check
-git add src/opsflow/domain tests/unit/domain/test_transitions.py
-git commit -m "feat: enforce domain lifecycle recovery rules"
 ```
 
 Expected: the exhaustive matrix and recovery tests pass, with 17 legal
 normal transitions and all remaining state pairs rejected.
+
+- [ ] **Step 9: Update canonical status before committing M1D**
+
+Modify only `README.md` and `docs/roadmap/project-roadmap.md` as needed so
+the durable status reads: M1A–M1D `COMPLETE`; M1E–M1F `NOT STARTED`; Phase 1
+`IN PROGRESS`; Phases 2–12 `NOT STARTED`.
+
+- [ ] **Step 10: Commit M1D**
+
+```bash
+git diff --check
+git add src/opsflow/domain tests/unit/domain/test_transitions.py README.md docs/roadmap/project-roadmap.md
+git commit -m "feat: enforce domain lifecycle recovery rules"
+```
 
 ### Task 4: M1E — Scenario Verification & Contract Hardening
 
@@ -477,6 +511,8 @@ normal transitions and all remaining state pairs rejected.
 - Create: `tests/unit/domain/test_scenarios.py`
 - Modify: `tests/unit/domain/test_domain_imports.py` only if the import check
   needs to cover a newly introduced standard-library module
+- Modify: `README.md`
+- Modify: `docs/roadmap/project-roadmap.md`
 - Modify: `docs/development/development-guide.md` only if the verified
   domain command needs durable documentation after it has actually run
 
@@ -561,7 +597,7 @@ git diff --check
 The domain suite must remain independent even though the repository’s full
 backend suite may require PostgreSQL according to the development guide.
 
-- [ ] **Step 6: Inspect scope and commit M1E**
+- [ ] **Step 6: Inspect scope before the status update**
 
 Inspect `git diff --stat`, `git diff`, imports, dependency files, and the
 complete transition matrix. Confirm no persistence, API, integration,
@@ -569,7 +605,25 @@ document, AI, n8n, frontend, or later-phase behavior entered the change.
 
 ```bash
 git diff --check
-git add tests/unit/domain docs/development/development-guide.md
+```
+
+- [ ] **Step 7: Update canonical status before committing M1E**
+
+Modify only `README.md` and `docs/roadmap/project-roadmap.md` as needed so
+the durable status reads: M1A–M1E `COMPLETE`; M1F `NOT STARTED`; Phase 1
+`IN PROGRESS`; Phases 2–12 `NOT STARTED`. Phase 1 must not be marked
+`COMPLETE`; that status waits for the independent M1F audit and final
+closeout.
+
+- [ ] **Step 8: Commit M1E**
+
+Inspect `git diff --stat`, `git diff`, imports, dependency files, and the
+complete transition matrix. Confirm no persistence, API, integration,
+document, AI, n8n, frontend, or later-phase behavior entered the change.
+
+```bash
+git diff --check
+git add tests/unit/domain README.md docs/roadmap/project-roadmap.md docs/development/development-guide.md
 git commit -m "test: harden Phase 1 domain contract"
 ```
 
