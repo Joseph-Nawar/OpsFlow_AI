@@ -1,6 +1,6 @@
 """Pure standard-library supporting domain records."""
 
-from .errors import DomainValidationError
+from .errors import DomainValidationError, InvalidStateTransitionError
 from .order import Order, OrderState
 from .records import (
     AuditEvent,
@@ -14,6 +14,7 @@ from .records import (
 __all__ = [
     "AuditEvent",
     "DomainValidationError",
+    "InvalidStateTransitionError",
     "Order",
     "OrderLine",
     "OrderState",
