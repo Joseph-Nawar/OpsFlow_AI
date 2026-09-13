@@ -30,7 +30,7 @@
 | Milestone | Files created | Responsibility |
 | --- | --- | --- |
 | M1B | `src/opsflow/domain/__init__.py` | Small public export surface for the domain package. |
-| M1B | `src/opsflow/domain/errors.py` | `DomainValidationError` and `InvalidStateTransitionError`. |
+| M1B | `src/opsflow/domain/errors.py` | `DomainValidationError`. |
 | M1B | `src/opsflow/domain/records.py` | `SourceDocumentType`, `ValidationSeverity`, `OrderLine`, `SourceDocument`, `ValidationIssue`, and `AuditEvent`. |
 | M1C | `src/opsflow/domain/order.py` | `OrderState`, immutable `Order`, construction, structural validation, and tuple snapshots. |
 | M1B–M1E | `tests/unit/domain/*.py` | Focused record, aggregate, transition-matrix, and scenario tests. |
