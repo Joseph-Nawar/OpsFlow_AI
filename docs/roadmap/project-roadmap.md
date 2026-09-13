@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestone is **M0A — Repository Intelligence & Project Specification**, which is `COMPLETE`. M0A establishes durable documentation before coding begins. Because M0A is a milestone within Phase 0, **Phase 0 — Product & Engineering Foundation** is now `IN PROGRESS`; Phases 1–12 remain `NOT STARTED`.
+The current repository milestones are **M0A — Repository Intelligence & Project Specification** and **M0B — Backend Foundation**, both `COMPLETE`. Because these milestones are within Phase 0, **Phase 0 — Product & Engineering Foundation** is `IN PROGRESS`; M0C–M0F and Phases 1–12 remain `NOT STARTED`.
 
 ## 1. Project goal
 
@@ -55,7 +55,7 @@ The intended stack is:
 - **Business integrations:** Odoo Community, HubSpot developer/test environment, Gmail API, Slack API.
 - **Engineering:** Docker Compose, pytest, Ruff, mypy, GitHub Actions, secret scanning, structured logging.
 
-These are planned baselines, not claims that this bootstrap has installed or verified them.
+M0B verifies only the Python/FastAPI backend subset required for its milestone. The remaining baseline items are planned, not installed or verified here.
 
 ## 5. Cost constraint
 
@@ -92,6 +92,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | Phase | Name | Primary outcome | Status |
 | --- | --- | --- | --- |
 | M0A | Repository Intelligence & Project Specification | Durable project context before coding | COMPLETE |
+| M0B | Backend Foundation | Minimal Python/FastAPI backend foundation | COMPLETE |
 | 0 | Product & Engineering Foundation | Clean repository and development environment | IN PROGRESS |
 | 1 | Domain Model & State Machine | Correct business representation | NOT STARTED |
 | 2 | Persistence & Core API | Durable order intake and retrieval | NOT STARTED |
@@ -105,6 +106,17 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | 10 | Reliability, Security & Hardening | Production-style failure handling | NOT STARTED |
 | 11 | Evaluation & Optimization | Quantitative system evaluation | NOT STARTED |
 | 12 | Portfolio Release | Client-ready public project | NOT STARTED |
+
+### Phase 0 execution milestones
+
+| Milestone | Status |
+| --- | --- |
+| M0A — Repository Intelligence & Project Specification | COMPLETE |
+| M0B — Backend Foundation | COMPLETE |
+| M0C | NOT STARTED |
+| M0D | NOT STARTED |
+| M0E | NOT STARTED |
+| M0F | NOT STARTED |
 
 ## 8. Detailed phases
 
@@ -122,7 +134,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 
 **Explicitly not included:** orders, LLM calls, n8n workflows, Odoo, HubSpot, and document parsing.
 
-This repository-bootstrap milestone is intentionally narrower than the full approved Phase 0 implementation scope: it establishes project intelligence and documentation before application scaffolding begins.
+This M0A repository-bootstrap milestone was intentionally narrower than the full approved Phase 0 implementation scope: it established project intelligence and documentation before application scaffolding began.
 
 ### Phase 1 — Domain Model & State Machine
 

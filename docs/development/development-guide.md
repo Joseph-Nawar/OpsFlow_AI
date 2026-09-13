@@ -2,19 +2,19 @@
 
 ## Status of this guide
 
-This repository currently contains documentation only. Commands in this guide are planned conventions derived from the approved roadmap. They are not verified until the relevant project tooling is introduced and the command is run successfully in this repository.
+This repository contains the M0A documentation baseline and the M0B minimal Python/FastAPI backend foundation. Commands below are explicitly separated into verified M0B checks and still-planned later-milestone workflows.
 
 ## Working principles
 
 - Keep the production-grade portfolio project understandable and locally demonstrable.
-- Implement only the current phase and avoid future-phase scaffolding.
+- Implement only the current milestone or phase and avoid future-phase scaffolding.
 - Prefer explicit domain behavior over hidden prompt behavior or speculative abstractions.
 - Keep AI, workflow orchestration, deterministic business logic, and external side effects behind clear boundaries.
 - Use synthetic data and safe test doubles by default.
 
 ## Source-of-truth order
 
-1. The active user request or phase brief defines current scope.
+1. The active user request or milestone/phase brief defines current scope.
 2. `docs/roadmap/project-roadmap.md` defines approved product and engineering scope.
 3. `docs/architecture/system-overview.md` defines the two authority boundaries.
 4. This guide defines repository conventions and planned workflow.
@@ -24,7 +24,7 @@ Conflicts must be surfaced and resolved explicitly. A later implementation must 
 
 ## Branches and commits
 
-Work on the designated phase branch. Keep commits coherent and narrowly scoped. Before committing:
+Work on the designated milestone or phase branch. Keep commits coherent and narrowly scoped. Before committing:
 
 1. inspect `git status` and the diff;
 2. confirm no unrelated files are included;
@@ -40,17 +40,29 @@ The intended baseline is Python 3.12 for backend and business logic, `uv` with `
 
 Expected future top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. They are intentionally absent until an applicable phase requires them.
 
-## Planned commands
+## Verified M0B commands
 
-These commands are the expected shape of the development workflow after the corresponding tools exist. They are documentation of intent, not verified commands for the current repository.
+The following commands were run successfully during M0B against the committed `pyproject.toml` and `uv.lock`:
 
 ```bash
-# Backend dependency and quality checks — planned after M0B creates pyproject.toml and uv.lock
+# Managed backend environment and quality gates
 uv sync --dev
+uv sync --frozen --dev
+uv run python -c "import opsflow; from opsflow.main import app"
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src/opsflow
 uv run pytest
+uv build
+```
+
+`uv run pytest` enforces and reports the configured 80% minimum coverage floor. The M0B suite reports 100% coverage for the current backend package.
+
+## Still planned or unverified commands
+
+These commands remain planned until their later milestone introduces the corresponding tooling:
+
+```bash
 
 # Frontend checks — planned after the frontend skeleton exists
 cd web
@@ -63,8 +75,8 @@ docker compose up --build
 alembic upgrade head
 
 # Focused verification — use the project’s eventual documented test selectors
-pytest tests/unit -q
-pytest tests/integration -q
+uv run pytest tests/unit -q
+uv run pytest tests/integration -q
 ```
 
 Do not report any command as passing until its output has been observed in the current repository. If a command is not applicable to a documentation-only milestone, record that fact rather than fabricating a result.
@@ -81,7 +93,7 @@ For deterministic business behavior, follow the red-green-refactor loop where pr
 
 Tests must not remove assertions, change expected results to suit broken behavior, or skip coverage without an explicit reason. Live AI calls and real external side effects must never be hidden in ordinary automated tests.
 
-This bootstrap milestone has no application behavior, so it does not invent unit or integration tests. Its verification is repository inspection, Markdown/link validation, roadmap consistency review, secret scanning, and Git-state checks.
+M0A had no application behavior; M0B adds only the `/health` liveness behavior. No database, external dependency, or later-milestone behavior is covered here.
 
 ## Documentation conventions
 
@@ -95,15 +107,15 @@ This bootstrap milestone has no application behavior, so it does not invent unit
 
 Never commit `.env` files, API keys, credentials, private customer data, or real business documents. Use `.env.example` only when a future phase needs it and keep values non-secret. Prefer local/open-source infrastructure, free developer environments, adapters, test doubles, and synthetic data. Optional paid AI calls must not become a required development dependency.
 
-## Phase workflow
+## Milestone and phase workflow
 
-Every implementation phase follows the roadmap’s completion protocol:
+Every implementation milestone or phase follows the roadmap’s completion protocol:
 
 1. plan exact scope, files, interfaces, tests, commands, non-goals, and exit criteria;
 2. implement minimally on the designated branch;
 3. run applicable quality gates and manual verification;
 4. provide the required Codex report;
 5. perform senior review for architecture, scope, tests, security, and unnecessary complexity;
-6. mark the phase complete only after review passes.
+6. mark the milestone or phase complete only after review passes.
 
-The phase report must include implementation, architecture decisions, dependencies, tests and results, quality gates, manual verification, deviations, known limitations, and security/cost notes.
+The milestone or phase report must include implementation, architecture decisions, dependencies, tests and results, quality gates, manual verification, deviations, known limitations, and security/cost notes.

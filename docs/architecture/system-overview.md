@@ -105,6 +105,6 @@ External mutations must be controllable and testable. Later implementation phase
 
 Trusted business data—customers, products, catalogue prices, inventory, and existing references—must be supplied by deterministic adapters. An AI extraction is an untrusted draft until it passes schema validation and deterministic business validation. Human review is the explicit path for uncertainty, invalid data, and policy exceptions.
 
-## Out of scope for this bootstrap
+## Out of scope for the current foundation
 
-This milestone creates documentation only. It does not create FastAPI, React, PostgreSQL, Docker, LLM, n8n, order, integration, or future-phase source code. The full phased scope is maintained in [the project roadmap](../roadmap/project-roadmap.md).
+M0A created documentation only. M0B adds only the minimal FastAPI `/health` liveness foundation. React, PostgreSQL, Docker, LLM, n8n, order, integration, and later-milestone source code remain out of scope. The full phased scope is maintained in [the project roadmap](../roadmap/project-roadmap.md).

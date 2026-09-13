@@ -6,7 +6,7 @@ The project is intentionally sized as a portfolio project, not an enterprise pla
 
 ## Current status
 
-**M0A — Repository Intelligence & Project Specification** is `COMPLETE`. Because M0A is a milestone within **Phase 0 — Product & Engineering Foundation**, Phase 0 is `IN PROGRESS`; its application/tooling setup has not yet begun. Phases 1–12 remain `NOT STARTED`. No application implementation, runtime, database, workflow, integration, or future-phase code exists yet.
+**M0A — Repository Intelligence & Project Specification** is `COMPLETE`. **M0B — Backend Foundation** is `COMPLETE`. Phase 0 is `IN PROGRESS`; M0C–M0F are `NOT STARTED`, and Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal Python/FastAPI backend foundation and `/health` liveness endpoint; no later-milestone functionality exists.
 
 The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md).
 
@@ -41,12 +41,12 @@ Email / PDF / XLSX / Form
 
 ## Intended technology baseline
 
-The approved roadmap currently targets Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic, PostgreSQL, self-hosted n8n Community Edition, React, TypeScript, Vite, a provider-neutral AI layer with Gemini initially, PyMuPDF, openpyxl, CSV/email parsing, optional Tesseract OCR, Odoo, HubSpot, Gmail, Slack, Docker Compose, pytest, Ruff, mypy, GitHub Actions, secret scanning, and structured logging. These tools are planned; they are not installed or verified by this documentation-only milestone.
+The M0B backend foundation verifies Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. The remaining roadmap baseline—SQLAlchemy, Alembic, PostgreSQL, self-hosted n8n Community Edition, React, TypeScript, Vite, AI providers, document handling, business integrations, Docker Compose, GitHub Actions, secret scanning, and structured logging—remains planned for later milestones.
 
 ## Documentation map
 
 - [Architecture overview](docs/architecture/system-overview.md) — authority boundaries and intended system flow.
-- [Development guide](docs/development/development-guide.md) — conventions, planned commands, and phase workflow.
+- [Development guide](docs/development/development-guide.md) — conventions, verified M0B commands, and planned workflow.
 - [Decision records](docs/decisions/README.md) — how durable technical decisions will be recorded.
 - [Project roadmap](docs/roadmap/project-roadmap.md) — approved phases, rules, status, and completion protocol.
 
@@ -58,4 +58,4 @@ Never commit credentials, API keys, private business data, or real customer docu
 
 ## Development status and commands
 
-No application commands are claimed as verified yet because the corresponding tooling does not exist in this repository. Planned commands and their verification expectations are recorded in the [development guide](docs/development/development-guide.md).
+Verified M0B backend commands and still-planned commands are distinguished in the [development guide](docs/development/development-guide.md).

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "opsflow-ai"
+version = "0.1.0"
+description = "Reliable B2B purchase-order and operations automation foundation."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.7,<3",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "mypy>=1.15,<2",
+    "pytest>=8.3,<9",
+    "pytest-cov>=6,<7",
+    "ruff>=0.9,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opsflow"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--cov=opsflow",
+    "--cov-fail-under=80",
+    "--cov-report=term-missing",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "SIM", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = ["src"]
+packages = ["opsflow"]
