@@ -411,10 +411,14 @@ illegal pairs.
 The later domain implementation must support:
 
 ```bash
-uv run pytest tests/unit/domain
+uv run pytest tests/unit/domain -q --no-cov
 ```
 
 with PostgreSQL stopped, Docker stopped, no network, and no FastAPI server.
+The `--no-cov` option is used only for this isolated domain-independence
+check because the repository-wide pytest configuration measures coverage
+across all `opsflow` modules. It does not weaken the global coverage
+requirement enforced by the full repository quality gates.
 The domain source must have no imports from FastAPI, SQLAlchemy, asyncpg,
 Alembic, AI-provider modules, or integration modules. The full repository
 quality gates still apply before Phase 1 closeout.

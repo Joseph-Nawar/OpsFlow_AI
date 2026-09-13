@@ -168,7 +168,7 @@ than a mutable mapping. Keep each test focused on one behavior.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_records.py -q
+uv run pytest tests/unit/domain/test_records.py -q --no-cov
 ```
 
 Expected: collection fails because `opsflow.domain.records` and the domain
@@ -199,7 +199,7 @@ events, or create integration behavior.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_records.py -q
+uv run pytest tests/unit/domain/test_records.py -q --no-cov
 uv run ruff check src/opsflow/domain tests/unit/domain
 uv run mypy src/opsflow/domain
 ```
@@ -221,7 +221,7 @@ Docker.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_domain_imports.py -q
+uv run pytest tests/unit/domain/test_domain_imports.py -q --no-cov
 ```
 
 - [ ] **Step 7: Update canonical status before committing M1B**
@@ -300,7 +300,7 @@ that invalid nested records cannot be hidden inside a valid order.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_order.py -q
+uv run pytest tests/unit/domain/test_order.py -q --no-cov
 ```
 
 Expected: collection fails because `opsflow.domain.order` and `OrderState`
@@ -320,8 +320,8 @@ aggregate and its structural invariants.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_order.py -q
-uv run pytest tests/unit/domain -q
+uv run pytest tests/unit/domain/test_order.py -q --no-cov
+uv run pytest tests/unit/domain -q --no-cov
 uv run ruff check src/opsflow/domain tests/unit/domain
 uv run mypy src/opsflow/domain
 ```
@@ -419,7 +419,7 @@ error exposes the current state, requested state, and operation.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_transitions.py -q
+uv run pytest tests/unit/domain/test_transitions.py -q --no-cov
 ```
 
 Expected: the test fails because transition methods and
@@ -450,7 +450,7 @@ M1C; these retry tests must not construct a malformed order.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_transitions.py -q
+uv run pytest tests/unit/domain/test_transitions.py -q --no-cov
 ```
 
 Expected: the new retry tests fail because `retry()` is absent or incomplete.
@@ -470,7 +470,7 @@ cannot reach recovery states from `REJECTED`.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_transitions.py -q
+uv run pytest tests/unit/domain/test_transitions.py -q --no-cov
 ```
 
 Expected: the new reopen tests fail until the explicit operation exists.
@@ -481,8 +481,8 @@ Implement `reopen()` with only the `REJECTED -> NEEDS_REVIEW` behavior.
 Run:
 
 ```bash
-uv run pytest tests/unit/domain/test_transitions.py -q
-uv run pytest tests/unit/domain -q
+uv run pytest tests/unit/domain/test_transitions.py -q --no-cov
+uv run pytest tests/unit/domain -q --no-cov
 uv run ruff check src/opsflow/domain tests/unit/domain
 uv run mypy src/opsflow/domain
 git diff --check
@@ -490,6 +490,10 @@ git diff --check
 
 Expected: the exhaustive matrix and recovery tests pass, with 17 legal
 normal transitions and all remaining state pairs rejected.
+After these focused checks, run the full repository gates (`make
+backend-check`, `make frontend-check`, and `make check`). Those gates retain
+the repository-wide pytest coverage configuration and enforce the `>=80%`
+coverage floor.
 
 - [ ] **Step 9: Update canonical status before committing M1D**
 
@@ -571,12 +575,14 @@ origin and no recovery operation.
 With PostgreSQL stopped, Docker stopped, and no API server running, execute:
 
 ```bash
-uv run pytest tests/unit/domain -q
+uv run pytest tests/unit/domain -q --no-cov
 ```
 
 Expected: the full domain suite passes without network access or service
-startup. Record the observed result in the milestone closeout; do not invent
-a result if the local environment cannot satisfy the command.
+startup. The `--no-cov` option is only for this isolated domain check; the
+full repository gates below continue to enforce the configured `>=80%`
+coverage floor. Record the observed result in the milestone closeout; do not
+invent a result if the local environment cannot satisfy the command.
 
 - [ ] **Step 5: Run the full repository quality gates**
 
@@ -595,7 +601,10 @@ git diff --check
 ```
 
 The domain suite must remain independent even though the repository’s full
-backend suite may require PostgreSQL according to the development guide.
+backend suite may require PostgreSQL according to the development guide. The
+full `uv run pytest` command retains the repository-wide coverage configuration
+and enforces the `>=80%` coverage floor; only the isolated domain command uses
+`--no-cov`.
 
 - [ ] **Step 6: Inspect scope before the status update**
 

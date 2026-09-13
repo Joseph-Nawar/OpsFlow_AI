@@ -63,6 +63,20 @@ docker compose up -d --build
 
 `uv run pytest` enforces and reports the configured 80% minimum coverage floor. The complete M0B/M0C suite reports 97.96% coverage. M0C also verified live `/health` and `/ready` behavior with PostgreSQL running, stopped, and restarted.
 
+## Isolated domain verification
+
+With PostgreSQL, Docker, network access, and the API server unavailable, use
+the following command to verify the infrastructure-independent domain suite:
+
+```bash
+uv run pytest tests/unit/domain -q --no-cov
+```
+
+`--no-cov` is limited to this targeted domain check because the repository-wide
+pytest configuration measures coverage across all `opsflow` modules. It does
+not weaken the `>=80%` coverage requirement enforced by the full repository
+quality gates, including `make backend-check` and `make check`.
+
 ## Verified M0D frontend commands
 
 The following commands were run successfully during M0D from `web/` with Node.js 24.21.0 and npm 11.19.0:
