@@ -2,7 +2,7 @@
 
 ## Status of this guide
 
-This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, and the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation. Commands below are explicitly separated into verified M0B/M0C checks and still-planned later-milestone workflows.
+This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation, and the M0D minimal React/TypeScript/Vite frontend foundation. Commands below are explicitly separated into verified M0B–M0D checks and still-planned later-milestone workflows.
 
 ## Working principles
 
@@ -38,9 +38,9 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
-Expected future top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. They are intentionally absent until an applicable phase requires them.
+Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `web/` now exists for M0D; other areas remain absent until an applicable milestone requires them.
 
-## Verified M0B/M0C commands
+## Verified M0B/M0C backend commands
 
 The following commands were run successfully during M0B/M0C against the committed project configuration:
 
@@ -62,18 +62,26 @@ docker compose up -d --build
 
 `uv run pytest` enforces and reports the configured 80% minimum coverage floor. The complete M0B/M0C suite reports 97.96% coverage. M0C also verified live `/health` and `/ready` behavior with PostgreSQL running, stopped, and restarted.
 
-## Still planned or unverified commands
+## Verified M0D frontend commands
 
-These commands remain planned until their later milestone introduces the corresponding tooling:
+The following commands were run successfully during M0D from `web/` with Node.js 24.21.0 and npm 11.19.0:
 
 ```bash
-
-# Frontend checks — planned after the frontend skeleton exists
-cd web
+node --version
+npm --version
 npm ci
 npm run lint
 npm run build
+npm run dev -- --host 127.0.0.1
+```
 
+The development server served the frontend at `http://127.0.0.1:5173/` with HTTP 200. The served page contains the OpsFlow AI foundation content. No browser binary or browser automation tool was available for a visual inspection, so no browser framework was added.
+
+## Still planned or unverified commands
+
+These commands remain planned until their later milestone introduces the corresponding workflow:
+
+```bash
 # Focused verification — use the project’s eventual documented test selectors
 uv run pytest tests/unit -q
 uv run pytest tests/integration -q
@@ -93,7 +101,7 @@ For deterministic business behavior, follow the red-green-refactor loop where pr
 
 Tests must not remove assertions, change expected results to suit broken behavior, or skip coverage without an explicit reason. Live AI calls and real external side effects must never be hidden in ordinary automated tests.
 
-M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure. No business tables or later-milestone behavior is covered here.
+M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure; M0D adds only the static frontend foundation page. M0D intentionally adds no frontend test framework because it has no meaningful application behavior yet. No business tables, review UI, or later-milestone behavior is covered here.
 
 ## Documentation conventions
 

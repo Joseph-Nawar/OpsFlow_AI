@@ -6,7 +6,7 @@ The project is intentionally sized as a portfolio project, not an enterprise pla
 
 ## Current status
 
-**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, and **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker** are `COMPLETE`. Phase 0 is `IN PROGRESS`; M0D–M0F are `NOT STARTED`, and Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend and infrastructure foundation; no later-milestone functionality exists.
+**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, and **M0D — Frontend Foundation** are `COMPLETE`. Phase 0 is `IN PROGRESS`; M0E–M0F are `NOT STARTED`, and Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend, infrastructure, and frontend development foundations; no later-milestone functionality exists.
 
 The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md).
 
@@ -41,12 +41,12 @@ Email / PDF / XLSX / Form
 
 ## Intended technology baseline
 
-M0B verified Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. M0C now verifies SQLAlchemy 2.x async PostgreSQL access through asyncpg, Alembic, PostgreSQL 16, Docker Compose, and the `/ready` readiness boundary. The remaining roadmap baseline—self-hosted n8n Community Edition, React, TypeScript, Vite, AI providers, document handling, business integrations, GitHub Actions, secret scanning, and structured logging—remains planned for later milestones.
+M0B verified Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. M0C verifies SQLAlchemy 2.x async PostgreSQL access through asyncpg, Alembic, PostgreSQL 16, Docker Compose, and the `/ready` readiness boundary. M0D verifies the minimal Node.js 24/npm React, TypeScript, Vite, and ESLint frontend foundation. The remaining roadmap baseline—self-hosted n8n Community Edition, review-application UI, AI providers, document handling, business integrations, GitHub Actions, secret scanning, and structured logging—remains planned for later milestones.
 
 ## Documentation map
 
 - [Architecture overview](docs/architecture/system-overview.md) — authority boundaries and intended system flow.
-- [Development guide](docs/development/development-guide.md) — conventions, verified M0B commands, and planned workflow.
+- [Development guide](docs/development/development-guide.md) — conventions, verified M0B–M0D commands, and planned workflow.
 - [Decision records](docs/decisions/README.md) — how durable technical decisions will be recorded.
 - [Project roadmap](docs/roadmap/project-roadmap.md) — approved phases, rules, status, and completion protocol.
 
@@ -58,4 +58,4 @@ Never commit credentials, API keys, private business data, or real customer docu
 
 ## Development status and commands
 
-Verified M0B backend commands and still-planned commands are distinguished in the [development guide](docs/development/development-guide.md).
+Verified M0B–M0D commands and still-planned commands are distinguished in the [development guide](docs/development/development-guide.md).

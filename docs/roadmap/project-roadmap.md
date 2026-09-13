@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, and **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, all `COMPLETE`. Because these milestones are within Phase 0, **Phase 0 — Product & Engineering Foundation** is `IN PROGRESS`; M0D–M0F and Phases 1–12 remain `NOT STARTED`.
+The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, and **M0D — Frontend Foundation**, all `COMPLETE`. Because these milestones are within Phase 0, **Phase 0 — Product & Engineering Foundation** is `IN PROGRESS`; M0E–M0F and Phases 1–12 remain `NOT STARTED`.
 
 ## 1. Project goal
 
@@ -55,7 +55,7 @@ The intended stack is:
 - **Business integrations:** Odoo Community, HubSpot developer/test environment, Gmail API, Slack API.
 - **Engineering:** Docker Compose, pytest, Ruff, mypy, GitHub Actions, secret scanning, structured logging.
 
-M0B verifies only the Python/FastAPI backend subset required for its milestone. The remaining baseline items are planned, not installed or verified here.
+M0B verifies the Python/FastAPI backend subset required for its milestone, M0C verifies the database and container subset required for its milestone, and M0D verifies only the minimal React/TypeScript/Vite/ESLint frontend environment. The remaining baseline items are planned, not installed or verified here.
 
 ## 5. Cost constraint
 
@@ -94,6 +94,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M0A | Repository Intelligence & Project Specification | Durable project context before coding | COMPLETE |
 | M0B | Backend Foundation | Minimal Python/FastAPI backend foundation | COMPLETE |
 | M0C | PostgreSQL, SQLAlchemy, Alembic & Docker | Minimal database and container foundation | COMPLETE |
+| M0D | Frontend Foundation | Minimal React/TypeScript/Vite frontend foundation | COMPLETE |
 | 0 | Product & Engineering Foundation | Clean repository and development environment | IN PROGRESS |
 | 1 | Domain Model & State Machine | Correct business representation | NOT STARTED |
 | 2 | Persistence & Core API | Durable order intake and retrieval | NOT STARTED |
@@ -115,7 +116,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M0A — Repository Intelligence & Project Specification | COMPLETE |
 | M0B — Backend Foundation | COMPLETE |
 | M0C — PostgreSQL, SQLAlchemy, Alembic & Docker | COMPLETE |
-| M0D | NOT STARTED |
+| M0D — Frontend Foundation | COMPLETE |
 | M0E | NOT STARTED |
 | M0F | NOT STARTED |
 
