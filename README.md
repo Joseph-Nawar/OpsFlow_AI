@@ -6,9 +6,9 @@ The project is intentionally sized as a portfolio project, not an enterprise pla
 
 ## Current status
 
-**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit** are `COMPLETE`. Phase 0 is `COMPLETE`; Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend, infrastructure, frontend, and developer-workflow foundations; no later-milestone functionality exists.
+**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit** are `COMPLETE`. Phase 0 is `COMPLETE`. Phase 1 is `IN PROGRESS`; **M1A — Domain Contract & Implementation Plan** is `COMPLETE`, while Phase 1 implementation milestones M1B–M1F remain `NOT STARTED`. The repository contains only the minimal backend, infrastructure, frontend, and developer-workflow foundations plus the approved Phase 1 contract and plan; Phase 1 implementation has not begun beyond that documentation.
 
-The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md). The independent closeout evidence is recorded in [the Phase 0 audit](docs/audits/phase-0-audit.md). Phase 1 — Domain Model & State Machine is the next project phase and remains `NOT STARTED`.
+The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md). The independent closeout evidence is recorded in [the Phase 0 audit](docs/audits/phase-0-audit.md). The approved Phase 1 contract is in [the domain model specification](docs/architecture/domain-model.md), with its implementation sequence in [the Phase 1 plan](docs/superpowers/plans/2026-09-13-phase-1-domain-model.md).
 
 ## Architectural guardrails
 

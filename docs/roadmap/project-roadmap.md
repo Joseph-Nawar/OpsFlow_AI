@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; Phases 1–12 remain `NOT STARTED`. The independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md).
+The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `IN PROGRESS` with M1A complete and M1B–M1F not started; Phases 2–12 remain `NOT STARTED`. The independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md), and the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md).
 
 ## 1. Project goal
 
@@ -98,7 +98,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M0E | Developer Experience & CI | Reproducible local and CI quality gates | COMPLETE |
 | M0F | Independent Phase 0 Audit | Independent audit and closeout evidence | COMPLETE |
 | 0 | Product & Engineering Foundation | Clean repository and development environment | COMPLETE |
-| 1 | Domain Model & State Machine | Correct business representation | NOT STARTED |
+| 1 | Domain Model & State Machine | Correct business representation | IN PROGRESS |
 | 2 | Persistence & Core API | Durable order intake and retrieval | NOT STARTED |
 | 3 | Document Ingestion | Reliable handling of PDF/XLSX/email inputs | NOT STARTED |
 | 4 | Structured AI Extraction | Unstructured documents to typed order drafts | NOT STARTED |
@@ -121,6 +121,17 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M0D — Frontend Foundation | COMPLETE |
 | M0E — Developer Experience & CI | COMPLETE |
 | M0F — Independent Phase 0 Audit | COMPLETE |
+
+### Phase 1 execution milestones
+
+| Milestone | Status |
+| --- | --- |
+| M1A — Domain Contract & Implementation Plan | COMPLETE |
+| M1B — Supporting Domain Records | NOT STARTED |
+| M1C — Order Aggregate | NOT STARTED |
+| M1D — State Machine & Recovery Semantics | NOT STARTED |
+| M1E — Domain Scenario Verification & Contract Hardening | NOT STARTED |
+| M1F — Independent Phase 1 Audit | NOT STARTED |
 
 ## 8. Detailed phases
 
@@ -148,7 +159,7 @@ This M0A repository-bootstrap milestone was intentionally narrower than the full
 
 **States:** `RECEIVED`, `PROCESSING`, `EXTRACTED`, `VALIDATED`, `NEEDS_REVIEW`, `READY_FOR_APPROVAL`, `APPROVED`, `SYNCING`, `COMPLETED`, `REJECTED`, `FAILED_RETRYABLE`, `FAILED_FINAL`. Only defined transitions are allowed. Examples include `RECEIVED -> PROCESSING`, `PROCESSING -> EXTRACTED`, `EXTRACTED -> VALIDATED`, `VALIDATED -> NEEDS_REVIEW` or `READY_FOR_APPROVAL`, `READY_FOR_APPROVAL -> APPROVED`, `APPROVED -> SYNCING`, and `SYNCING -> COMPLETED`.
 
-**Invariants and tests:** positive quantities, valid configured currencies, immutable completed orders, explicit reopening for rejected orders, and approval before synchronization. Unit-test model creation, invalid values, line behavior, valid/illegal transitions, and audit construction. Exit: domain logic works without a database, transitions and invariants are explicit and tested, and domain classes have no infrastructure concerns.
+**Invariants and tests:** positive quantities, structurally valid currency codes, immutable completed orders, explicit reopening for rejected orders, and approval before synchronization. Configured supported-currency policy belongs to Phase 5. Unit-test model creation, invalid values, line behavior, valid/illegal transitions, and audit construction. Exit: domain logic works without a database, transitions and invariants are explicit and tested, and domain classes have no infrastructure concerns.
 
 ### Phase 2 — Persistence & Core API
 

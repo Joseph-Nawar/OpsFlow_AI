@@ -95,7 +95,7 @@ The exact implementation will be introduced phase by phase. This diagram is an a
 
 ## Domain state boundary
 
-The intended state machine includes `RECEIVED`, `PROCESSING`, `EXTRACTED`, `VALIDATED`, `NEEDS_REVIEW`, `READY_FOR_APPROVAL`, `APPROVED`, `SYNCING`, `COMPLETED`, `REJECTED`, `FAILED_RETRYABLE`, and `FAILED_FINAL`. Only explicitly defined transitions are allowed. In particular, synchronization cannot begin before approval, and validation—not an LLM response—controls whether work is ready for approval.
+The intended state machine includes `RECEIVED`, `PROCESSING`, `EXTRACTED`, `VALIDATED`, `NEEDS_REVIEW`, `READY_FOR_APPROVAL`, `APPROVED`, `SYNCING`, `COMPLETED`, `REJECTED`, `FAILED_RETRYABLE`, and `FAILED_FINAL`. Only explicitly defined transitions are allowed. In particular, synchronization cannot begin before approval, and validation—not an LLM response—controls whether work is ready for approval. The complete Phase 1 record, invariant, and transition contract is [the domain model specification](domain-model.md).
 
 ## Side-effect safety
 

@@ -2,7 +2,7 @@
 
 ## Status of this guide
 
-This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation, the M0D minimal React/TypeScript/Vite frontend foundation, the M0E developer-workflow/CI foundation, and the M0F independent Phase 0 audit. The [Phase 0 audit record](../audits/phase-0-audit.md) preserves the closeout evidence. Commands below are explicitly separated into verified M0B–M0E checks and still-planned later-milestone workflows.
+This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation, the M0D minimal React/TypeScript/Vite frontend foundation, the M0E developer-workflow/CI foundation, and the M0F independent Phase 0 audit. M1A adds the authoritative Phase 1 domain contract and implementation plan; no Phase 1 domain source or tests exist yet. The [Phase 0 audit record](../audits/phase-0-audit.md) preserves the closeout evidence. Commands below are explicitly separated into verified M0B–M0E checks and still-planned later-milestone workflows.
 
 ## Working principles
 
@@ -17,8 +17,9 @@ This repository contains the M0A documentation baseline, the M0B minimal Python/
 1. The active user request or milestone/phase brief defines current scope.
 2. `docs/roadmap/project-roadmap.md` defines approved product and engineering scope.
 3. `docs/architecture/system-overview.md` defines the two authority boundaries.
-4. This guide defines repository conventions and planned workflow.
-5. Implemented code and tests define behavior that already exists.
+4. `docs/architecture/domain-model.md` defines the Phase 1 domain contract.
+5. This guide defines repository conventions and planned workflow.
+6. Implemented code and tests define behavior that already exists.
 
 Conflicts must be surfaced and resolved explicitly. A later implementation must not silently change the roadmap’s meaning.
 
