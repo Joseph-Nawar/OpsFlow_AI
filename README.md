@@ -6,9 +6,9 @@ The project is intentionally sized as a portfolio project, not an enterprise pla
 
 ## Current status
 
-**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, and **M0E — Developer Experience & CI** are `COMPLETE`. Phase 0 is `IN PROGRESS`; M0F is `NOT STARTED`, and Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend, infrastructure, frontend, and developer-workflow foundations; no later-milestone functionality exists.
+**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit** are `COMPLETE`. Phase 0 is `COMPLETE`; Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend, infrastructure, frontend, and developer-workflow foundations; no later-milestone functionality exists.
 
-The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md).
+The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md). The independent closeout evidence is recorded in [the Phase 0 audit](docs/audits/phase-0-audit.md). Phase 1 — Domain Model & State Machine is the next project phase and remains `NOT STARTED`.
 
 ## Architectural guardrails
 

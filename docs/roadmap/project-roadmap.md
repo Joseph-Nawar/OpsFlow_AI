@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, and **M0E — Developer Experience & CI**, all `COMPLETE`. Because these milestones are within Phase 0, **Phase 0 — Product & Engineering Foundation** is `IN PROGRESS`; M0F and Phases 1–12 remain `NOT STARTED`.
+The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; Phases 1–12 remain `NOT STARTED`. The independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md).
 
 ## 1. Project goal
 
@@ -96,7 +96,8 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M0C | PostgreSQL, SQLAlchemy, Alembic & Docker | Minimal database and container foundation | COMPLETE |
 | M0D | Frontend Foundation | Minimal React/TypeScript/Vite frontend foundation | COMPLETE |
 | M0E | Developer Experience & CI | Reproducible local and CI quality gates | COMPLETE |
-| 0 | Product & Engineering Foundation | Clean repository and development environment | IN PROGRESS |
+| M0F | Independent Phase 0 Audit | Independent audit and closeout evidence | COMPLETE |
+| 0 | Product & Engineering Foundation | Clean repository and development environment | COMPLETE |
 | 1 | Domain Model & State Machine | Correct business representation | NOT STARTED |
 | 2 | Persistence & Core API | Durable order intake and retrieval | NOT STARTED |
 | 3 | Document Ingestion | Reliable handling of PDF/XLSX/email inputs | NOT STARTED |
@@ -119,7 +120,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M0C — PostgreSQL, SQLAlchemy, Alembic & Docker | COMPLETE |
 | M0D — Frontend Foundation | COMPLETE |
 | M0E — Developer Experience & CI | COMPLETE |
-| M0F | NOT STARTED |
+| M0F — Independent Phase 0 Audit | COMPLETE |
 
 ## 8. Detailed phases
 
