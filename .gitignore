@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+env/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Frontend dependencies and build output
+node_modules/
+dist/
+build/
+.vite/
+
+# Local services and generated data
+postgres-data/
+*.sqlite3
+*.db
+workflows/n8n/local/
+logs/
+tmp/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated reports and local artifacts
+*.log
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.zip
