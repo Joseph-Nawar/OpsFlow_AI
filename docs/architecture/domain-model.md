@@ -4,8 +4,9 @@
 
 This document is the authoritative domain specification for Phase 1. It was
 created by M1A — Domain Contract & Implementation Plan. The contract is
-approved for implementation in M1B–M1E; no Phase 1 domain Python
-implementation exists yet.
+approved for implementation in M1B–M1E. M1B supporting records are now
+implemented; the Order aggregate and lifecycle behavior remain unimplemented
+until M1C–M1E.
 
 The domain is a pure-Python, infrastructure-independent representation of a
 purchase order and its lifecycle. Later implementation work must implement
