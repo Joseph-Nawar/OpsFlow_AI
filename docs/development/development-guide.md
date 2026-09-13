@@ -2,7 +2,7 @@
 
 ## Status of this guide
 
-This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation, the M0D minimal React/TypeScript/Vite frontend foundation, the M0E developer-workflow/CI foundation, and the M0F independent Phase 0 audit. M1A added the authoritative Phase 1 domain contract and implementation plan; M1B–M1E added and verified the supporting domain records, immutable Order aggregate, state-machine and retry/reopen behavior, and scenario hardening. The independent M1F audit and final Phase 1 closeout have not yet passed, so Phase 1 remains in progress. The [Phase 0 audit record](../audits/phase-0-audit.md) preserves the closeout evidence. Commands below are explicitly separated into verified M0B–M0E checks and still-planned later-milestone workflows.
+This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation, the M0D minimal React/TypeScript/Vite frontend foundation, the M0E developer-workflow/CI foundation, and the M0F independent Phase 0 audit. M1A added the authoritative Phase 1 domain contract and implementation plan; M1B–M1E added and verified the supporting domain records, immutable Order aggregate, state-machine and retry/reopen behavior, and scenario hardening. The independent M1F audit and final Phase 1 closeout are complete, so Phase 1 is complete. The [Phase 0 audit record](../audits/phase-0-audit.md) and [Phase 1 audit record](../audits/phase-1-audit.md) preserve the closeout evidence. Commands below are explicitly separated into verified M0B–M0E checks and still-planned later-milestone workflows.
 
 ## Working principles
 

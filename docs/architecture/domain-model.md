@@ -6,8 +6,9 @@ This document is the authoritative domain specification for Phase 1. It was
 created by M1A — Domain Contract & Implementation Plan. The contract was
 implemented through M1E: M1B supporting records, the immutable M1C Order
 aggregate, M1D state-machine and retry/reopen behavior, and M1E scenario
-verification and hardening are complete. The independent M1F audit and final
-Phase 1 closeout have not yet passed, so Phase 1 remains in progress.
+verification and hardening are complete. The independent M1F audit passed, so
+Phase 1 is complete. This document remains the authoritative Phase 1 domain
+contract.
 
 The domain is a pure-Python, infrastructure-independent representation of a
 purchase order and its lifecycle. Later implementation work must implement
