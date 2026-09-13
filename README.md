@@ -6,7 +6,7 @@ The project is intentionally sized as a portfolio project, not an enterprise pla
 
 ## Current status
 
-**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, and **M0D — Frontend Foundation** are `COMPLETE`. Phase 0 is `IN PROGRESS`; M0E–M0F are `NOT STARTED`, and Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend, infrastructure, and frontend development foundations; no later-milestone functionality exists.
+**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, and **M0E — Developer Experience & CI** are `COMPLETE`. Phase 0 is `IN PROGRESS`; M0F is `NOT STARTED`, and Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend, infrastructure, frontend, and developer-workflow foundations; no later-milestone functionality exists.
 
 The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md).
 
@@ -41,12 +41,12 @@ Email / PDF / XLSX / Form
 
 ## Intended technology baseline
 
-M0B verified Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. M0C verifies SQLAlchemy 2.x async PostgreSQL access through asyncpg, Alembic, PostgreSQL 16, Docker Compose, and the `/ready` readiness boundary. M0D verifies the minimal Node.js 24/npm React, TypeScript, Vite, and ESLint frontend foundation. The remaining roadmap baseline—self-hosted n8n Community Edition, review-application UI, AI providers, document handling, business integrations, GitHub Actions, secret scanning, and structured logging—remains planned for later milestones.
+M0B verified Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. M0C verifies SQLAlchemy 2.x async PostgreSQL access through asyncpg, Alembic, PostgreSQL 16, Docker Compose, and the `/ready` readiness boundary. M0D verifies the minimal Node.js 24/npm React, TypeScript, Vite, and ESLint frontend foundation. M0E verifies the Makefile command interface, GitHub Actions quality gates, and Gitleaks scanning. The remaining roadmap baseline—self-hosted n8n Community Edition, review-application UI, AI providers, document handling, business integrations, and structured logging—remains planned for later milestones.
 
 ## Documentation map
 
 - [Architecture overview](docs/architecture/system-overview.md) — authority boundaries and intended system flow.
-- [Development guide](docs/development/development-guide.md) — conventions, verified M0B–M0D commands, and planned workflow.
+- [Development guide](docs/development/development-guide.md) — conventions, verified M0B–M0E commands, and planned workflow.
 - [Decision records](docs/decisions/README.md) — how durable technical decisions will be recorded.
 - [Project roadmap](docs/roadmap/project-roadmap.md) — approved phases, rules, status, and completion protocol.
 
@@ -56,6 +56,35 @@ The project must remain deployable and demonstrable with **$0 mandatory developm
 
 Never commit credentials, API keys, private business data, or real customer documents. Use local configuration and synthetic fixtures as later phases are implemented.
 
-## Development status and commands
+## Local development
 
-Verified M0B–M0D commands and still-planned commands are distinguished in the [development guide](docs/development/development-guide.md).
+Prerequisites are Python 3.12 with `uv`, Node.js 24 with npm, Docker Desktop with Compose, GNU Make, and Git.
+
+For a fresh checkout, use this sequence:
+
+```bash
+uv sync --frozen --dev
+npm --prefix web ci
+cp .env.example .env
+docker compose up -d postgres
+make migrate
+```
+
+Run the local development servers in separate terminals:
+
+```bash
+uv run uvicorn opsflow.main:app --reload
+npm --prefix web run dev
+```
+
+Run the quality gates with PostgreSQL available:
+
+```bash
+make check
+```
+
+`make backend-check` covers Ruff, formatting, mypy, the full pytest suite, and `uv build`. `make frontend-check` repeats `npm ci`, ESLint, and the production build. The integration tests and full backend suite require PostgreSQL; quality targets do not start or destroy infrastructure automatically.
+
+For the containerized API and database lifecycle, use `make up`, `make migrate`, and `make down`. `make down` removes containers and the Compose network but preserves the named database volume.
+
+Verified M0B–M0E commands and still-planned commands are distinguished in the [development guide](docs/development/development-guide.md).

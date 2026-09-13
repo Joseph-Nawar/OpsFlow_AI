@@ -2,7 +2,7 @@
 
 ## Status of this guide
 
-This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation, and the M0D minimal React/TypeScript/Vite frontend foundation. Commands below are explicitly separated into verified M0B–M0D checks and still-planned later-milestone workflows.
+This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation, the M0D minimal React/TypeScript/Vite frontend foundation, and the M0E developer-workflow/CI foundation. Commands below are explicitly separated into verified M0B–M0E checks and still-planned later-milestone workflows.
 
 ## Working principles
 
@@ -77,6 +77,41 @@ npm run dev -- --host 127.0.0.1
 
 The development server served the frontend at `http://127.0.0.1:5173/` with HTTP 200. The served page contains the OpsFlow AI foundation content. No browser binary or browser automation tool was available for a visual inspection, so no browser framework was added.
 
+## Verified M0E commands
+
+With PostgreSQL available, the following Make targets were run successfully from the repository root:
+
+```bash
+make test
+make test-integration
+make lint
+make format
+make typecheck
+make backend-check
+make frontend-check
+make check
+make up
+make migrate
+make down
+```
+
+`make format` is intentionally a non-mutating Ruff formatting check. `make up` starts the API and PostgreSQL containers with Compose; `make migrate` applies Alembic migrations; `make down` stops and removes containers while preserving the named database volume.
+
+The local secret scan uses the same pinned open-source Gitleaks container as CI:
+
+```bash
+docker run --rm --volume "$PWD:/repo:ro" \
+  zricethezav/gitleaks:v8.28.0 \
+  git --redact --no-banner --verbose \
+  --log-opts="--all --full-history" /repo
+```
+
+This scan completed successfully with no leaks found. The CI workflow is [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) and has three read-only jobs: backend, frontend, and secret-scan. Backend CI uses Python 3.12, frozen `uv` dependencies, and a PostgreSQL 16 service; frontend CI uses Node.js 24 and `npm ci`.
+
+## Clean-checkout workflow
+
+The README’s [local development sequence](../../README.md#local-development) is the concise clean-checkout procedure. It installs the committed Python and npm dependencies, creates only the ignored local `.env`, starts PostgreSQL, applies migrations, runs the two development servers, and then runs `make check`. The sequence was verified from a fresh clone of `phase/0-foundation`.
+
 ## Still planned or unverified commands
 
 These commands remain planned until their later milestone introduces the corresponding workflow:
@@ -101,7 +136,7 @@ For deterministic business behavior, follow the red-green-refactor loop where pr
 
 Tests must not remove assertions, change expected results to suit broken behavior, or skip coverage without an explicit reason. Live AI calls and real external side effects must never be hidden in ordinary automated tests.
 
-M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure; M0D adds only the static frontend foundation page. M0D intentionally adds no frontend test framework because it has no meaningful application behavior yet. No business tables, review UI, or later-milestone behavior is covered here.
+M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure; M0D adds only the static frontend foundation page; M0E adds only developer commands, CI, and secret scanning. M0D intentionally adds no frontend test framework because it has no meaningful application behavior yet. No business tables, review UI, or later-milestone behavior is covered here.
 
 ## Documentation conventions
 
