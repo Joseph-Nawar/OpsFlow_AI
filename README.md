@@ -6,7 +6,7 @@ The project is intentionally sized as a portfolio project, not an enterprise pla
 
 ## Current status
 
-**M0A — Repository Intelligence & Project Specification** is `COMPLETE`. **M0B — Backend Foundation** is `COMPLETE`. Phase 0 is `IN PROGRESS`; M0C–M0F are `NOT STARTED`, and Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal Python/FastAPI backend foundation and `/health` liveness endpoint; no later-milestone functionality exists.
+**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, and **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker** are `COMPLETE`. Phase 0 is `IN PROGRESS`; M0D–M0F are `NOT STARTED`, and Phases 1–12 remain `NOT STARTED`. The repository now contains only the minimal backend and infrastructure foundation; no later-milestone functionality exists.
 
 The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md).
 
@@ -41,7 +41,7 @@ Email / PDF / XLSX / Form
 
 ## Intended technology baseline
 
-The M0B backend foundation verifies Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. The remaining roadmap baseline—SQLAlchemy, Alembic, PostgreSQL, self-hosted n8n Community Edition, React, TypeScript, Vite, AI providers, document handling, business integrations, Docker Compose, GitHub Actions, secret scanning, and structured logging—remains planned for later milestones.
+M0B verified Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. M0C now verifies SQLAlchemy 2.x async PostgreSQL access through asyncpg, Alembic, PostgreSQL 16, Docker Compose, and the `/ready` readiness boundary. The remaining roadmap baseline—self-hosted n8n Community Edition, React, TypeScript, Vite, AI providers, document handling, business integrations, GitHub Actions, secret scanning, and structured logging—remains planned for later milestones.
 
 ## Documentation map
 

@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestones are **M0A — Repository Intelligence & Project Specification** and **M0B — Backend Foundation**, both `COMPLETE`. Because these milestones are within Phase 0, **Phase 0 — Product & Engineering Foundation** is `IN PROGRESS`; M0C–M0F and Phases 1–12 remain `NOT STARTED`.
+The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, and **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, all `COMPLETE`. Because these milestones are within Phase 0, **Phase 0 — Product & Engineering Foundation** is `IN PROGRESS`; M0D–M0F and Phases 1–12 remain `NOT STARTED`.
 
 ## 1. Project goal
 
@@ -93,6 +93,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | --- | --- | --- | --- |
 | M0A | Repository Intelligence & Project Specification | Durable project context before coding | COMPLETE |
 | M0B | Backend Foundation | Minimal Python/FastAPI backend foundation | COMPLETE |
+| M0C | PostgreSQL, SQLAlchemy, Alembic & Docker | Minimal database and container foundation | COMPLETE |
 | 0 | Product & Engineering Foundation | Clean repository and development environment | IN PROGRESS |
 | 1 | Domain Model & State Machine | Correct business representation | NOT STARTED |
 | 2 | Persistence & Core API | Durable order intake and retrieval | NOT STARTED |
@@ -113,7 +114,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | --- | --- |
 | M0A — Repository Intelligence & Project Specification | COMPLETE |
 | M0B — Backend Foundation | COMPLETE |
-| M0C | NOT STARTED |
+| M0C — PostgreSQL, SQLAlchemy, Alembic & Docker | COMPLETE |
 | M0D | NOT STARTED |
 | M0E | NOT STARTED |
 | M0F | NOT STARTED |

@@ -1,12 +1,57 @@
 """FastAPI application entry point."""
 
-from fastapi import FastAPI
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import cast
 
-app = FastAPI(title="OpsFlow AI")
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from opsflow.database import create_engine, database_is_available
+from opsflow.settings import Settings, get_settings
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    """Return the process liveness response without dependency checks."""
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Dispose the application engine when the process shuts down."""
 
-    return {"status": "ok"}
+    try:
+        yield
+    finally:
+        engine = cast(AsyncEngine, app.state.database_engine)
+        await engine.dispose()
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Create the application with environment-driven database settings."""
+
+    engine = create_engine(settings or get_settings())
+    app = FastAPI(title="OpsFlow AI", lifespan=lifespan)
+    app.state.database_engine = engine
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        """Return the process liveness response without dependency checks."""
+
+        return {"status": "ok"}
+
+    @app.get("/ready")
+    async def ready(request: Request) -> JSONResponse:
+        """Return dependency readiness without exposing database details."""
+
+        engine = cast(AsyncEngine, request.app.state.database_engine)
+        if await database_is_available(engine):
+            return JSONResponse(
+                status_code=200,
+                content={"status": "ready", "checks": {"database": "ok"}},
+            )
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "checks": {"database": "unavailable"}},
+        )
+
+    return app
+
+
+app = create_app()

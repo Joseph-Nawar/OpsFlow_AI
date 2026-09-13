@@ -107,4 +107,4 @@ Trusted business data—customers, products, catalogue prices, inventory, and ex
 
 ## Out of scope for the current foundation
 
-M0A created documentation only. M0B adds only the minimal FastAPI `/health` liveness foundation. React, PostgreSQL, Docker, LLM, n8n, order, integration, and later-milestone source code remain out of scope. The full phased scope is maintained in [the project roadmap](../roadmap/project-roadmap.md).
+M0A created documentation only. M0B added the minimal FastAPI `/health` liveness foundation. M0C adds only the PostgreSQL/SQLAlchemy/Alembic/Docker infrastructure and `/ready` dependency-readiness boundary. React, LLM, n8n, order, integration, authentication, and later-milestone source code remain out of scope. The full phased scope is maintained in [the project roadmap](../roadmap/project-roadmap.md).

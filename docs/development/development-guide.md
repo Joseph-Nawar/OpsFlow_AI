@@ -2,7 +2,7 @@
 
 ## Status of this guide
 
-This repository contains the M0A documentation baseline and the M0B minimal Python/FastAPI backend foundation. Commands below are explicitly separated into verified M0B checks and still-planned later-milestone workflows.
+This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, and the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation. Commands below are explicitly separated into verified M0B/M0C checks and still-planned later-milestone workflows.
 
 ## Working principles
 
@@ -40,23 +40,27 @@ The intended baseline is Python 3.12 for backend and business logic, `uv` with `
 
 Expected future top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. They are intentionally absent until an applicable phase requires them.
 
-## Verified M0B commands
+## Verified M0B/M0C commands
 
-The following commands were run successfully during M0B against the committed `pyproject.toml` and `uv.lock`:
+The following commands were run successfully during M0B/M0C against the committed project configuration:
 
 ```bash
 # Managed backend environment and quality gates
-uv sync --dev
 uv sync --frozen --dev
 uv run python -c "import opsflow; from opsflow.main import app"
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src/opsflow
 uv run pytest
+uv run pytest tests/integration/test_readiness.py -q --no-cov
+uv run alembic upgrade head
+uv run alembic current
 uv build
+docker compose config --quiet
+docker compose up -d --build
 ```
 
-`uv run pytest` enforces and reports the configured 80% minimum coverage floor. The M0B suite reports 100% coverage for the current backend package.
+`uv run pytest` enforces and reports the configured 80% minimum coverage floor. The complete M0B/M0C suite reports 97.96% coverage. M0C also verified live `/health` and `/ready` behavior with PostgreSQL running, stopped, and restarted.
 
 ## Still planned or unverified commands
 
@@ -69,10 +73,6 @@ cd web
 npm ci
 npm run lint
 npm run build
-
-# Local services and migrations — planned after Docker and PostgreSQL exist
-docker compose up --build
-alembic upgrade head
 
 # Focused verification — use the project’s eventual documented test selectors
 uv run pytest tests/unit -q
@@ -93,7 +93,7 @@ For deterministic business behavior, follow the red-green-refactor loop where pr
 
 Tests must not remove assertions, change expected results to suit broken behavior, or skip coverage without an explicit reason. Live AI calls and real external side effects must never be hidden in ordinary automated tests.
 
-M0A had no application behavior; M0B adds only the `/health` liveness behavior. No database, external dependency, or later-milestone behavior is covered here.
+M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure. No business tables or later-milestone behavior is covered here.
 
 ## Documentation conventions
 
