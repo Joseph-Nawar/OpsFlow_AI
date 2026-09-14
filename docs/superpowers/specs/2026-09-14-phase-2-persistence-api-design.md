@@ -4,8 +4,8 @@
 
 - Repository: `Joseph-Nawar/OpsFlow_AI`
 - Phase: **Phase 2 — Persistence & Core API**
-- Current milestone: **M2F — Independent Phase 2 Audit & Closeout — NOT STARTED**
-- Design status: independently accepted authoritative Phase 2 design; M2A–M2E are complete, and M2F is not started
+- Current milestone: **M2F — Independent Phase 2 Audit & Closeout — IN PROGRESS**
+- Design status: independently accepted authoritative Phase 2 design; M2A–M2E are complete, and M2F is in progress
 - Baseline: `4e3613b935edabead28d7cc44ea53619f059eeff`
 - Phase 1 contract: [Phase 1 Domain Model & State Machine Contract](../../architecture/domain-model.md)
 
