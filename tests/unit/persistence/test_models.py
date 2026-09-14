@@ -1,5 +1,6 @@
 """Metadata contract tests for the Phase 2 persistence schema."""
 
+import re
 from collections.abc import Iterable
 
 from sqlalchemy import (
@@ -94,6 +95,24 @@ def _normalized_checks(table: Table) -> set[str]:
     }
 
 
+def _named_check(table: Table, name: str) -> str:
+    matches = [
+        constraint
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint) and constraint.name == name
+    ]
+    assert len(matches) == 1
+    return " ".join(str(matches[0].sqltext).split())
+
+
+def _in_values(check_sql: str, column_name: str) -> set[str]:
+    match = re.search(
+        rf"\b{re.escape(column_name)}\s+IN\s+\(([^)]*)\)", check_sql, flags=re.IGNORECASE
+    )
+    assert match is not None
+    return {value.strip().strip("'") for value in match.group(1).split(",")}
+
+
 def _column_sets(constraints: Iterable[UniqueConstraint | Index]) -> set[tuple[str, ...]]:
     return {tuple(column.name for column in constraint.columns) for constraint in constraints}
 
@@ -165,7 +184,7 @@ def test_ordered_children_have_stable_positions_and_required_access_paths() -> N
             if isinstance(constraint, UniqueConstraint)
         )
         assert ("order_id", "position") in unique_columns
-        assert _column_sets(table.indexes) == {("order_id",)}
+        assert _column_sets(table.indexes) == set()
 
     validation_issues = metadata.tables["validation_issues"]
     assert _column_sets(validation_issues.indexes) == set()
@@ -176,6 +195,7 @@ def test_audit_and_idempotency_constraints_support_current_reads_and_uniqueness(
     audit_events = metadata.tables["audit_events"]
     idempotency = metadata.tables["order_creation_idempotency"]
 
+    assert _column_sets(metadata.tables["orders"].indexes) == set()
     assert _column_sets(audit_events.indexes) == {("order_id", "occurred_at", "id")}
     assert _column_sets(idempotency.indexes) == set()
     unique_columns = _column_sets(
@@ -194,9 +214,11 @@ def test_columns_use_the_required_postgresql_storage_types_and_nullability() -> 
 
     assert isinstance(metadata.tables["validation_issues"].c.order_id.type, UUID)
     assert isinstance(metadata.tables["order_creation_idempotency"].c.order_id.type, UUID)
-    assert isinstance(metadata.tables["order_lines"].c.quantity.type, Numeric)
-    assert isinstance(metadata.tables["order_lines"].c.submitted_price.type, Numeric)
-    assert isinstance(metadata.tables["order_lines"].c.trusted_catalogue_price.type, Numeric)
+    for column_name in ("quantity", "submitted_price", "trusted_catalogue_price"):
+        numeric_type = metadata.tables["order_lines"].c[column_name].type
+        assert isinstance(numeric_type, Numeric)
+        assert numeric_type.precision is None
+        assert numeric_type.scale is None
     assert isinstance(metadata.tables["source_documents"].c.metadata.type, JSONB)
     assert isinstance(metadata.tables["validation_issues"].c.expected.type, JSONB)
     assert isinstance(metadata.tables["validation_issues"].c.actual.type, JSONB)
@@ -228,25 +250,24 @@ def test_columns_use_the_required_postgresql_storage_types_and_nullability() -> 
 
 
 def test_orders_encode_state_currency_and_failure_origin_checks() -> None:
-    checks = _normalized_checks(Base.metadata.tables["orders"])
-    all_states = {
-        "received",
-        "processing",
-        "extracted",
-        "validated",
-        "needs_review",
-        "ready_for_approval",
-        "approved",
-        "syncing",
-        "completed",
-        "rejected",
-        "failed_retryable",
-        "failed_final",
+    orders = Base.metadata.tables["orders"]
+    checks = _normalized_checks(orders)
+    expected_states = {
+        "RECEIVED",
+        "PROCESSING",
+        "EXTRACTED",
+        "VALIDATED",
+        "NEEDS_REVIEW",
+        "READY_FOR_APPROVAL",
+        "APPROVED",
+        "SYNCING",
+        "COMPLETED",
+        "REJECTED",
+        "FAILED_RETRYABLE",
+        "FAILED_FINAL",
     }
 
-    assert any(
-        "state in" in check and all(state in check for state in all_states) for check in checks
-    )
+    assert _in_values(_named_check(orders, "ck_orders_state"), "state") == expected_states
     assert any(
         "currency is null" in check
         and "currency" in check
@@ -254,15 +275,14 @@ def test_orders_encode_state_currency_and_failure_origin_checks() -> None:
         and 'collate "c"' in check
         for check in checks
     )
-    assert any(
-        "failed_retryable" in check
-        and "failed_final" in check
-        and "processing" in check
-        and "extracted" in check
-        and "syncing" in check
-        and "failure_origin is null" in check
-        for check in checks
-    )
+    failure_check = _named_check(orders, "ck_orders_failure_origin").lower()
+    assert "failure_origin is not null" in failure_check
+    assert "failure_origin is null" in failure_check
+    assert _in_values(failure_check, "failure_origin") == {
+        "processing",
+        "extracted",
+        "syncing",
+    }
 
 
 def test_child_tables_encode_allowed_values_positions_numerics_hashes_and_json_shape() -> None:
@@ -276,11 +296,10 @@ def test_child_tables_encode_allowed_values_positions_numerics_hashes_and_json_s
     assert any("trusted_catalogue_price >= 0" in check for check in line_checks)
 
     assert any("position >= 0" in check for check in document_checks)
-    assert any(
-        "document_type in" in check
-        and all(value in check for value in ("email_body", "pdf", "xlsx", "csv", "form"))
-        for check in document_checks
-    )
+    assert _in_values(
+        _named_check(Base.metadata.tables["source_documents"], "ck_source_documents_document_type"),
+        "document_type",
+    ) == {"EMAIL_BODY", "PDF", "XLSX", "CSV", "FORM"}
     assert any(
         "sha256" in check and "{64}" in check and 'collate "c"' in check
         for check in document_checks
@@ -288,10 +307,10 @@ def test_child_tables_encode_allowed_values_positions_numerics_hashes_and_json_s
     assert any("jsonb_typeof(metadata) = 'array'" in check for check in document_checks)
 
     assert any("position >= 0" in check for check in issue_checks)
-    assert any(
-        "severity in" in check and all(value in check for value in ("info", "warning", "error"))
-        for check in issue_checks
-    )
+    assert _in_values(
+        _named_check(Base.metadata.tables["validation_issues"], "ck_validation_issues_severity"),
+        "severity",
+    ) == {"INFO", "WARNING", "ERROR"}
 
 
 def test_idempotency_values_have_bounded_key_and_lowercase_sha256_checks() -> None:

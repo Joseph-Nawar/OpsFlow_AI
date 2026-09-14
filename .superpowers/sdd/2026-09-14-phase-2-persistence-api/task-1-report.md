@@ -68,3 +68,29 @@
 - Starting HEAD: `2d9fb21` (`docs: complete Phase 2 implementation plan`)
 - Commit created: the coherent `feat: add Phase 2 persistence schema` commit containing this report; its exact SHA is reported in the final handoff because a commit cannot embed its own object ID.
 - Intended final working-tree state: clean after commit and post-commit verification.
+
+## Review fix report
+
+### Exactly what changed
+
+- Changed `ck_orders_failure_origin` so its failed-state branch explicitly requires `failure_origin IS NOT NULL` before checking membership in `PROCESSING`, `EXTRACTED`, or `SYNCING`. This makes a failed state plus NULL evaluate to FALSE instead of UNKNOWN under PostgreSQL CHECK semantics.
+- Replaced fragment-presence assertions for order states, source-document types, and validation severities with named-constraint parsing and exact literal-set comparisons for the required 12/5/3 values.
+- Added assertions that all three order-line NUMERIC types have both `precision` and `scale` unset.
+- Removed the standalone `order_id` indexes from `order_lines` and `source_documents`. Their required `UNIQUE(order_id, position)` constraints create PostgreSQL indexes with the same leading-column access path, so separate indexes were redundant.
+- Changed index tests to require no explicit indexes on ordered-child tables while continuing to require the audit retrieval index `(order_id, occurred_at, id)` and no speculative validation/idempotency indexes.
+- Preserved the exact six-table metadata scope, existing Phase 2/M2A–M2F status text, and the absence of migrations, repositories, sessions, services, routes, and M2C+ behavior.
+
+### Tests and command output
+
+- RED: `uv run pytest tests/unit/persistence/test_models.py -q --no-cov` — 2 failed, 9 passed. The failures specifically reported the redundant `order_id` index and missing `failure_origin IS NOT NULL` guard.
+- GREEN: `uv run pytest tests/unit/persistence/test_models.py -q --no-cov` — 11 passed in 0.09s.
+- `uv run pytest tests/unit -q --no-cov` — 187 passed in 0.78s.
+- `uv run ruff check src/opsflow/persistence tests/unit/persistence` — `All checks passed!`
+- `uv run ruff format --check src/opsflow/persistence tests/unit/persistence` — `3 files already formatted`.
+- `uv run mypy src/opsflow` — `Success: no issues found in 10 source files`.
+- `git diff --check` — exited 0 with no output.
+- PostgreSQL-dialect `CreateTable` compilation — `compiled PostgreSQL DDL for 6 tables`.
+
+### Remaining limitation
+
+- Live PostgreSQL execution remains unavailable because the local Docker daemon was unavailable during Task 1. This fix round uses database-independent SQLAlchemy metadata inspection and PostgreSQL-dialect DDL compilation; live migration/constraint execution remains M2B Task 2 scope.

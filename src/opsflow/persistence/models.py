@@ -62,6 +62,7 @@ class OrderModel(Base):
         ),
         CheckConstraint(
             "((state IN ('FAILED_RETRYABLE', 'FAILED_FINAL') "
+            "AND failure_origin IS NOT NULL "
             "AND failure_origin IN ('PROCESSING', 'EXTRACTED', 'SYNCING')) "
             "OR (state NOT IN ('FAILED_RETRYABLE', 'FAILED_FINAL') "
             "AND failure_origin IS NULL))",
@@ -95,7 +96,6 @@ class OrderLineModel(Base):
             "trusted_catalogue_price >= 0",
             name="ck_order_lines_trusted_catalogue_price",
         ),
-        Index("ix_order_lines_order_id", "order_id"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -131,7 +131,6 @@ class SourceDocumentModel(Base):
             "jsonb_typeof(metadata) = 'array'",
             name="ck_source_documents_metadata_array",
         ),
-        Index("ix_source_documents_order_id", "order_id"),
     )
 
     id: Mapped[UUID] = mapped_column(
