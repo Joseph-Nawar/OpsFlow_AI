@@ -4,8 +4,8 @@
 
 - Repository: `Joseph-Nawar/OpsFlow_AI`
 - Phase: **Phase 2 — Persistence & Core API**
-- Current milestone: **M2C — Repository & Durable Reads — COMPLETE**
-- Design status: independently accepted authoritative Phase 2 design; M2A–M2C are complete, and M2D–M2F are not started
+- Current milestone: **M2D — Idempotent Order Creation — IN PROGRESS**
+- Design status: independently accepted authoritative Phase 2 design; M2A–M2C are complete, M2D is in progress, and M2E–M2F are not started
 - Baseline: `4e3613b935edabead28d7cc44ea53619f059eeff`
 - Phase 1 contract: [Phase 1 Domain Model & State Machine Contract](../../architecture/domain-model.md)
 
@@ -24,7 +24,7 @@ behavior is complete. M2A is **COMPLETE** because the design was independently
 accepted and the companion implementation plan was completed and self-reviewed.
 M2B is **COMPLETE** because its schema, migration, constraints, and explicit
 domain/persistence mapping passed local static/unit verification and exact-head
-PostgreSQL CI; M2C is complete and M2D–M2F remain not started.
+PostgreSQL CI; M2C is complete and M2D is now the active implementation milestone.
 
 ## 1. Governing sources and repository baseline
 
@@ -995,7 +995,7 @@ Planned files and responsibilities:
 The milestone is complete only after ORM objects stay inside persistence and all
 reads reconstruct validated Phase 1 records before response serialization.
 
-### M2D — Idempotent Order Creation — NOT STARTED
+### M2D — Idempotent Order Creation — IN PROGRESS
 
 Planned files and responsibilities:
 
