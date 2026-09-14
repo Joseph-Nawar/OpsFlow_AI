@@ -4,8 +4,8 @@
 
 - Repository: `Joseph-Nawar/OpsFlow_AI`
 - Phase: **Phase 2 — Persistence & Core API**
-- Current milestone: **M2D — Idempotent Order Creation — IN PROGRESS**
-- Design status: independently accepted authoritative Phase 2 design; M2A–M2C are complete, M2D is in progress, and M2E–M2F are not started
+- Current milestone: **M2E — Core `/v1/orders` API & Hardening — NOT STARTED**
+- Design status: independently accepted authoritative Phase 2 design; M2A–M2D are complete, and M2E–M2F are not started
 - Baseline: `4e3613b935edabead28d7cc44ea53619f059eeff`
 - Phase 1 contract: [Phase 1 Domain Model & State Machine Contract](../../architecture/domain-model.md)
 
@@ -19,12 +19,13 @@ HTTP → application orchestration → Phase 1 domain → PostgreSQL persistence
 
 The Phase 1 domain remains the business authority. Persistence and HTTP adapt
 around that domain. This document authorizes the later M2B–M2E implementation
-milestones; it does not claim that their implementation or any Phase 2 runtime
-behavior is complete. M2A is **COMPLETE** because the design was independently
-accepted and the companion implementation plan was completed and self-reviewed.
-M2B is **COMPLETE** because its schema, migration, constraints, and explicit
-domain/persistence mapping passed local static/unit verification and exact-head
-PostgreSQL CI; M2C is complete and M2D is now the active implementation milestone.
+milestones and records their approved boundaries. M2A is **COMPLETE** because
+the design was independently accepted and the companion implementation plan
+was completed and self-reviewed. M2B is **COMPLETE** because its schema,
+migration, constraints, and explicit domain/persistence mapping passed local
+static/unit verification and exact-head PostgreSQL CI. M2C and M2D are complete
+under the same milestone verification process; M2E is the next planned
+implementation milestone.
 
 ## 1. Governing sources and repository baseline
 
@@ -948,9 +949,9 @@ are the documentation and repository checks in section 15.
 
 ## 13. Detailed implementation plan for M2B–M2F
 
-This is the approved execution outline for the later milestones. It is not a
-claim that those milestones are complete, and no item below is implemented by
-the M2A design commit.
+This is the approved execution outline and boundary record for the later
+milestones. Completion is tracked by the canonical status above and in the
+roadmap; the outline itself does not authorize scope beyond each milestone.
 
 ### M2A — Persistence & API Contract — COMPLETE
 
@@ -995,7 +996,7 @@ Planned files and responsibilities:
 The milestone is complete only after ORM objects stay inside persistence and all
 reads reconstruct validated Phase 1 records before response serialization.
 
-### M2D — Idempotent Order Creation — IN PROGRESS
+### M2D — Idempotent Order Creation — COMPLETE
 
 Planned files and responsibilities:
 
@@ -1007,9 +1008,8 @@ Planned files and responsibilities:
 - tests/integration/: atomic initial audit, same-key replay, conflict,
   rollback, and concurrent identical/conflicting request tests.
 
-The milestone is complete only after PostgreSQL uniqueness, rollback, and
-concurrency behavior prove the protocol in section 7. It does not add any
-other retry or distributed-lock infrastructure.
+PostgreSQL uniqueness, rollback, and concurrency behavior prove the protocol in
+section 7. It adds no other retry or distributed-lock infrastructure.
 
 ### M2E — Core /v1/orders API & Hardening — NOT STARTED
 
