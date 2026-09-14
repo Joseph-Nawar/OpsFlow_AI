@@ -6,10 +6,11 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from opsflow.persistence.models import Base
 from opsflow.settings import get_settings
 
 config = context.config
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
