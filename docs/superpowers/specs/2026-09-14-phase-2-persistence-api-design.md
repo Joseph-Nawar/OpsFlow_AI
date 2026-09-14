@@ -4,8 +4,8 @@
 
 - Repository: `Joseph-Nawar/OpsFlow_AI`
 - Phase: **Phase 2 — Persistence & Core API**
-- Current milestone: **M2E — Core `/v1/orders` API & Hardening — NOT STARTED**
-- Design status: independently accepted authoritative Phase 2 design; M2A–M2D are complete, and M2E–M2F are not started
+- Current milestone: **M2E — Core `/v1/orders` API & Hardening — IN PROGRESS**
+- Design status: independently accepted authoritative Phase 2 design; M2A–M2D are complete, M2E is in progress, and M2F is not started
 - Baseline: `4e3613b935edabead28d7cc44ea53619f059eeff`
 - Phase 1 contract: [Phase 1 Domain Model & State Machine Contract](../../architecture/domain-model.md)
 
@@ -24,7 +24,7 @@ the design was independently accepted and the companion implementation plan
 was completed and self-reviewed. M2B is **COMPLETE** because its schema,
 migration, constraints, and explicit domain/persistence mapping passed local
 static/unit verification and exact-head PostgreSQL CI. M2C and M2D are complete
-under the same milestone verification process; M2E is the next planned
+under the same milestone verification process; M2E is now the active
 implementation milestone.
 
 ## 1. Governing sources and repository baseline
@@ -1011,7 +1011,7 @@ Planned files and responsibilities:
 PostgreSQL uniqueness, rollback, and concurrency behavior prove the protocol in
 section 7. It adds no other retry or distributed-lock infrastructure.
 
-### M2E — Core /v1/orders API & Hardening — NOT STARTED
+### M2E — Core /v1/orders API & Hardening — IN PROGRESS
 
 Planned files and responsibilities:
 

@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `COMPLETE` with M1A–M1F complete; **Phase 2 — Persistence & Core API** is `IN PROGRESS` with M2A–M2D complete and M2E–M2F not started; Phases 3–12 remain `NOT STARTED`. Independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md) and [the Phase 1 audit](../audits/phase-1-audit.md), the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md), and the Phase 2 design and implementation plan are recorded in [the Phase 2 Persistence & Core API design](../superpowers/specs/2026-09-14-phase-2-persistence-api-design.md) and [the Phase 2 implementation plan](../superpowers/plans/2026-09-14-phase-2-persistence-api.md).
+The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `COMPLETE` with M1A–M1F complete; **Phase 2 — Persistence & Core API** is `IN PROGRESS` with M2A–M2D complete, M2E in progress, and M2F not started; Phases 3–12 remain `NOT STARTED`. Independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md) and [the Phase 1 audit](../audits/phase-1-audit.md), the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md), and the Phase 2 design and implementation plan are recorded in [the Phase 2 Persistence & Core API design](../superpowers/specs/2026-09-14-phase-2-persistence-api-design.md) and [the Phase 2 implementation plan](../superpowers/plans/2026-09-14-phase-2-persistence-api.md).
 
 ## 1. Project goal
 
@@ -141,7 +141,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M2B — Relational Schema & Domain Mapping | COMPLETE |
 | M2C — Repository & Durable Reads | COMPLETE |
 | M2D — Idempotent Order Creation | COMPLETE |
-| M2E — Core `/v1/orders` API & Hardening | NOT STARTED |
+| M2E — Core `/v1/orders` API & Hardening | IN PROGRESS |
 | M2F — Independent Phase 2 Audit & Closeout | NOT STARTED |
 
 ## 8. Detailed phases
