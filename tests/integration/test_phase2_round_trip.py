@@ -128,6 +128,7 @@ async def _round_trip_populated() -> None:
     try:
         async with AsyncSession(engine) as session:
             session.add(order_to_model(order, created_at))
+            await session.flush()
             session.add_all(
                 [
                     line_to_model(order.id, 0, first_line),
