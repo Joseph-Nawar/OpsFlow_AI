@@ -261,15 +261,22 @@ def _effective_utc_now(now: datetime | None) -> datetime:
 
 
 def _is_idempotency_key_conflict(error: BaseException) -> bool:
-    candidates = (error, getattr(error, "orig", None), error.__cause__, error.__context__)
-    for candidate in candidates:
-        if candidate is None:
+    candidates: list[object] = [error]
+    inspected: set[int] = set()
+    while candidates:
+        candidate = candidates.pop()
+        if id(candidate) in inspected:
             continue
+        inspected.add(id(candidate))
         if getattr(candidate, "constraint_name", None) == "order_creation_idempotency_pkey":
             return True
         diagnostic = getattr(candidate, "diag", None)
         if getattr(diagnostic, "constraint_name", None) == "order_creation_idempotency_pkey":
             return True
+        for attribute in ("orig", "__cause__", "__context__"):
+            nested = getattr(candidate, attribute, None)
+            if nested is not None:
+                candidates.append(nested)
     return False
 
 
