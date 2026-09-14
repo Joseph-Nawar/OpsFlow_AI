@@ -4,8 +4,8 @@
 
 - Repository: `Joseph-Nawar/OpsFlow_AI`
 - Phase: **Phase 2 — Persistence & Core API**
-- Current milestone: **M2F — Independent Phase 2 Audit & Closeout — IN PROGRESS**
-- Design status: independently accepted authoritative Phase 2 design; M2A–M2E are complete, and M2F is in progress
+- Current milestone: **M2F — Independent Phase 2 Audit & Closeout — COMPLETE**
+- Design status: independently accepted authoritative Phase 2 design; M2A–M2F are complete
 - Baseline: `4e3613b935edabead28d7cc44ea53619f059eeff`
 - Phase 1 contract: [Phase 1 Domain Model & State Machine Contract](../../architecture/domain-model.md)
 
@@ -24,8 +24,8 @@ the design was independently accepted and the companion implementation plan
 was completed and self-reviewed. M2B is **COMPLETE** because its schema,
 migration, constraints, and explicit domain/persistence mapping passed local
 static/unit verification and exact-head PostgreSQL CI. M2C and M2D are complete
-under the same milestone verification process; M2E is complete and M2F is the
-next planned milestone.
+under the same milestone verification process; M2E and M2F are complete, with
+the final audit, integration, and post-merge verification recorded separately.
 
 ## 1. Governing sources and repository baseline
 
@@ -1029,14 +1029,14 @@ The milestone is complete only after all four endpoints and the full backend,
 frontend, package-build, secret-scan, and regression checks pass. No
 authentication, request tracing, transition API, or review workflow is added.
 
-### M2F — Independent Phase 2 Audit & Closeout — NOT STARTED
+### M2F — Independent Phase 2 Audit & Closeout — COMPLETE
 
 Use a fresh context to perform an adversarial review of architecture, schema,
 transactions, idempotency, API contracts, tests, security, cost, and Phase 3+
-scope leakage. Remediate findings before closeout, record the durable audit,
-open the PR, integrate by merge commit to main, verify post-merge CI on the
-exact final SHA, and clean up the Phase 2 branch. M2F is not part of the M2A
-implementation commit.
+scope leakage. Findings were remediated or accepted before closeout, the
+durable audit was recorded, the PR was integrated by merge commit to main,
+post-merge CI was verified on the exact final SHA, and the Phase 2 branch was
+cleaned up. M2F is not part of the M2A implementation commit.
 
 ## 14. Phase 2 exit criteria
 
