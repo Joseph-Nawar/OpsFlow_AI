@@ -3,19 +3,34 @@
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from opsflow.domain import AuditEvent, DomainValidationError, SourceDocumentType
-from opsflow.persistence.repositories import OrderSummary, PersistedOrder
+from opsflow.domain import (
+    AuditEvent,
+    DomainValidationError,
+    Order,
+    OrderLine,
+    SourceDocument,
+    SourceDocumentType,
+)
+from opsflow.persistence.repositories import (
+    OrderSummary,
+    PersistedOrder,
+    get_idempotency_record,
+    insert_audit_event,
+    insert_idempotency_record,
+    insert_order_graph,
+)
 from opsflow.persistence.repositories import get_audit_events as repository_get_audit_events
 from opsflow.persistence.repositories import get_order as repository_get_order
 from opsflow.persistence.repositories import list_orders as repository_list_orders
 
-from .errors import OrderNotFoundError
+from .errors import IdempotencyConflictError, OrderNotFoundError
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +175,112 @@ def _canonical_document_type(value: SourceDocumentType) -> str:
     if not isinstance(value, SourceDocumentType):
         raise DomainValidationError("document_type must be a SourceDocumentType")
     return value.value
+
+
+async def create_order(
+    session: AsyncSession,
+    request: CreateOrderInput,
+    idempotency_key: str,
+    now: datetime | None = None,
+) -> PersistedOrder:
+    """Create or replay one atomically persisted RECEIVED order."""
+
+    fingerprint = fingerprint_order_request(request)
+    order = _order_from_create_input(request)
+    effective_now = _effective_utc_now(now)
+    audit_event = AuditEvent(
+        id=uuid4(),
+        order_id=order.id,
+        event_type="ORDER_RECEIVED",
+        actor="system",
+        occurred_at=effective_now,
+        description="Order received through API intake.",
+    )
+
+    try:
+        async with session.begin():
+            await insert_order_graph(session, order, effective_now)
+            await insert_audit_event(session, audit_event)
+            await insert_idempotency_record(
+                session,
+                idempotency_key,
+                fingerprint,
+                order.id,
+                effective_now,
+            )
+    except IntegrityError as error:
+        if not _is_idempotency_key_conflict(error):
+            raise
+        return await _resolve_idempotency_race(session, idempotency_key, fingerprint)
+
+    return PersistedOrder(order=order, created_at=effective_now, validation_issues=())
+
+
+def _order_from_create_input(request: CreateOrderInput) -> Order:
+    lines = tuple(
+        OrderLine(
+            id=uuid4(),
+            sku=line.sku,
+            description=line.description,
+            quantity=line.quantity,
+            submitted_price=line.submitted_price,
+            trusted_catalogue_price=line.trusted_catalogue_price,
+        )
+        for line in request.lines
+    )
+    source_documents = tuple(
+        SourceDocument(
+            id=uuid4(),
+            document_type=document.document_type,
+            name=document.name,
+            mime_type=document.mime_type,
+            sha256=document.sha256,
+            message_id=document.message_id,
+            storage_reference=document.storage_reference,
+            metadata=document.metadata,
+        )
+        for document in request.source_documents
+    )
+    return Order.received(
+        id=uuid4(),
+        customer_reference=request.customer_reference,
+        po_number=request.po_number,
+        order_date=request.order_date,
+        requested_delivery_date=request.requested_delivery_date,
+        currency=request.currency,
+        lines=lines,
+        source_documents=source_documents,
+    )
+
+
+def _effective_utc_now(now: datetime | None) -> datetime:
+    value = datetime.now(UTC) if now is None else now
+    if not isinstance(value, datetime) or value.utcoffset() is None:
+        raise DomainValidationError("now must be a timezone-aware datetime")
+    return value.astimezone(UTC)
+
+
+def _is_idempotency_key_conflict(error: BaseException) -> bool:
+    return getattr(getattr(error, "orig", None), "constraint_name", None) == (
+        "order_creation_idempotency_pkey"
+    )
+
+
+async def _resolve_idempotency_race(
+    session: AsyncSession, idempotency_key: str, fingerprint: str
+) -> PersistedOrder:
+    try:
+        record = await get_idempotency_record(session, idempotency_key)
+        if record is None:
+            raise RuntimeError("idempotency conflict has no committed record")
+        if record.request_fingerprint != fingerprint:
+            raise IdempotencyConflictError(idempotency_key)
+        result = await repository_get_order(session, record.order_id)
+        if result is None:
+            raise RuntimeError("idempotency record references a missing order")
+        return result
+    finally:
+        await session.rollback()
 
 
 async def get_order(session: AsyncSession, order_id: UUID) -> PersistedOrder:

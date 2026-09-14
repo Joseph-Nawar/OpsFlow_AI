@@ -11,6 +11,7 @@ from opsflow.domain import AuditEvent, Order, OrderState, ValidationIssue
 
 from .mappers import (
     audit_event_from_model,
+    audit_event_to_model,
     line_to_model,
     order_from_models,
     order_to_model,
@@ -19,6 +20,7 @@ from .mappers import (
 )
 from .models import (
     AuditEventModel,
+    OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
     SourceDocumentModel,
@@ -46,6 +48,16 @@ class OrderSummary:
     requested_delivery_date: date | None
     currency: str | None
     state: OrderState
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class IdempotencyRecord:
+    """Typed persistence data for one order-creation key."""
+
+    idempotency_key: str
+    request_fingerprint: str
+    order_id: UUID
     created_at: datetime
 
 
@@ -141,3 +153,46 @@ async def get_audit_events(session: AsyncSession, order_id: UUID) -> tuple[Audit
         )
     ).all()
     return tuple(audit_event_from_model(row) for row in rows)
+
+
+async def insert_audit_event(session: AsyncSession, event: AuditEvent) -> None:
+    """Add one audit event without committing the caller's transaction."""
+
+    session.add(audit_event_to_model(event))
+    await session.flush()
+
+
+async def insert_idempotency_record(
+    session: AsyncSession,
+    idempotency_key: str,
+    request_fingerprint: str,
+    order_id: UUID,
+    created_at: datetime,
+) -> None:
+    """Add one creation key and flush so its database uniqueness is decisive."""
+
+    session.add(
+        OrderCreationIdempotencyModel(
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+            order_id=order_id,
+            created_at=created_at,
+        )
+    )
+    await session.flush()
+
+
+async def get_idempotency_record(
+    session: AsyncSession, idempotency_key: str
+) -> IdempotencyRecord | None:
+    """Return typed idempotency data without exposing its ORM row."""
+
+    row = await session.get(OrderCreationIdempotencyModel, idempotency_key)
+    if row is None:
+        return None
+    return IdempotencyRecord(
+        idempotency_key=row.idempotency_key,
+        request_fingerprint=row.request_fingerprint,
+        order_id=row.order_id,
+        created_at=row.created_at,
+    )

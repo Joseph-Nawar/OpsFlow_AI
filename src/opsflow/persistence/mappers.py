@@ -140,6 +140,19 @@ def validation_issue_from_model(row: ValidationIssueModel) -> ValidationIssue:
         raise DomainValidationError("persisted validation issue violates Phase 1") from error
 
 
+def audit_event_to_model(event: AuditEvent) -> AuditEventModel:
+    """Map one validated audit event to an ORM row."""
+
+    return AuditEventModel(
+        id=event.id,
+        order_id=event.order_id,
+        event_type=event.event_type,
+        actor=event.actor,
+        occurred_at=event.occurred_at,
+        description=event.description,
+    )
+
+
 def audit_event_from_model(row: AuditEventModel) -> AuditEvent:
     """Map a persisted audit row to its separate Phase 1 record."""
 
