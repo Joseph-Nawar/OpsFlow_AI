@@ -4,13 +4,14 @@
 
 - Repository: `Joseph-Nawar/OpsFlow_AI`
 - Phase: **Phase 2 — Persistence & Core API**
-- Current milestone: **M2A — Persistence & API Contract — IN PROGRESS**
-- Design status: authoritative M2A design baseline; implementation has not started
+- Current milestone: **M2A — Persistence & API Contract — COMPLETE**
+- Design status: independently accepted authoritative M2A design and implementation-plan baseline; production implementation has not started
 - Baseline: `4e3613b935edabead28d7cc44ea53619f059eeff`
 - Phase 1 contract: [Phase 1 Domain Model & State Machine Contract](../../architecture/domain-model.md)
 
 This document is the approved architecture and implementation boundary for
-Phase 2. It records the first durable vertical slice:
+Phase 2. Its companion [implementation plan](../plans/2026-09-14-phase-2-persistence-api.md)
+records the execution sequence for the first durable vertical slice:
 
 ~~~text
 HTTP → application orchestration → Phase 1 domain → PostgreSQL persistence
@@ -18,9 +19,10 @@ HTTP → application orchestration → Phase 1 domain → PostgreSQL persistence
 
 The Phase 1 domain remains the business authority. Persistence and HTTP adapt
 around that domain. This document authorizes the later M2B–M2E implementation
-milestones; it does not claim that their implementation plan or any Phase 2
-implementation is complete. M2A remains **IN PROGRESS** until its design,
-scope, and planned verification have passed independent review.
+milestones; it does not claim that their implementation or any Phase 2 runtime
+behavior is complete. M2A is **COMPLETE** because the design was independently
+accepted and the companion implementation plan was completed and self-reviewed;
+M2B remains the next unstarted implementation milestone.
 
 ## 1. Governing sources and repository baseline
 
@@ -948,11 +950,12 @@ This is the approved execution outline for the later milestones. It is not a
 claim that those milestones are complete, and no item below is implemented by
 the M2A design commit.
 
-### M2A — Persistence & API Contract — IN PROGRESS
+### M2A — Persistence & API Contract — COMPLETE
 
-Deliver the authoritative design, implementation boundaries, status update,
-self-review, and documentation-only verification. Do not add production
-behavior, tests, dependencies, migrations, or API routes.
+Delivered the authoritative design, implementation boundaries, companion
+implementation plan, status update, self-review, and documentation-only
+verification. This milestone added no production behavior, tests, dependencies,
+migrations, or API routes.
 
 ### M2B — Relational Schema & Domain Mapping — NOT STARTED
 
@@ -1067,9 +1070,10 @@ final Phase 2 SHA:
 These are future Phase 2 exit criteria. They are not M2A claims and are not
 reported as passing by this design-only milestone.
 
-## 15. M2A documentation-only verification
+## 15. M2A documentation-only verification record
 
-Before the M2A commit, review this document with fresh eyes for:
+The completed M2A documentation review checked this document and its companion
+plan with fresh eyes for:
 
 - no unresolved placeholders;
 - no contradiction with the Phase 1 domain contract;
@@ -1093,6 +1097,6 @@ only the design and required status documentation changed, confirm no
 source/test/dependency/migration files changed, and check the diff for
 credentials, API keys, private business data, and real customer documents.
 
-The repository’s existing make check is run as requested even though M2A adds
+The repository’s existing make check was run as requested even though M2A adds
 no application behavior. Its observed result is reported separately from the
 not-yet-implemented Phase 2 exit criteria.
