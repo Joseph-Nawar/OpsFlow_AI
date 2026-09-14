@@ -261,9 +261,16 @@ def _effective_utc_now(now: datetime | None) -> datetime:
 
 
 def _is_idempotency_key_conflict(error: BaseException) -> bool:
-    return getattr(getattr(error, "orig", None), "constraint_name", None) == (
-        "order_creation_idempotency_pkey"
-    )
+    candidates = (error, getattr(error, "orig", None), error.__cause__, error.__context__)
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        if getattr(candidate, "constraint_name", None) == "order_creation_idempotency_pkey":
+            return True
+        diagnostic = getattr(candidate, "diag", None)
+        if getattr(diagnostic, "constraint_name", None) == "order_creation_idempotency_pkey":
+            return True
+    return False
 
 
 async def _resolve_idempotency_race(

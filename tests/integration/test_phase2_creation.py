@@ -213,6 +213,7 @@ async def _assert_sequential_conflict() -> None:
     try:
         async with AsyncSession(engine) as session:
             before = await _table_counts(session)
+            await session.rollback()
             winner = await create_order(session, winner_request, key, now=now)
 
             with pytest.raises(IdempotencyConflictError) as error:
