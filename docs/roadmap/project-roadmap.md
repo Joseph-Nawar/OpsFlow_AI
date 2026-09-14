@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `COMPLETE` with M1A–M1F complete; **Phase 2 — Persistence & Core API** is `COMPLETE` with M2A–M2F complete; Phases 3–12 remain `NOT STARTED`. Independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md), [the Phase 1 audit](../audits/phase-1-audit.md), and [the Phase 2 audit](../audits/phase-2-audit.md), the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md), and the Phase 2 design and implementation plan are recorded in [the Phase 2 Persistence & Core API design](../superpowers/specs/2026-09-14-phase-2-persistence-api-design.md) and [the Phase 2 implementation plan](../superpowers/plans/2026-09-14-phase-2-persistence-api.md).
+The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `COMPLETE` with M1A–M1F complete; **Phase 2 — Persistence & Core API** is `COMPLETE` with M2A–M2F complete; **Phase 3 — Document Ingestion** is `IN PROGRESS` with M3A in progress and M3B–M3F not started; Phases 4–12 remain `NOT STARTED`. Independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md), [the Phase 1 audit](../audits/phase-1-audit.md), and [the Phase 2 audit](../audits/phase-2-audit.md), the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md), the Phase 2 design and implementation plan are recorded in [the Phase 2 Persistence & Core API design](../superpowers/specs/2026-09-14-phase-2-persistence-api-design.md) and [the Phase 2 implementation plan](../superpowers/plans/2026-09-14-phase-2-persistence-api.md), and the authoritative M3A design is recorded in [the Phase 3 Document Ingestion & Canonical Parsing design](../superpowers/specs/2026-09-14-phase-3-document-ingestion-design.md).
 
 ## 1. Project goal
 
@@ -51,7 +51,7 @@ The intended stack is:
 - **Automation:** self-hosted n8n Community Edition.
 - **Frontend:** React, TypeScript, Vite.
 - **AI:** provider-neutral abstraction; Gemini as the initial development provider; deterministic fake provider for tests; optional OpenAI adapter later.
-- **Document handling:** PyMuPDF, openpyxl, CSV/email parsing, Tesseract OCR where required.
+- **Document handling:** pypdf, openpyxl, CSV/plain-text parsing; OCR only if a later measured requirement justifies it.
 - **Business integrations:** Odoo Community, HubSpot developer/test environment, Gmail API, Slack API.
 - **Engineering:** Docker Compose, pytest, Ruff, mypy, GitHub Actions, secret scanning, structured logging.
 
@@ -99,8 +99,8 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M0F | Independent Phase 0 Audit | Independent audit and closeout evidence | COMPLETE |
 | 0 | Product & Engineering Foundation | Clean repository and development environment | COMPLETE |
 | 1 | Domain Model & State Machine | Correct business representation | COMPLETE |
-| 2 | Persistence & Core API | Durable order intake and retrieval | IN PROGRESS |
-| 3 | Document Ingestion | Reliable handling of PDF/XLSX/email inputs | NOT STARTED |
+| 2 | Persistence & Core API | Durable order intake and retrieval | COMPLETE |
+| 3 | Document Ingestion | Deterministic canonical handling of PDF/XLSX/email/CSV inputs | IN PROGRESS |
 | 4 | Structured AI Extraction | Unstructured documents to typed order drafts | NOT STARTED |
 | 5 | Deterministic Validation | Trusted business-rule engine | NOT STARTED |
 | 6 | Human Review Application | Usable review and approval interface | NOT STARTED |
@@ -144,6 +144,17 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M2E — Core `/v1/orders` API & Hardening | COMPLETE |
 | M2F — Independent Phase 2 Audit & Closeout | COMPLETE |
 
+### Phase 3 execution milestones
+
+| Milestone | Status |
+| --- | --- |
+| M3A — Canonical Ingestion Contract | IN PROGRESS |
+| M3B — Canonical Models, Validation & Text/CSV | NOT STARTED |
+| M3C — XLSX Parsing | NOT STARTED |
+| M3D — PDF Parsing | NOT STARTED |
+| M3E — Unified Processor & Robustness | NOT STARTED |
+| M3F — Independent Phase 3 Audit & Closeout | NOT STARTED |
+
 ## 8. Detailed phases
 
 ### Phase 0 — Product & Engineering Foundation
@@ -182,9 +193,9 @@ Test repositories as appropriate; integrate create, retrieve, list, duplicate-re
 
 ### Phase 3 — Document Ingestion
 
-**Objective:** Convert incoming documents into a canonical representation before AI processing.
+**Objective:** Convert supported incoming email/plain-text, PDF, XLSX, and CSV documents into a deterministic canonical representation before AI processing through an internal Python subsystem.
 
-V1 inputs are email body/plain text, PDF, XLSX, and CSV. Optional OCR is added only for scanned fixtures when required. The common representation includes extracted text, useful structured sheet/cell content, metadata, source reference, SHA-256 document hash, MIME type, and warnings.
+V1 inputs are email body/plain text, PDF, XLSX, and CSV. OCR is deferred and may be considered only after a measured scanned-fixture requirement. The common representation includes extracted text, page/table structure where relevant, metadata, source reference, raw-byte SHA-256 document hash, normalized MIME type, and warnings. Phase 3 adds no HTTP upload route, raw-file persistence, database migration, or parsed-document storage.
 
 Validate MIME/type, size, page/sheet limits, supported types, corruption, and safe failure. Build synthetic fixtures for clean and multi-page PDFs, spreadsheets, email bodies, malformed/unsupported files, and duplicates. Test extraction, limits, MIME mismatch, duplicate hashes, normalization, XLSX, and PDF behavior. Exit: supported documents convert deterministically without an LLM call.
 
