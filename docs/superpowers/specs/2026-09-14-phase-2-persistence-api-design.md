@@ -4,8 +4,8 @@
 
 - Repository: `Joseph-Nawar/OpsFlow_AI`
 - Phase: **Phase 2 — Persistence & Core API**
-- Current milestone: **M2A — Persistence & API Contract — COMPLETE**
-- Design status: independently accepted authoritative M2A design and implementation-plan baseline; production implementation has not started
+- Current milestone: **M2B — Relational Schema & Domain Mapping — COMPLETE**
+- Design status: independently accepted authoritative Phase 2 design; M2A and M2B are complete, with M2C–M2F not started
 - Baseline: `4e3613b935edabead28d7cc44ea53619f059eeff`
 - Phase 1 contract: [Phase 1 Domain Model & State Machine Contract](../../architecture/domain-model.md)
 
@@ -21,8 +21,10 @@ The Phase 1 domain remains the business authority. Persistence and HTTP adapt
 around that domain. This document authorizes the later M2B–M2E implementation
 milestones; it does not claim that their implementation or any Phase 2 runtime
 behavior is complete. M2A is **COMPLETE** because the design was independently
-accepted and the companion implementation plan was completed and self-reviewed;
-M2B remains the next unstarted implementation milestone.
+accepted and the companion implementation plan was completed and self-reviewed.
+M2B is **COMPLETE** because its schema, migration, constraints, and explicit
+domain/persistence mapping passed local static/unit verification and exact-head
+PostgreSQL CI; M2C remains the next unstarted implementation milestone.
 
 ## 1. Governing sources and repository baseline
 
@@ -957,7 +959,7 @@ implementation plan, status update, self-review, and documentation-only
 verification. This milestone added no production behavior, tests, dependencies,
 migrations, or API routes.
 
-### M2B — Relational Schema & Domain Mapping — NOT STARTED
+### M2B — Relational Schema & Domain Mapping — COMPLETE
 
 Planned files and responsibilities:
 
@@ -973,9 +975,9 @@ Planned files and responsibilities:
 - tests/integration/: migration, schema, direct-constraint, and round-trip
   persistence tests.
 
-The milestone is complete only after real PostgreSQL proves upgrade, downgrade,
-re-upgrade, constraints, and ordered mapping. It introduces no repository use
-cases or HTTP routes.
+The milestone is complete after real PostgreSQL proved upgrade, downgrade,
+re-upgrade, constraints, and ordered mapping in exact-head CI. It introduced no
+repository use cases or HTTP routes.
 
 ### M2C — Repository & Durable Reads — NOT STARTED
 
