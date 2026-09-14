@@ -359,11 +359,24 @@ Formulas are source data. The parser never evaluates formulas, macros, scripts,
 or external workbook behavior.
 
 The parser preserves sheet order, sheet title, row order, column order, and
-structurally relevant empty cells. For each sheet, the canonical row rectangle
-spans the first through last column and row containing a non-blank value or
-formula, preserving empty cells inside that rectangle. An entirely empty sheet
-produces an empty table and an `EMPTY_SHEET` warning. Blank scalar cells become
-`""`.
+structurally relevant empty cells. For each sheet, it determines the highest
+worksheet row containing a non-blank value or formula before materializing the
+canonical row rectangle. The meaningful worksheet row span is the bounded
+worksheet-coordinate range from row 1 through that highest meaningful row;
+empty cells inside the selected column range remain empty strings. An
+entirely empty sheet produces an empty table and an `EMPTY_SHEET` warning.
+Blank scalar cells become `""`.
+
+The row-span guard runs before unbounded row iteration or rectangle
+materialization. The parser must use the worksheet's available dimension/row
+metadata or a bounded streaming observation to determine the highest
+meaningful row. If the span would exceed `max_xlsx_rows_per_sheet`, it raises
+`DocumentLimitError` immediately; it must not first expand or materialize an
+arbitrarily large sparse rectangle and discover the limit afterward. The guard
+applies independently to every worksheet and counts row positions, not merely
+rows containing populated cells. A sparse cell at row 5,001 therefore exceeds
+the default 5,000-row span even if the workbook contains only one populated
+cell.
 
 Canonical scalar conversion is:
 
@@ -452,9 +465,10 @@ separate OCR decision. That decision is outside M3A.
 
 `DocumentLimits` is one immutable typed record. Its fields are conceptually
 `max_input_bytes`, `max_text_characters`, `max_pdf_pages`,
-`max_xlsx_sheets`, `max_xlsx_populated_cells`, `max_csv_rows`,
-`max_table_columns`, and `max_xlsx_expanded_bytes`. The default
-`DEFAULT_DOCUMENT_LIMITS` contains these portfolio-sized V1 safety defaults:
+`max_xlsx_sheets`, `max_xlsx_rows_per_sheet`, `max_xlsx_populated_cells`,
+`max_csv_rows`, `max_table_columns`, and `max_xlsx_expanded_bytes`. The default
+`DEFAULT_DOCUMENT_LIMITS` sets `max_xlsx_rows_per_sheet = 5,000` and contains
+these portfolio-sized V1 safety defaults:
 
 | Limit | Default |
 | --- | ---: |
@@ -462,6 +476,7 @@ separate OCR decision. That decision is outside M3A.
 | Canonical text | 1,000,000 characters |
 | PDF pages | 50 |
 | XLSX sheets | 20 |
+| XLSX rows per sheet | 5,000 |
 | XLSX populated cells | 20,000 total |
 | CSV rows | 5,000 |
 | Table row width | 100 columns |
@@ -470,13 +485,16 @@ separate OCR decision. That decision is outside M3A.
 These are demonstrable safety defaults, not universal enterprise limits.
 Tests may inject much smaller limits. The processor checks input size before
 format parsing and checks canonical text size after deterministic rendering.
-Format-specific checks apply page, sheet, populated-cell, row, row-width, and
-expanded-ZIP limits before returning a canonical result.
+Format-specific checks apply page, sheet, XLSX row-span, populated-cell, CSV
+row, row-width, and expanded-ZIP limits before returning a canonical result.
+The 5,000-row-per-sheet guard complements, rather than replaces, the separate
+20-sheet, 20,000-populated-cell-total, 100-column, and 50 MiB expanded-XLSX
+limits; they protect different resource dimensions.
 
 When any configured limit is exceeded, processing fails explicitly with
 `DocumentLimitError`. It never silently truncates text, pages, sheets, rows,
-cells, or ZIP content. Phase 4 must never mistakenly believe it saw a
-complete document.
+cells, row spans, or ZIP content. Phase 4 must never mistakenly believe it saw
+the complete document.
 
 ## 12. Error contract
 
@@ -628,11 +646,14 @@ JSON-row rendering.
 ### XLSX tests
 
 Cover a single sheet, multiple sheets, sheet ordering, row/column ordering,
-structurally relevant empty cells, formula preservation as source text,
+structurally relevant empty cells, sparse worksheets whose meaningful row span
+exceeds an injected small limit, formula preservation as source text,
 deterministic dates/datetimes/times and numbers, corrupt workbooks, wrong
-ZIP/non-XLSX ZIP, macro-bearing content, sheet/cell/row-width limits,
+ZIP/non-XLSX ZIP, macro-bearing content, sheet/row-span/cell/row-width limits,
 expanded-ZIP limits, and the absence of formula evaluation, external-link
-following, execution, or network access.
+following, execution, or network access. The sparse-row case must fail safely
+before an arbitrarily large rectangle is materialized; use an injected small
+limit rather than a giant committed fixture where practical.
 
 ### PDF tests
 
