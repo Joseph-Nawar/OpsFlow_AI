@@ -368,6 +368,14 @@ The dispatcher uses explicit `if`/`elif` dispatch over the four supported
 `SourceDocumentType` values. It does not create a parser registry or generic
 protocol.
 
+`DocumentInput` validates `document_type` at construction: it must be an
+actual `SourceDocumentType` member, so a value such as `"XML"` raises
+`DocumentValidationError`. `SourceDocumentType.FORM` passes that input-record
+validation because it is a real Phase 1 enum member, but `process_document`
+rejects it with `UnsupportedDocumentTypeError` before MIME or parser dispatch.
+The processor contract does not require behavior for malformed
+`DocumentInput` instances fabricated by bypassing dataclass construction.
+
 ### Locked warning values
 
 Use stable code/message/location construction so repeated parses compare equal:
@@ -442,13 +450,18 @@ as a replacement or modified.
     `EMAIL_BODY` input with
     `(("source", "first"), ("source", "second"))`; assert the tuple is
     unchanged and `source_reference` survives.
+  - `test_document_input_rejects_non_enum_document_type`: construct an input
+    with `document_type="XML"` and otherwise valid fields; expect
+    `DocumentValidationError`. Construct the same shape with
+    `SourceDocumentType.FORM` and assert record construction succeeds.
   - `test_document_records_are_frozen_and_slot_based`: construct every public
     record and `_ParsedDocumentContent`; assert assignment raises
     `FrozenInstanceError` and `__dict__` is absent.
   - `test_canonical_page_numbers_are_one_based`: assert zero/negative page
     numbers are rejected and page 1 is accepted.
-  - `test_canonical_table_preserves_empty_cells_and_order`: construct rows
-    `(("A", ""), ("", "B"))`; assert exact row/column tuple order.
+  - `test_canonical_table_preserves_ragged_rows_and_empty_cells`: construct
+    rows `(("A", "B"), ("1",), ("2", "3", ""))`; assert the exact
+    row-width, cell, and ordering data is preserved.
   - `test_document_warning_requires_stable_code_and_message`: reject blank
     code/message and preserve an optional location.
   - `test_document_limits_match_approved_defaults`: assert all nine default
@@ -474,10 +487,12 @@ as a replacement or modified.
   Define frozen slot dataclasses with tuple-typed fields and narrow
   `__post_init__` shape checks: nonblank names/codes/messages, bytes content,
   valid `SourceDocumentType`, positive page numbers and limits, tuple pairs for
-  metadata, rectangular row tuples only where the record itself can verify
-  them without inventing parser policy. Keep error constructors safe and
-  document-specific. Export only the records/errors/limits that exist at this
-  task; do not import future parser dependencies.
+  metadata, tuple rows, and string cells. `CanonicalTable` must not compare
+  row lengths; its structural contract is only a tuple of tuple rows with
+  string cells, so ragged rows are valid canonical data. Keep error
+  constructors safe and document-specific. Export only the
+  records/errors/limits that exist at this task; do not import future parser
+  dependencies.
 
 - [ ] **Step 4: Run GREEN, regressions, and self-review.**
 
@@ -660,7 +675,9 @@ It parses body/plain text, not RFC-822 `.eml`, headers, or attachments.
 
 **Interfaces:** Implement `parse_csv_document(bytes, DocumentLimits) ->
 _ParsedDocumentContent`. It returns one table named exactly `CSV`, with
-`pages == ()`, and renders canonical text through `render_table_text`.
+`pages == ()`, and renders canonical text through `render_table_text`. Each
+parsed record retains its actual width; ragged records are valid when each
+individual row is within `limits.max_table_columns`, and no padding is added.
 
 - [ ] **Step 1: Write the failing CSV tests (RED).**
 
@@ -669,6 +686,10 @@ _ParsedDocumentContent`. It returns one table named exactly `CSV`, with
   - `test_parse_csv_document_preserves_rows_columns_and_empty_cells`: parse
     `SKU,Quantity\nABC-1,10\n,\n`; assert rows
     `(("SKU", "Quantity"), ("ABC-1", "10"), ("", ""))`.
+  - `test_parse_csv_document_preserves_ragged_record_widths`: parse
+    `A,B\n1\n2,3,\n`; assert rows
+    `(("A", "B"), ("1",), ("2", "3", ""))` with no padding or row
+    reordering.
   - `test_parse_csv_document_handles_quoted_delimiters_and_multiline_cells`:
     parse `"SKU,blue","line 1\nline 2"\n`; assert two cells and the embedded
     newline remains inside the second cell.
@@ -705,8 +726,10 @@ _ParsedDocumentContent`. It returns one table named exactly `CSV`, with
   every parsed record before appending, reject a count above
   `limits.max_csv_rows`, reject each row whose width exceeds
   `limits.max_table_columns`, normalize each cell with `normalize_text`, and
-  preserve empty rows/cells. Translate `csv.Error` to `DocumentParseError`
-  without including source content. Return `CanonicalTable("CSV", rows)` and
+  preserve empty rows/cells and each record’s actual width. Ragged records are
+  allowed; only the individual-row width check applies, and no padding is
+  introduced. Translate `csv.Error` to `DocumentParseError` without including
+  source content. Return `CanonicalTable("CSV", rows)` and
   `render_table_text` output. A zero-record input is valid.
 
 - [ ] **Step 4: Run GREEN, M3B regression, and self-review.**
@@ -956,7 +979,10 @@ keep_links=False)` and closes the workbook in `finally`.
   the preflight sheet order. For each `_XlsxSheetBounds`, iterate only
   `min_row=1..max_meaningful_row` and
   `min_col=1..max_meaningful_column`; both values are preflight-bounded by the
-  configured row/column limits. Do not iterate an unbounded `ws.iter_rows()`.
+  configured row/column limits. The XLSX parser deliberately emits a
+  rectangular bounded coordinate range for each sheet; this is XLSX parser
+  behavior and is not a `CanonicalTable` invariant. Do not iterate an
+  unbounded `ws.iter_rows()`.
   Emit every row in the coordinate span, including all-empty rows between the
   first and last meaningful row. Count non-`None` source values across sheets
   and fail before returning when the aggregate populated-cell limit is
@@ -1215,9 +1241,10 @@ and `CanonicalDocument` construction.
   - `test_process_document_dispatches_every_supported_format`: pass one
     input for text, CSV, XLSX, and PDF fixtures; assert the correct canonical
     content shape for each.
-  - `test_process_document_rejects_form_and_unknown_declared_types`: pass
-    `SourceDocumentType.FORM` and a type-cast unsupported value; expect
-    `UnsupportedDocumentTypeError` before any parser is called.
+  - `test_process_document_rejects_form_before_parser_dispatch`: construct a
+    valid `DocumentInput` with `SourceDocumentType.FORM`, monkeypatch every
+    format parser to fail if called, and expect
+    `UnsupportedDocumentTypeError` before MIME or parser dispatch.
   - `test_process_document_enforces_exact_mime_map_without_reclassification`:
     exercise PDF bytes declared as XLSX, XLSX bytes declared as PDF, and a
     wrong filename extension; assert mismatches fail and extensions do not
@@ -1240,13 +1267,17 @@ and `CanonicalDocument` construction.
 
 - [ ] **Step 3: Implement one explicit dispatcher.**
 
-  Validate `document.document_type` against the four supported enum values,
-  call `normalize_mime_type`, compare against the exact map, and check
-  `len(document.content)` against `limits.max_input_bytes` before parsing.
-  Compute `sha256_bytes(document.content)` before any normalization. Dispatch
-  with explicit branches to the four parser signatures. Reject `FORM` and
+  `DocumentInput` has already validated the enum shape. Check
+  `document.document_type is SourceDocumentType.FORM` first and raise
+  `UnsupportedDocumentTypeError` before MIME or parser dispatch. For the four
+  supported enum members, call `normalize_mime_type`, compare against the exact
+  map, and check `len(document.content)` against `limits.max_input_bytes` before
+  parsing. Compute `sha256_bytes(document.content)` before any normalization.
+  Dispatch with explicit branches to the four parser signatures. Reject MIME
   mismatches with the focused exception hierarchy. After parsing, reject
-  `len(parsed.text) > limits.max_text_characters`; never slice the text.
+  `len(parsed.text) > limits.max_text_characters`; never slice the text. Do not
+  add a processor branch for malformed `DocumentInput` instances that could
+  exist only by bypassing construction.
 
   Construct `CanonicalDocument` from the original type/name/content-derived
   fields, normalized MIME, raw hash, byte size, original reference/metadata,
@@ -1578,7 +1609,7 @@ design and the actual repository files:
 | Exact-byte SHA-256 and metadata order | Global Constraints; Task 2; Task 9 |
 | Conservative normalization and BOM handling | Locked helpers; Task 2; Task 3; Task 4; Tasks 6 and 8 |
 | Text/email-body behavior and no `.eml` | Task 3 |
-| CSV explicit parser, quoting, multiline, zero-row contract | Task 4 |
+| CSV explicit parser, quoting, multiline, ragged rows, zero-row contract | Task 4 |
 | XLSX dependency and ZIP/package preflight | Task 5 |
 | XLSX expanded-size, sheet, column, populated-cell limits | Tasks 5–6 |
 | XLSX sparse per-sheet row-span limit before materialization | Global Constraints; Task 5 tests/algorithm; Task 6 tests/algorithm |
