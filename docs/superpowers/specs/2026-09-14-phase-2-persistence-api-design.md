@@ -4,8 +4,8 @@
 
 - Repository: `Joseph-Nawar/OpsFlow_AI`
 - Phase: **Phase 2 — Persistence & Core API**
-- Current milestone: **M2C — Repository & Durable Reads — IN PROGRESS**
-- Design status: independently accepted authoritative Phase 2 design; M2A and M2B are complete, M2C is in progress, and M2D–M2F are not started
+- Current milestone: **M2C — Repository & Durable Reads — COMPLETE**
+- Design status: independently accepted authoritative Phase 2 design; M2A–M2C are complete, and M2D–M2F are not started
 - Baseline: `4e3613b935edabead28d7cc44ea53619f059eeff`
 - Phase 1 contract: [Phase 1 Domain Model & State Machine Contract](../../architecture/domain-model.md)
 
@@ -24,7 +24,7 @@ behavior is complete. M2A is **COMPLETE** because the design was independently
 accepted and the companion implementation plan was completed and self-reviewed.
 M2B is **COMPLETE** because its schema, migration, constraints, and explicit
 domain/persistence mapping passed local static/unit verification and exact-head
-PostgreSQL CI; M2C is now the active implementation milestone.
+PostgreSQL CI; M2C is complete and M2D–M2F remain not started.
 
 ## 1. Governing sources and repository baseline
 
@@ -979,7 +979,7 @@ The milestone is complete after real PostgreSQL proved upgrade, downgrade,
 re-upgrade, constraints, and ordered mapping in exact-head CI. It introduced no
 repository use cases or HTTP routes.
 
-### M2C — Repository & Durable Reads — IN PROGRESS
+### M2C — Repository & Durable Reads — COMPLETE
 
 Planned files and responsibilities:
 
