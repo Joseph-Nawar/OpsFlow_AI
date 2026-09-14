@@ -41,6 +41,7 @@ tmp/
 Thumbs.db
 
 # Generated reports and local artifacts
+.superpowers/sdd/
 *.log
 .artifacts/
 coverage/

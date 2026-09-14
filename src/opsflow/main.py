@@ -8,7 +8,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from opsflow.database import create_engine, database_is_available
+from opsflow.api.orders import router as orders_router
+from opsflow.database import create_engine, create_sessionmaker, database_is_available
 from opsflow.settings import Settings, get_settings
 
 
@@ -29,6 +30,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_engine(settings or get_settings())
     app = FastAPI(title="OpsFlow AI", lifespan=lifespan)
     app.state.database_engine = engine
+    app.state.database_sessionmaker = create_sessionmaker(engine)
+    app.include_router(orders_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

@@ -45,6 +45,7 @@ Canonical project status must reflect work already underway: when a milestone wi
 - Make coherent, focused commits with clear messages.
 - Inspect the diff before committing and keep unrelated changes out.
 - Do not rewrite or discard existing user work without explicit instruction.
+- Codex must not use subagents, multi-agent workflows, parallel agents, or spawned reviewers unless the user explicitly authorizes them for the current task. Single-agent sequential execution and self-review are the default.
 - A milestone is not complete until the working tree is clean and the commit state is reported.
 
 ## Definition of Done
