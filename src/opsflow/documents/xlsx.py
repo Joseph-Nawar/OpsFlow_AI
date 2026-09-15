@@ -3,28 +3,34 @@
 from __future__ import annotations
 
 import io
+import json
 import posixpath
 import re
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from zipfile import BadZipFile, ZipFile
 
-from openpyxl import load_workbook  # type: ignore[import-untyped]  # noqa: F401
+from openpyxl import load_workbook  # type: ignore[import-untyped]
 
+from opsflow.documents.common import normalize_text
 from opsflow.documents.errors import (
     DocumentLimitError,
     DocumentParseError,
     DocumentValidationError,
 )
 from opsflow.documents.limits import DocumentLimits
+from opsflow.documents.models import (
+    CanonicalTable,
+    DocumentWarning,
+    _ParsedDocumentContent,
+)
 
 _OOXML_MAIN_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 _OOXML_RELATIONSHIP_NAMESPACE = (
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 )
-_PACKAGE_RELATIONSHIP_NAMESPACE = (
-    "http://schemas.openxmlformats.org/package/2006/relationships"
-)
+_PACKAGE_RELATIONSHIP_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships"
 _WORKSHEET_RELATIONSHIP = f"{_OOXML_RELATIONSHIP_NAMESPACE}/worksheet"
 _WORKBOOK_PART = "xl/workbook.xml"
 _WORKBOOK_RELATIONSHIPS_PART = "xl/_rels/workbook.xml.rels"
@@ -71,15 +77,11 @@ def _read_member(archive: ZipFile, member: str) -> bytes:
 
 def _validate_content_types(content: bytes) -> None:
     try:
-        for _event, element in ElementTree.iterparse(
-            io.BytesIO(content), events=("end",)
-        ):
+        for _event, element in ElementTree.iterparse(io.BytesIO(content), events=("end",)):
             if _local_name(element.tag) in {"Default", "Override"}:
                 content_type = element.attrib.get("ContentType", "").lower()
                 if "vba" in content_type or "macro" in content_type:
-                    raise DocumentValidationError(
-                        "XLSX package contains macro-bearing content"
-                    )
+                    raise DocumentValidationError("XLSX package contains macro-bearing content")
             element.clear()
     except DocumentValidationError:
         raise
@@ -91,16 +93,12 @@ def _read_workbook_sheets(content: bytes) -> list[tuple[str, str]]:
     sheets: list[tuple[str, str]] = []
     relationship_attribute = f"{{{_OOXML_RELATIONSHIP_NAMESPACE}}}id"
     try:
-        for _event, element in ElementTree.iterparse(
-            io.BytesIO(content), events=("end",)
-        ):
+        for _event, element in ElementTree.iterparse(io.BytesIO(content), events=("end",)):
             if _local_name(element.tag) == "sheet":
                 title = element.attrib.get("name", "")
                 relationship_id = element.attrib.get(relationship_attribute, "")
                 if not title.strip() or not relationship_id.strip():
-                    raise DocumentValidationError(
-                        "XLSX workbook sheet metadata is incomplete"
-                    )
+                    raise DocumentValidationError("XLSX workbook sheet metadata is incomplete")
                 sheets.append((title, relationship_id))
             element.clear()
     except DocumentValidationError:
@@ -115,14 +113,11 @@ def _read_workbook_sheets(content: bytes) -> list[tuple[str, str]]:
 def _read_relationships(content: bytes) -> dict[str, tuple[str, str]]:
     relationships: dict[str, tuple[str, str]] = {}
     try:
-        for _event, element in ElementTree.iterparse(
-            io.BytesIO(content), events=("end",)
-        ):
+        for _event, element in ElementTree.iterparse(io.BytesIO(content), events=("end",)):
             if _local_name(element.tag) == "Relationship":
                 relationship_id = element.attrib.get("Id", "")
                 relationship_type = element.attrib.get("Type", "")
                 target = element.attrib.get("Target", "")
-                target_mode = element.attrib.get("TargetMode", "")
                 if (
                     not relationship_id.strip()
                     or not relationship_type.strip()
@@ -132,21 +127,13 @@ def _read_relationships(content: bytes) -> dict[str, tuple[str, str]]:
                         "XLSX workbook relationship metadata is incomplete"
                     )
                 if relationship_id in relationships:
-                    raise DocumentValidationError(
-                        "XLSX workbook relationship IDs are duplicated"
-                    )
-                if target_mode.lower() == "external":
-                    raise DocumentValidationError(
-                        "XLSX workbook has an external worksheet relationship"
-                    )
+                    raise DocumentValidationError("XLSX workbook relationship IDs are duplicated")
                 relationships[relationship_id] = (relationship_type, target)
             element.clear()
     except DocumentValidationError:
         raise
     except ElementTree.ParseError as exc:
-        raise DocumentValidationError(
-            "XLSX workbook relationship metadata is malformed"
-        ) from exc
+        raise DocumentValidationError("XLSX workbook relationship metadata is malformed") from exc
     return relationships
 
 
@@ -196,55 +183,51 @@ def _scan_worksheet(
     populated_cell_count = 0
     row_position = 0
     current_row = 0
+    active_cell = False
+    current_cell_meaningful = False
 
     try:
         with archive.open(part_name) as stream:
-            for event, element in ElementTree.iterparse(
-                stream, events=("start", "end")
-            ):
+            for event, element in ElementTree.iterparse(stream, events=("start", "end")):
                 element_name = _local_name(element.tag)
                 if event == "start" and element_name == "row":
                     row_position += 1
                     row_value = element.attrib.get("r")
-                    current_row = (
-                        int(row_value)
-                        if row_value is not None and row_value.isdigit()
-                        else row_position
-                    )
+                    if row_value is None:
+                        current_row = row_position
+                    elif not row_value.isdigit():
+                        raise DocumentValidationError("XLSX row coordinate is malformed")
+                    else:
+                        current_row = int(row_value)
                     if current_row < 1 or current_row > _MAX_XLSX_ROW:
                         raise DocumentValidationError("XLSX row coordinate is impossible")
+                elif event == "start" and element_name == "c":
+                    active_cell = True
+                    current_cell_meaningful = False
+                elif event == "end" and active_cell and element_name in {"f", "v", "is"}:
+                    current_cell_meaningful = True
                 elif event == "end" and element_name == "c":
-                    meaningful = any(
-                        _local_name(child.tag) in {"f", "v", "is"}
-                        for child in element
-                    )
-                    if meaningful:
+                    if current_cell_meaningful:
                         coordinate = element.attrib.get("r")
                         if coordinate is None:
-                            raise DocumentValidationError(
-                                "XLSX meaningful cell has no coordinate"
-                            )
+                            raise DocumentValidationError("XLSX meaningful cell has no coordinate")
                         row, column = _parse_coordinate(coordinate)
                         if row > limits.max_xlsx_rows_per_sheet:
-                            raise DocumentLimitError(
-                                "XLSX row-span limit exceeded"
-                            )
+                            raise DocumentLimitError("XLSX row-span limit exceeded")
                         if column > limits.max_table_columns:
-                            raise DocumentLimitError(
-                                "XLSX table column limit exceeded"
-                            )
+                            raise DocumentLimitError("XLSX table column limit exceeded")
                         populated_cell_count += 1
                         if populated_cell_count > remaining_populated_cells:
-                            raise DocumentLimitError(
-                                "XLSX populated-cell limit exceeded"
-                            )
+                            raise DocumentLimitError("XLSX populated-cell limit exceeded")
                         max_row = max(max_row, row)
                         max_column = max(max_column, column)
+                    active_cell = False
+                    current_cell_meaningful = False
                 if event == "end":
                     element.clear()
     except (DocumentLimitError, DocumentValidationError):
         raise
-    except (BadZipFile, OSError, ElementTree.ParseError) as exc:
+    except (BadZipFile, KeyError, OSError, ElementTree.ParseError) as exc:
         raise DocumentParseError("XLSX worksheet XML is malformed") from exc
 
     return max_row, max_column, populated_cell_count
@@ -267,9 +250,7 @@ def _validate_xlsx_package(
                 raise DocumentValidationError("XLSX package contains duplicate members")
             for name in names_in_order:
                 if "vba" in name.lower() or name.lower().endswith("/vbaproject.bin"):
-                    raise DocumentValidationError(
-                        "XLSX package contains macro-bearing members"
-                    )
+                    raise DocumentValidationError("XLSX package contains macro-bearing members")
             expanded_size = sum(info.file_size for info in infos)
             if expanded_size > limits.max_xlsx_expanded_bytes:
                 raise DocumentLimitError("XLSX expanded-size limit exceeded")
@@ -281,23 +262,17 @@ def _validate_xlsx_package(
             workbook_sheets = _read_workbook_sheets(_read_member(archive, _WORKBOOK_PART))
             if len(workbook_sheets) > limits.max_xlsx_sheets:
                 raise DocumentLimitError("XLSX sheet limit exceeded")
-            relationships = _read_relationships(
-                _read_member(archive, _WORKBOOK_RELATIONSHIPS_PART)
-            )
+            relationships = _read_relationships(_read_member(archive, _WORKBOOK_RELATIONSHIPS_PART))
 
             sheet_bounds: list[_XlsxSheetBounds] = []
             total_populated_cells = 0
             for title, relationship_id in workbook_sheets:
                 relationship = relationships.get(relationship_id)
                 if relationship is None:
-                    raise DocumentValidationError(
-                        "XLSX worksheet relationship is missing"
-                    )
+                    raise DocumentValidationError("XLSX worksheet relationship is missing")
                 relationship_type, target = relationship
                 if relationship_type != _WORKSHEET_RELATIONSHIP:
-                    raise DocumentValidationError(
-                        "XLSX worksheet relationship has an invalid type"
-                    )
+                    raise DocumentValidationError("XLSX worksheet relationship has an invalid type")
                 part_name = _resolve_worksheet_part(target, names)
                 max_row, max_column, populated = _scan_worksheet(
                     archive,
@@ -320,5 +295,98 @@ def _validate_xlsx_package(
             )
     except (DocumentLimitError, DocumentValidationError, DocumentParseError):
         raise
-    except (BadZipFile, OSError, ValueError) as exc:
+    except (BadZipFile, KeyError, OSError, ValueError) as exc:
         raise DocumentParseError("XLSX archive is invalid or unreadable") from exc
+
+
+def _scalar_to_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, time):
+        return value.isoformat()
+    if isinstance(value, str):
+        return normalize_text(value)
+    if isinstance(value, (int, float)):
+        return str(value)
+    raise DocumentParseError("XLSX cell contains an unsupported scalar type")
+
+
+def _render_xlsx_tables(tables: tuple[CanonicalTable, ...]) -> str:
+    rendered_tables: list[str] = []
+    for table in tables:
+        title = json.dumps(table.name, ensure_ascii=False)
+        rows = [json.dumps(row, ensure_ascii=False, separators=(",", ":")) for row in table.rows]
+        rendered_tables.append("\n".join((f"# Sheet: {title}", *rows)))
+    return "\n\n".join(rendered_tables)
+
+
+def parse_xlsx_document(
+    content: bytes,
+    limits: DocumentLimits,
+) -> _ParsedDocumentContent:
+    """Parse a preflight-bounded XLSX workbook into canonical tables."""
+    package = _validate_xlsx_package(content, limits)
+    workbook = None
+    try:
+        workbook = load_workbook(
+            io.BytesIO(content),
+            read_only=True,
+            data_only=False,
+            keep_links=False,
+        )
+        worksheets = workbook.worksheets
+        if len(worksheets) != len(package.sheets):
+            raise DocumentParseError("XLSX workbook worksheet metadata changed")
+
+        tables: list[CanonicalTable] = []
+        warnings: list[DocumentWarning] = []
+        populated_cell_count = 0
+        for worksheet, bounds in zip(worksheets, package.sheets, strict=True):
+            if worksheet.title != bounds.title:
+                raise DocumentParseError("XLSX worksheet metadata changed")
+            if bounds.max_meaningful_row == 0 or bounds.max_meaningful_column == 0:
+                rows: tuple[tuple[str, ...], ...] = ()
+                warnings.append(
+                    DocumentWarning(
+                        code="EMPTY_SHEET",
+                        message="Worksheet contains no non-blank cells.",
+                        location=f"sheet:{bounds.title}",
+                    )
+                )
+            else:
+                materialized_rows: list[tuple[str, ...]] = []
+                for row in worksheet.iter_rows(
+                    min_row=1,
+                    max_row=bounds.max_meaningful_row,
+                    min_col=1,
+                    max_col=bounds.max_meaningful_column,
+                ):
+                    materialized_row: list[str] = []
+                    for cell in row:
+                        if cell.value is not None:
+                            populated_cell_count += 1
+                            if populated_cell_count > limits.max_xlsx_populated_cells:
+                                raise DocumentLimitError("XLSX populated-cell limit exceeded")
+                        materialized_row.append(_scalar_to_text(cell.value))
+                    materialized_rows.append(tuple(materialized_row))
+                rows = tuple(materialized_rows)
+            tables.append(CanonicalTable(name=bounds.title, rows=rows))
+
+        return _ParsedDocumentContent(
+            text=_render_xlsx_tables(tuple(tables)),
+            tables=tuple(tables),
+            warnings=tuple(warnings),
+        )
+    except (DocumentLimitError, DocumentParseError):
+        raise
+    except Exception as exc:
+        raise DocumentParseError("XLSX workbook could not be parsed") from exc
+    finally:
+        if workbook is not None:
+            workbook.close()

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import io
+import socket
 import struct
 import warnings
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from datetime import date, datetime, time
+from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
+from openpyxl import Workbook
+from openpyxl import load_workbook as openpyxl_load_workbook
 
 from opsflow.documents import xlsx
 from opsflow.documents.errors import (
@@ -15,6 +20,9 @@ from opsflow.documents.errors import (
     DocumentValidationError,
 )
 from opsflow.documents.limits import DEFAULT_DOCUMENT_LIMITS, DocumentLimits
+from opsflow.documents.models import CanonicalTable, DocumentWarning
+
+XLSX_FIXTURE_ROOT = Path("fixtures/documents/xlsx")
 
 OOXML_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 OOXML_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -268,3 +276,270 @@ def test_xlsx_package_rejects_malformed_cell_coordinate_safely() -> None:
 
     with pytest.raises(DocumentValidationError, match="coordinate"):
         xlsx._validate_xlsx_package(content, DEFAULT_DOCUMENT_LIMITS)
+
+
+def _workbook_bytes(configure: Callable[[Workbook], object]) -> bytes:
+    workbook = Workbook()
+    try:
+        configure(workbook)
+        output = io.BytesIO()
+        workbook.save(output)
+        return output.getvalue()
+    finally:
+        workbook.close()
+
+
+def _set_cell(workbook: Workbook, coordinate: str, value: object) -> None:
+    workbook.active[coordinate] = value
+
+
+def _add_external_link(content: bytes) -> bytes:
+    external_link_relationship = (
+        b'<Relationship Id="rIdExternal" '
+        b'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink" '
+        b'Target="externalLinks/externalLink1.xml"/>'
+    )
+    entries: list[tuple[str, bytes]] = []
+    with ZipFile(io.BytesIO(content)) as archive:
+        for info in archive.infolist():
+            member = archive.read(info.filename)
+            if info.filename == "xl/_rels/workbook.xml.rels":
+                member = member.replace(
+                    b"</Relationships>",
+                    external_link_relationship + b"</Relationships>",
+                )
+            entries.append((info.filename, member))
+    entries.extend(
+        [
+            (
+                "xl/externalLinks/externalLink1.xml",
+                f'<externalLink xmlns="{OOXML_MAIN}"/>'.encode(),
+            ),
+            (
+                "xl/externalLinks/_rels/externalLink1.xml.rels",
+                (
+                    f'<Relationships xmlns="{PACKAGE_REL}">'
+                    '<Relationship Id="rIdPath" '
+                    'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                    'relationships/externalLinkPath" '
+                    'Target="http://example.test/external.xlsx" TargetMode="External"/>'
+                    "</Relationships>"
+                ).encode(),
+            ),
+        ]
+    )
+    return _zip_bytes(entries)
+
+
+def test_parse_xlsx_document_preserves_sheet_order_and_names() -> None:
+    content = (XLSX_FIXTURE_ROOT / "clean-multisheet.xlsx").read_bytes()
+
+    parsed = xlsx.parse_xlsx_document(content, DEFAULT_DOCUMENT_LIMITS)
+
+    assert tuple(table.name for table in parsed.tables) == ("Orders", "Notes")
+    assert parsed.tables[0].rows == (("SKU", "Quantity"), ("ABC-1", "10"))
+    assert parsed.tables[1].rows == (("Comment",), ("Synthetic fixture",))
+    assert parsed.text == (
+        '# Sheet: "Orders"\n["SKU","Quantity"]\n["ABC-1","10"]\n\n'
+        '# Sheet: "Notes"\n["Comment"]\n["Synthetic fixture"]'
+    )
+    assert parsed.pages == ()
+
+
+def test_parse_xlsx_document_preserves_structural_empty_cells_and_rows() -> None:
+    content = _workbook_bytes(
+        lambda workbook: (
+            setattr(workbook.active, "title", "Sparse"),
+            _set_cell(workbook, "A1", "A1"),
+            _set_cell(workbook, "C2", "C2"),
+        )
+    )
+
+    parsed = xlsx.parse_xlsx_document(content, DEFAULT_DOCUMENT_LIMITS)
+
+    assert parsed.tables == (CanonicalTable(name="Sparse", rows=(("A1", "", ""), ("", "", "C2"))),)
+
+
+def test_parse_xlsx_document_preserves_formula_expression() -> None:
+    content = (XLSX_FIXTURE_ROOT / "formulas.xlsx").read_bytes()
+
+    parsed = xlsx.parse_xlsx_document(content, DEFAULT_DOCUMENT_LIMITS)
+
+    assert parsed.tables[0].rows[2][0] == "=SUM(A1:A2)"
+    assert "3" not in parsed.tables[0].rows[2]
+
+
+def test_parse_xlsx_document_converts_scalars_deterministically() -> None:
+    content = _workbook_bytes(
+        lambda workbook: (
+            setattr(workbook.active, "title", "Scalars"),
+            workbook.active.append(
+                [
+                    "Cafe\u0301",
+                    None,
+                    False,
+                    True,
+                    7,
+                    1.5,
+                    date(2026, 9, 15),
+                    datetime(2026, 9, 15, 10, 11, 12),
+                    time(13, 14, 15),
+                ]
+            ),
+        )
+    )
+
+    parsed = xlsx.parse_xlsx_document(content, DEFAULT_DOCUMENT_LIMITS)
+
+    assert parsed.tables[0].rows == (
+        (
+            "Café",
+            "",
+            "false",
+            "true",
+            "7",
+            "1.5",
+            "2026-09-15T00:00:00",
+            "2026-09-15T10:11:12",
+            "13:14:15",
+        ),
+    )
+
+
+def test_parse_xlsx_document_warns_only_for_truly_empty_sheet() -> None:
+    content = _workbook_bytes(
+        lambda workbook: (
+            setattr(workbook.active, "title", "Empty"),
+            workbook.active["A100"].__setattr__("style", "Normal"),
+        )
+    )
+
+    parsed = xlsx.parse_xlsx_document(content, DEFAULT_DOCUMENT_LIMITS)
+
+    assert parsed.tables == (CanonicalTable(name="Empty", rows=()),)
+    assert parsed.warnings == (
+        DocumentWarning(
+            code="EMPTY_SHEET",
+            message="Worksheet contains no non-blank cells.",
+            location="sheet:Empty",
+        ),
+    )
+
+
+def test_parse_xlsx_document_enforces_sheet_row_cell_and_column_limits() -> None:
+    two_sheets = _workbook_bytes(lambda workbook: workbook.create_sheet("Second"))
+    with pytest.raises(DocumentLimitError, match="sheet"):
+        xlsx.parse_xlsx_document(two_sheets, _limits(max_xlsx_sheets=1))
+
+    row_six = _workbook_bytes(lambda workbook: _set_cell(workbook, "A6", "value"))
+    with pytest.raises(DocumentLimitError, match="row"):
+        xlsx.parse_xlsx_document(row_six, _limits(max_xlsx_rows_per_sheet=5))
+
+    column_c = _workbook_bytes(lambda workbook: _set_cell(workbook, "C1", "value"))
+    with pytest.raises(DocumentLimitError, match="column"):
+        xlsx.parse_xlsx_document(column_c, _limits(max_table_columns=2))
+
+    two_cells = _workbook_bytes(
+        lambda workbook: (
+            _set_cell(workbook, "A1", "one"),
+            _set_cell(workbook, "B1", "two"),
+        )
+    )
+    with pytest.raises(DocumentLimitError, match="populated"):
+        xlsx.parse_xlsx_document(two_cells, _limits(max_xlsx_populated_cells=1))
+
+
+def test_parse_xlsx_document_preserves_per_sheet_row_span_without_sparse_workload() -> None:
+    row_five = _workbook_bytes(lambda workbook: _set_cell(workbook, "A5", "value"))
+
+    parsed = xlsx.parse_xlsx_document(
+        row_five,
+        _limits(max_xlsx_rows_per_sheet=5),
+    )
+
+    assert parsed.tables[0].rows == (("",), ("",), ("",), ("",), ("value",))
+
+
+def test_parse_xlsx_document_rejects_unexpected_scalar_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeCell:
+        value = object()
+
+    class FakeWorksheet:
+        title = "Fake"
+
+        def iter_rows(self, **_kwargs: int) -> Iterable[tuple[FakeCell]]:
+            yield (FakeCell(),)
+
+    class FakeWorkbook:
+        worksheets = (FakeWorksheet(),)
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    package = xlsx._XlsxPackageInfo(
+        sheets=(
+            xlsx._XlsxSheetBounds(
+                title="Fake",
+                part_name="xl/worksheets/sheet1.xml",
+                max_meaningful_row=1,
+                max_meaningful_column=1,
+            ),
+        ),
+        populated_cell_count=1,
+    )
+    workbook = FakeWorkbook()
+    monkeypatch.setattr(xlsx, "_validate_xlsx_package", lambda *_args: package)
+    monkeypatch.setattr(xlsx, "load_workbook", lambda *_args, **_kwargs: workbook)
+
+    with pytest.raises(DocumentParseError, match="scalar"):
+        xlsx.parse_xlsx_document(b"ignored", DEFAULT_DOCUMENT_LIMITS)
+
+    assert workbook.closed is True
+
+
+def test_parse_xlsx_document_does_not_follow_external_links(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = _add_external_link(
+        _workbook_bytes(lambda workbook: _set_cell(workbook, "A1", "local"))
+    )
+    calls: list[dict[str, object]] = []
+
+    def fail_network(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("network access is forbidden")
+
+    def recording_loader(*args: object, **kwargs: object) -> object:
+        calls.append(kwargs)
+        return openpyxl_load_workbook(*args, **kwargs)
+
+    monkeypatch.setattr(xlsx, "load_workbook", recording_loader)
+    monkeypatch.setattr(socket, "create_connection", fail_network)
+
+    parsed = xlsx.parse_xlsx_document(content, DEFAULT_DOCUMENT_LIMITS)
+
+    assert parsed.tables[0].rows == (("local",),)
+    assert calls[0]["read_only"] is True
+    assert calls[0]["data_only"] is False
+    assert calls[0]["keep_links"] is False
+
+
+def test_parse_xlsx_document_rejects_corrupt_workbook_and_non_xlsx_zip() -> None:
+    corrupt_workbook = _zip_bytes(_valid_entries(workbook=b"not XML"))
+    arbitrary_zip = _zip_bytes((("payload.bin", b"not an XLSX"),))
+
+    with pytest.raises((DocumentParseError, DocumentValidationError)):
+        xlsx.parse_xlsx_document(corrupt_workbook, DEFAULT_DOCUMENT_LIMITS)
+    with pytest.raises((DocumentParseError, DocumentValidationError)):
+        xlsx.parse_xlsx_document(arbitrary_zip, DEFAULT_DOCUMENT_LIMITS)
+
+
+def test_parse_xlsx_document_repeated_parses_compare_equal() -> None:
+    content = (XLSX_FIXTURE_ROOT / "clean-multisheet.xlsx").read_bytes()
+
+    first = xlsx.parse_xlsx_document(content, DEFAULT_DOCUMENT_LIMITS)
+    second = xlsx.parse_xlsx_document(content, DEFAULT_DOCUMENT_LIMITS)
+
+    assert first == second
