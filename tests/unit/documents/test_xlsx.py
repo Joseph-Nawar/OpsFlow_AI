@@ -420,8 +420,8 @@ def test_parse_xlsx_document_warns_only_for_truly_empty_sheet() -> None:
     assert parsed.warnings == (
         DocumentWarning(
             code="EMPTY_SHEET",
-            message="Worksheet contains no non-blank cells.",
-            location="sheet:Empty",
+            message="Worksheet contains no populated cells.",
+            location="Empty",
         ),
     )
 

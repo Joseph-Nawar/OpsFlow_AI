@@ -355,8 +355,8 @@ def parse_xlsx_document(
                 warnings.append(
                     DocumentWarning(
                         code="EMPTY_SHEET",
-                        message="Worksheet contains no non-blank cells.",
-                        location=f"sheet:{bounds.title}",
+                        message="Worksheet contains no populated cells.",
+                        location=bounds.title,
                     )
                 )
             else:
