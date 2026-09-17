@@ -202,6 +202,16 @@ def test_xlsx_package_enforces_expanded_size_before_workbook_load(
         )
 
 
+def test_parse_xlsx_document_rejects_expansion_before_workbook_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = _inflate_first_member_size(_zip_bytes(_valid_entries()), 101)
+    monkeypatch.setattr(xlsx, "load_workbook", lambda *_args, **_kwargs: pytest.fail())
+
+    with pytest.raises(DocumentLimitError, match="expanded"):
+        xlsx.parse_xlsx_document(content, _limits(max_xlsx_expanded_bytes=100))
+
+
 def test_xlsx_package_rejects_sheet_count_before_workbook_materialization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

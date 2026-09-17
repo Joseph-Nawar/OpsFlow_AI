@@ -16,6 +16,7 @@ from opsflow.documents.models import (
     CanonicalTable,
     DocumentInput,
     DocumentWarning,
+    _ParsedDocumentContent,
 )
 from opsflow.domain.records import SourceDocumentType
 
@@ -68,6 +69,20 @@ def test_document_records_are_frozen_and_slot_based() -> None:
         CanonicalPage(number=1, text="page"),
         CanonicalTable(name="CSV", rows=(("A", "B"),)),
         DocumentWarning(code="EMPTY_TEXT", message="No text was present."),
+        CanonicalDocument(
+            document_type=SourceDocumentType.EMAIL_BODY,
+            name="body.txt",
+            mime_type="text/plain",
+            sha256="0" * 64,
+            size_bytes=4,
+            source_reference=None,
+            metadata=(),
+            text="body",
+            pages=(),
+            tables=(),
+            warnings=(),
+        ),
+        _ParsedDocumentContent(text="body"),
     )
 
     for record in records:
@@ -122,9 +137,25 @@ def test_document_limits_match_approved_defaults() -> None:
     )
 
 
-def test_document_limits_reject_nonpositive_values() -> None:
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "max_input_bytes",
+        "max_text_characters",
+        "max_pdf_pages",
+        "max_xlsx_sheets",
+        "max_xlsx_rows_per_sheet",
+        "max_xlsx_populated_cells",
+        "max_csv_rows",
+        "max_table_columns",
+        "max_xlsx_expanded_bytes",
+    ],
+)
+def test_document_limits_reject_each_nonpositive_value_independently(
+    field_name: str,
+) -> None:
     values = {
-        "max_input_bytes": 0,
+        "max_input_bytes": 1,
         "max_text_characters": 1,
         "max_pdf_pages": 1,
         "max_xlsx_sheets": 1,
@@ -134,12 +165,10 @@ def test_document_limits_reject_nonpositive_values() -> None:
         "max_table_columns": 1,
         "max_xlsx_expanded_bytes": 1,
     }
+    values[field_name] = 0
 
-    with pytest.raises(DocumentValidationError, match="max_input_bytes"):
-        DocumentLimits(**{**values, "max_input_bytes": 0})
-
-    with pytest.raises(DocumentValidationError, match="positive"):
-        DocumentLimits(**{**values, "max_table_columns": -1})
+    with pytest.raises(DocumentValidationError, match=field_name):
+        DocumentLimits(**values)
 
 
 def test_canonical_document_rejects_invalid_nested_records() -> None:
