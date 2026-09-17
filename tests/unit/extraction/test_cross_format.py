@@ -347,6 +347,50 @@ def test_email_prompt_injection_remains_untrusted_scripted_source_data() -> None
     assert len(provider.requests) == 1
 
 
+def test_ambiguous_source_values_remain_source_data_and_null_fields_stay_null() -> None:
+    content = b"Date: 03/04/2026\nAmount: $100\nSKU: AMBIGUOUS-1\n"
+    canonical = process_document(
+        _input(
+            SourceDocumentType.EMAIL_BODY,
+            content,
+            name="ambiguous.txt",
+            mime_type="text/plain",
+        )
+    )
+    payload = _payload(
+        lines=[
+            {
+                "sku": "AMBIGUOUS-1",
+                "description": None,
+                "quantity": None,
+                "submitted_price": "100",
+            }
+        ],
+        evidence=[
+            {
+                "field_path": "lines[0].sku",
+                "source_location": "text:body",
+                "quote": "AMBIGUOUS-1",
+            },
+            {
+                "field_path": "lines[0].submitted_price",
+                "source_location": "text:body",
+                "quote": "$100",
+            },
+        ],
+        order_date=None,
+        currency=None,
+    )
+
+    draft, provider = _extract(canonical, payload)
+
+    assert "03/04/2026" in provider.requests[0].user_content
+    assert "$100" in provider.requests[0].user_content
+    assert draft.order_date is None
+    assert draft.currency is None
+    assert draft.lines[0].submitted_price == 100
+
+
 def test_processed_document_and_equal_scripted_result_are_repeatable() -> None:
     content = (FIXTURE_ROOT / "csv/quoted-multiline.csv").read_bytes()
     first_canonical = process_document(
