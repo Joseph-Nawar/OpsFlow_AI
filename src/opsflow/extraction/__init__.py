@@ -7,6 +7,7 @@ from opsflow.extraction.errors import (
     ProviderTimeoutError,
 )
 from opsflow.extraction.extractor import (
+    OrderExtractor,
     convert_provider_response,
     parse_decimal_text,
     parse_iso_date,
@@ -45,6 +46,7 @@ __all__ = [
     "FakeOutcome",
     "FakeProvider",
     "LLMProvider",
+    "OrderExtractor",
     "PROMPT_VERSION",
     "ProviderError",
     "ProviderEvidenceResponse",

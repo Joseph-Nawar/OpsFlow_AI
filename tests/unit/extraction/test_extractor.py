@@ -1,24 +1,36 @@
+import asyncio
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal
+from inspect import signature
+from pathlib import Path
+from uuid import UUID
 
 import pytest
 
 from opsflow.documents.models import CanonicalDocument
+from opsflow.domain.order import Order
 from opsflow.domain.records import SourceDocumentType
-from opsflow.extraction.errors import ExtractionResponseError
+from opsflow.extraction.errors import (
+    ExtractionResponseError,
+    ProviderError,
+    ProviderTimeoutError,
+)
 from opsflow.extraction.extractor import (
+    OrderExtractor,
     convert_provider_response,
     parse_decimal_text,
     parse_iso_date,
     parse_provider_response,
     validate_evidence,
 )
+from opsflow.extraction.fake import FakeProvider
 from opsflow.extraction.models import (
     ProviderEvidenceResponse,
     ProviderExtractionResponse,
 )
 from opsflow.extraction.prompt import RenderedSource, SourceSegment
+from opsflow.extraction.provider import StructuredGenerationResult
 
 
 def _payload() -> dict[str, object]:
@@ -421,3 +433,138 @@ def test_convert_provider_response_is_deterministic_for_equal_inputs() -> None:
     )
 
     assert first == second
+
+
+def test_order_extractor_maps_one_document_to_one_draft_with_one_provider_call() -> None:
+    provider = FakeProvider((StructuredGenerationResult(payload=_payload()),))
+
+    draft = asyncio.run(OrderExtractor(provider).extract(_document()))
+
+    assert draft.source_sha256 == _document().sha256
+    assert draft.source_document_type is SourceDocumentType.EMAIL_BODY
+    assert draft.lines[0].quantity == Decimal("-3")
+    assert len(provider.requests) == 1
+
+
+def test_order_extractor_preserves_explicit_nulls_and_multiple_lines() -> None:
+    payload = _payload()
+    payload.update(
+        {
+            "customer_name": None,
+            "customer_reference": None,
+            "po_number": None,
+            "order_date": None,
+            "requested_delivery_date": None,
+            "currency": None,
+            "notes": None,
+            "lines": [
+                {
+                    "sku": None,
+                    "description": None,
+                    "quantity": None,
+                    "submitted_price": None,
+                },
+                {
+                    "sku": "SKU-2",
+                    "description": "Second",
+                    "quantity": "0",
+                    "submitted_price": "-3",
+                },
+            ],
+        }
+    )
+    provider = FakeProvider((StructuredGenerationResult(payload=payload),))
+
+    draft = asyncio.run(OrderExtractor(provider).extract(_document()))
+
+    assert draft.customer_name is None
+    assert draft.order_date is None
+    assert draft.lines[0].quantity is None
+    assert draft.lines[1].quantity == Decimal("0")
+    assert draft.lines[1].submitted_price == Decimal("-3")
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [ProviderError, ProviderTimeoutError],
+)
+def test_order_extractor_propagates_provider_errors_unchanged(
+    error_type: type[ProviderError],
+) -> None:
+    error = error_type("scripted provider failure")
+    provider = FakeProvider((error,))
+
+    with pytest.raises(error_type) as raised:
+        asyncio.run(OrderExtractor(provider).extract(_document()))
+
+    assert raised.value is error
+    assert len(provider.requests) == 1
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload.update({"extra": "nope"}),
+        lambda payload: payload.pop("currency"),
+        lambda payload: payload.update({"currency": 123}),
+    ],
+)
+def test_order_extractor_rejects_malformed_provider_payloads(mutate: object) -> None:
+    payload = _payload()
+    mutate(payload)  # type: ignore[operator]
+    provider = FakeProvider((StructuredGenerationResult(payload=payload),))
+
+    with pytest.raises(ExtractionResponseError):
+        asyncio.run(OrderExtractor(provider).extract(_document()))
+
+
+def test_order_extractor_produces_equal_drafts_for_equal_inputs_and_results() -> None:
+    first_provider = FakeProvider((StructuredGenerationResult(payload=_payload()),))
+    second_provider = FakeProvider((StructuredGenerationResult(payload=deepcopy(_payload())),))
+
+    first = asyncio.run(OrderExtractor(first_provider).extract(_document()))
+    second = asyncio.run(OrderExtractor(second_provider).extract(_document()))
+
+    assert first == second
+    assert len(first_provider.requests) == 1
+    assert len(second_provider.requests) == 1
+
+
+def test_order_extractor_does_not_accept_document_collections() -> None:
+    parameters = list(signature(OrderExtractor.extract).parameters)
+
+    assert parameters == ["self", "document"]
+
+
+def test_order_extractor_does_not_mutate_an_unrelated_order() -> None:
+    order = Order.received(
+        UUID("11111111-1111-1111-1111-111111111111"),
+        customer_reference="CUST-1",
+        po_number="PO-1",
+        currency="USD",
+    )
+    before = order
+    provider = FakeProvider((StructuredGenerationResult(payload=_payload()),))
+
+    asyncio.run(OrderExtractor(provider).extract(_document()))
+
+    assert order == before
+    assert order.state.value == "RECEIVED"
+
+
+def test_extractor_module_has_no_order_or_infrastructure_imports() -> None:
+    import opsflow.extraction.extractor as extractor_module
+
+    source = Path(extractor_module.__file__).read_text()
+
+    for forbidden in (
+        "opsflow.domain.order",
+        "opsflow.application",
+        "opsflow.persistence",
+        "fastapi",
+        "sqlalchemy",
+        "httpx",
+        "requests",
+        "google",
+    ):
+        assert forbidden not in source

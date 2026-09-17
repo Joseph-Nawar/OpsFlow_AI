@@ -14,7 +14,12 @@ from opsflow.extraction.models import (
     ExtractionDraft,
     ProviderExtractionResponse,
 )
-from opsflow.extraction.prompt import RenderedSource
+from opsflow.extraction.prompt import (
+    RenderedSource,
+    build_extraction_request,
+    render_canonical_document,
+)
+from opsflow.extraction.provider import LLMProvider
 
 _DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _DECIMAL_PATTERN = re.compile(r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$")
@@ -174,7 +179,22 @@ def convert_provider_response(
     )
 
 
+class OrderExtractor:
+    """Orchestrate one canonical document through one configured provider."""
+
+    def __init__(self, provider: LLMProvider) -> None:
+        self._provider = provider
+
+    async def extract(self, document: CanonicalDocument) -> ExtractionDraft:
+        rendered_source = render_canonical_document(document)
+        request = build_extraction_request(rendered_source)
+        result = await self._provider.generate_structured(request)
+        response = parse_provider_response(result.payload)
+        return convert_provider_response(response, document, rendered_source)
+
+
 __all__ = [
+    "OrderExtractor",
     "convert_provider_response",
     "parse_decimal_text",
     "parse_iso_date",
