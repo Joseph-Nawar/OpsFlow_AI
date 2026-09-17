@@ -556,7 +556,7 @@ names, and `build_provider_response_schema()`.
   git commit -m "feat: add Phase 4 extraction models"
   ```
 
-  Stage only the two created package files and their test before committing;
+  Stage only the three created source files and their test before committing;
   no generated files or dependency changes are allowed.
 
 ### Task 2: Add the provider-neutral protocol and deterministic FakeProvider
@@ -1020,11 +1020,11 @@ structured, timeout-bounded, stateless request and provider-neutral result.
 
 **Files:**
 
-- Create `src/opsflow/extraction/gemini.py` with no dependency edit until the
-  verification step completes.
 - Create `tests/unit/extraction/test_gemini.py`.
+- Do not create `src/opsflow/extraction/gemini.py` in this task; Task 9 creates
+  it after the dependency and documentation verification.
 - Do not modify settings, `.env.example`, `pyproject.toml`, or `uv.lock` in
-  this task’s initial RED stage.
+  this task’s RED stage.
 
 **Interfaces consumed:** `LLMProvider`, request/result records, error
 hierarchy, current official Google documentation.
@@ -1033,25 +1033,31 @@ hierarchy, current official Google documentation.
 `GeminiProvider(LLMProvider)` test boundary; exact SDK syntax remains confined
 to `gemini.py` after the documented re-check.
 
-- [ ] **Step 1: Re-check official provider sources immediately before code.**
+- [ ] **Step 1: Re-check official provider sources immediately before writing tests.**
 
   Read the current official pages:
 
   - [Google Gemini structured outputs](https://ai.google.dev/gemini-api/docs/structured-output)
+  - [`google-genai` on PyPI](https://pypi.org/project/google-genai/)
   - [official `google-genai` Python SDK documentation](https://googleapis.github.io/python-genai/)
   - [official `google-genai` SDK reference](https://googleapis.github.io/python-genai/genai.html)
   - [Gemini API key guidance](https://ai.google.dev/gemini-api/docs/api-key)
 
-  Verify the official package name, current async generation API, structured
-  schema/Pydantic interface, timeout option, retry configuration/control,
-  response payload access, and client lifecycle. Record the verified facts and
-  document version/date in the M4D evidence report. If the current SDK cannot
-  meet the approved adapter boundary without redesigning Phase 4, stop and
-  report the concrete contradiction.
+  Verify the official package name, current stable release, async generation
+  API, structured schema/Pydantic interface, timeout option, retry
+  configuration/control, response payload access, and client lifecycle.
+  Record the verified release, facts, source URLs, and verification date in
+  the M4D evidence report. The package family is the stable architectural
+  choice; the current major and compatible range are volatile implementation
+  details. A current stable major change is therefore not an architecture
+  contradiction. Stop only if the current official SDK cannot meet the
+  approved async structured-generation, timeout, safe-result-access, or
+  testable-adapter boundary without redesigning Phase 4.
 
-- [ ] **Step 2: Lock the adapter-facing configuration and tests before SDK wiring.**
+- [ ] **Step 2: Write the failing adapter tests before creating the adapter.**
 
-  Use this exact configuration shape in `gemini.py`:
+  Create `tests/unit/extraction/test_gemini.py` with tests expecting this exact
+  adapter-facing configuration shape; do not create `gemini.py` yet:
 
   ```python
   @dataclass(frozen=True, slots=True)
@@ -1070,29 +1076,33 @@ to `gemini.py` after the documented re-check.
       ) -> StructuredGenerationResult: ...
   ```
 
-  Write mocked-boundary tests for configured model, portable structured schema,
-  rendered prompt, positive finite timeout, no tools, one provider attempt,
-  response conversion, provider failure mapping, timeout mapping, and absence
-  of the API key/raw response/source content from public errors. Use a mock
-  client injection seam so tests do not import a live client or make network
-  calls.
+  The tests cover configured model, portable structured schema, rendered
+  prompt, positive finite timeout, no tools, one provider attempt, response
+  conversion, provider failure mapping, timeout mapping, and absence of the
+  API key/raw response/source content from public errors. Use a mock client
+  injection seam so tests do not import a live client or make network calls.
 
-- [ ] **Step 3: Run RED.**
+- [ ] **Step 3: Run the focused tests and confirm RED.**
 
   ```bash
   uv run pytest tests/unit/extraction/test_gemini.py -q --no-cov
   ```
 
-  Expected RED: the adapter/configuration boundary is absent. Do not install
-  the SDK merely to make the initial tests collect; dependency installation is
-  the next controlled step after official verification.
+  Expected RED: `GeminiConfig` and `GeminiProvider` do not exist because
+  `gemini.py` has not been created. Do not install the SDK or create production
+  adapter code to make this initial test run pass; Task 9 performs the
+  dependency and implementation step.
 
 ### Task 9: Add the current SDK range, configuration, and isolated Gemini adapter
 
 **Files:**
 
-- Modify `pyproject.toml` with the justified compatible `google-genai>=1,<2`
-  range after confirming the current official package remains in major 1.
+- Modify `pyproject.toml` with a justified compatible range for the current
+  stable major after the Task 8 official release re-check. At execution, if
+  the verified stable major is `M`, use the direct range
+  `google-genai>=M,<M+1`; the review-date evidence was `2.23.0`, which would
+  imply `google-genai>=2,<3` if unchanged, but that example is not a
+  permanent architectural requirement.
 - Modify `uv.lock` through the repository’s `uv` dependency workflow.
 - Modify `src/opsflow/settings.py` only for optional Gemini configuration
   values and validation.
@@ -1109,11 +1119,14 @@ configuration validation, and no other provider implementation.
 
 - [ ] **Step 1: Add only the justified dependency and inspect the lock diff.**
 
-  After the official re-check, run the repository’s dependency operation for
-  `google-genai>=1,<2`, inspect `pyproject.toml` and `uv.lock`, and confirm the
-  direct requirement plus its required transitive closure are the only
-  dependency changes. If the verified current major is not 1, stop and report
-  rather than silently selecting a new architecture or broad range.
+  After the official re-check, select the compatible range for the verified
+  current stable major `M` as `google-genai>=M,<M+1`, run the repository’s
+  dependency operation, and inspect `pyproject.toml` and `uv.lock`. Confirm
+  the direct requirement plus its required transitive closure are the only
+  dependency changes. Record the verified release/version and range
+  justification in the M4D evidence report. A changed current major alone is
+  not a stop condition; stop only when the current official SDK cannot satisfy
+  the approved provider boundary without redesign.
 
 - [ ] **Step 2: Implement configuration validation and safe environment shape.**
 
