@@ -3,8 +3,11 @@ import socket
 
 import pytest
 
+from opsflow.documents.models import CanonicalDocument
+from opsflow.domain.records import SourceDocumentType
 from opsflow.extraction.errors import ProviderError, ProviderTimeoutError
 from opsflow.extraction.fake import FakeProvider
+from opsflow.extraction.prompt import build_extraction_request, render_canonical_document
 from opsflow.extraction.provider import StructuredGenerationRequest, StructuredGenerationResult
 
 
@@ -84,3 +87,28 @@ def test_fake_provider_requires_no_network_or_secret(monkeypatch: pytest.MonkeyP
     provider = FakeProvider((StructuredGenerationResult(payload={}),))
 
     assert asyncio.run(provider.generate_structured(_request("source"))).payload == {}
+
+
+def test_fake_provider_consumes_rendered_request_without_validating_payload() -> None:
+    document = CanonicalDocument(
+        document_type=SourceDocumentType.EMAIL_BODY,
+        name="synthetic-email",
+        mime_type="text/plain",
+        sha256="d" * 64,
+        size_bytes=3,
+        source_reference=None,
+        metadata=(),
+        text="PO-1",
+        pages=(),
+        tables=(),
+        warnings=(),
+    )
+    request = build_extraction_request(render_canonical_document(document))
+    malformed_payload = {"unexpected": object()}
+    provider = FakeProvider((StructuredGenerationResult(payload=malformed_payload),))
+
+    result = asyncio.run(provider.generate_structured(request))
+
+    assert result.payload is malformed_payload
+    assert provider.requests == [request]
+    assert request.response_schema["additionalProperties"] is False
