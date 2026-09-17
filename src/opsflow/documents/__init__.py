@@ -15,6 +15,7 @@ from opsflow.documents.models import (
     DocumentInput,
     DocumentWarning,
 )
+from opsflow.documents.processor import process_document
 
 __all__ = [
     "DEFAULT_DOCUMENT_LIMITS",
@@ -29,4 +30,5 @@ __all__ = [
     "DocumentValidationError",
     "DocumentWarning",
     "UnsupportedDocumentTypeError",
+    "process_document",
 ]
