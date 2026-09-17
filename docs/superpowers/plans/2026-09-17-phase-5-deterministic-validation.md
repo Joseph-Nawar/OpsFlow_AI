@@ -104,11 +104,22 @@ requires an extension.
   belongs to an already-owned Phase 2 contract; do not duplicate the new
   focused integration modules.
 
+### Planned status files
+
+- `README.md`
+- `docs/roadmap/project-roadmap.md`
+
+These files are modified only by separate status-only commits during the
+M5B–M5E closeout protocol, never by an implementation task before its
+milestone passes review and CI.
+
 ### Explicitly not in the file map
 
 No public validation endpoint, API schema, UI, n8n workflow, Odoo/HubSpot/
 Gmail/Slack adapter, Phase 10 reliability framework, dependency change,
-README/roadmap/status edit, audit file, or future-phase implementation.
+status edit during an implementation task, audit file, or future-phase
+implementation. The two planned status files are restricted to the closeout
+protocol below.
 
 ## Global Constraints
 
@@ -175,9 +186,13 @@ Implement tasks strictly in numerical order, one task at a time. Each task
 ends with its focused RED/GREEN or characterization verification, relevant
 regression checks, diff inspection, and one coherent commit. At the end of
 M5B, M5C, M5D, and M5E, push the exact candidate HEAD and require successful
-Backend, Frontend, and Secret scan jobs before pausing for independent ChatGPT
-review. Do not begin the next milestone until that review gate and the user’s
-approval are complete.
+Backend, Frontend, and Secret scan jobs, then obtain independent ChatGPT
+review. When that review passes without an architecture, scope, or product
+decision, continue automatically through the applicable status-only closeout,
+its exact-head CI, and the next approved milestone. Ask for explicit user
+direction only when the approved architecture must change, scope materially
+changes, a new product-level decision is required, or independent review
+identifies a decision not resolved by the approved design.
 
 The task count is 11:
 
@@ -780,54 +795,57 @@ line, and audit UUIDs outside the pure engine.
 
 **Required sequence and transaction strategy:**
 
-1. Read the order and identify the requested source document. A missing order
-   raises the existing `OrderNotFoundError`; a missing source or ownership
-   mismatch raises its safe application error.
-2. Compare the draft lowercase SHA and document type with the persisted source
-   case-insensitively for SHA and exactly for document type. Require state
-   `EXTRACTED`.
+1. Perform the initial database preflight reads on the supplied session: load
+   the order, resolve and verify source-document ownership, verify the draft
+   SHA/type identity, require state `EXTRACTED`, and check the existing
+   `(order_id, source_document_id)` snapshot for replay/conflict. A missing
+   order raises the existing `OrderNotFoundError`; missing source, ownership,
+   source identity, and state failures raise their safe application errors.
+2. Immediately after those initial reads, execute `await session.rollback()`.
+   This closes the SQLAlchemy-autobegun initial read transaction before any
+   provider work. No provider/network call may occur while it is open.
 3. Call `business_data_provider.get_validation_data(...)` exactly once with a
    `BusinessDataLookupRequest` containing only draft customer identity and
-   ordered line SKUs. Validate the returned contract and translate provider
-   operational/contract failures safely.
-4. Obtain local `ValidationFacts` from `build_validation_facts(...)`. For the
-   duplicate PO lookup, pass a canonical reference only when the trusted data
-   has exactly one active customer candidate and the draft PO is present.
-   Unknown, ambiguous, inactive, or missing identity yields a false PO fact;
-   the processed-SHA lookup remains repository-owned.
-5. Read the existing snapshot for the order/source pair. No row proceeds; an
-   equal canonical draft raises `SnapshotReplayError`, while a differing
-   identity or payload raises `SnapshotConflictError`.
+   ordered line SKUs. During this call no database transaction is open on the
+   supplied session. Validate the returned `TrustedBusinessData` safely and
+   translate contract or operational provider failures without leaking raw
+   provider details.
+4. After the provider returns, perform the focused OpsFlow-local
+   `ValidationFacts` reads. For the duplicate PO lookup, pass a canonical
+   reference only when the trusted data has exactly one active customer
+   candidate and the draft PO is present. Unknown, ambiguous, inactive, or
+   missing identity yields a false PO fact; the processed-SHA lookup remains
+   repository-owned. These reads may autobegin a second short read
+   transaction.
+5. Immediately after the local-fact reads, execute `await session.rollback()`
+   again. This closes the second read transaction before pure validation; the
+   engine must not run while local-fact database work remains open.
 6. Call the synchronous five-input `validation.engine.validate(...)` exactly
-   once. Hold no database write transaction during the provider call or pure
-   engine call.
-7. Because SQLAlchemy reads can autobegin, explicitly `await
-   session.rollback()` after all preflight reads and before opening the final
-   write transaction. This closes the read transaction without discarding a
-   write and leaves `session` clean for `async with session.begin()`.
-8. Start one final `async with session.begin()` transaction. Lock the order row
-   with `get_order_for_update`, then re-check order state, source ownership and
-   identity, and the pair snapshot replay/conflict condition.
-9. Re-query both local facts inside this locked transaction using the same
+   once. During engine execution no database transaction is open and no
+   provider/network call occurs.
+7. Start the single final `async with session.begin()` write transaction. Lock
+   the order row with `get_order_for_update`, then re-check order state, source
+   ownership/identity, and pair snapshot replay/conflict conditions.
+8. Re-query both local facts inside this locked transaction using the same
    focused repository functions. Compare the fresh immutable value with the
-   engine input. If different, raise `ValidationFactsChangedError` uniformly
-   for review and ready results; the context manager rolls back and the caller
-   may retry later. Never rerun the engine in persistence or silently commit
-   stale facts.
-10. Insert the immutable snapshot, replace current validation issues in result
-    order, and on the ready path only call `Order.promote_validated_data(...)`
-    with application-created line UUIDs. On the review path, update only the
-    state snapshot and preserve existing trusted fields/lines.
-11. Apply `transition_to(VALIDATED)` followed by the result route transition.
+   facts used by the engine. If different, raise `ValidationFactsChangedError`
+   uniformly for review and ready results; the context manager rolls back and
+   the caller may retry later. Never rerun the engine in persistence or
+   silently commit stale facts.
+9. Insert the immutable snapshot, replace current validation issues in result
+   order, and on the ready path only call `Order.promote_validated_data(...)`
+   with application-created line UUIDs. On the review path, update only the
+   state snapshot and preserve existing trusted fields/lines.
+10. Apply `transition_to(VALIDATED)` followed by the result route transition.
     Persist the state/graph without repository commits. Add audit events in
     exact order with actor `system`: `EXTRACTION_SNAPSHOT_RECORDED`,
     `ORDER_VALIDATED`, then either `ORDER_NEEDS_REVIEW` or
     `ORDER_READY_FOR_APPROVAL`. Use the exact design descriptions; for an
     elevated ready result use `Deterministic validation passed; elevated
     approval is required.`
-12. Commit once through the transaction context and return the final immutable
-    order, result, and snapshot ID only after commit succeeds. Any snapshot,
-    issue, graph, state, or audit failure rolls back all writes.
+11. Commit once through the final transaction context and return the final
+    immutable order, result, and snapshot ID only after commit succeeds. Any
+    snapshot, issue, graph, state, or audit failure rolls back all writes.
 
 **Compatibility requirement for Phase 2 intake:** Keep `CreateOrderInput`
 and its domain-valid `OrderLine` construction unchanged. Phase 5 tests create
@@ -843,19 +861,25 @@ must supply an order already in `EXTRACTED`.
 
 1. Write unit RED tests for request construction, provider call count and
    arguments, preflight failures, local-fact ownership, snapshot replay/
-   conflict classification, and safe provider error translation.
+   conflict classification, and safe provider error translation. Use a
+   provider test double that can inspect the supplied `AsyncSession` and
+   assert `session.in_transaction()` is false when the provider is invoked.
 2. Write integration RED tests for the ready, review, and high-value ready
    paths, including the exact final state/result/audit values and trusted
    catalogue prices on the ready path.
-3. Implement the service in the sequence above. Keep provider lookup outside
-   the final write transaction and keep every repository helper commit-free.
-4. Add integration assertions that invalid extracted customer/PO/date/currency
+3. Add a pure-engine test double or controlled engine seam that records the
+   supplied session state at invocation, and assert the second local-fact read
+   transaction has also been closed before the engine runs.
+4. Implement the service in the sequence above. Keep provider lookup outside
+   both read and final write transactions, keep the engine outside all
+   database transactions, and keep every repository helper commit-free.
+5. Add integration assertions that invalid extracted customer/PO/date/currency
    and line values are present only in the snapshot/issues and never overwrite
    trusted order or line rows on review.
-5. Add the state/source race and final-facts-change tests for both routes. Make
+6. Add the state/source race and final-facts-change tests for both routes. Make
    the test prove the changed-data error writes no snapshot/issues/graph/state/
    audit rows and that the engine is not called a second time.
-6. Run focused application/domain/persistence integration tests, then inspect
+7. Run focused application/domain/persistence integration tests, then inspect
    the complete transaction diff and commit:
    `feat: route validated orders atomically`.
 
@@ -956,15 +980,65 @@ updates truthful README/roadmap status and obtains exact-head CI evidence
 before any PR/integration action. No M5F artifact or status change is created
 by this planning task, and Phase 5 must not be marked complete earlier.
 
+## M5B–M5E Status-Only Closeout Protocol
+
+For each of M5B, M5C, M5D, and M5E, use this sequence after the implementation
+candidate is complete:
+
+```text
+implementation candidate
+    → exact-head CI
+    → independent ChatGPT PASS
+    → status-only closeout commit
+    → exact-head CI for the closeout commit
+    → continue automatically to the next approved milestone
+```
+
+Routine user approval is not required when the candidate conforms to the
+approved design and the independent review identifies no unresolved
+architecture, scope, or product decision. Explicit user direction is required
+only for an architecture change, material scope change, new product-level
+decision, or an independent-review decision that cannot be resolved from the
+approved design.
+
+The status-only commit modifies only `README.md` and
+`docs/roadmap/project-roadmap.md` as needed to reflect completed work. It is
+separate from implementation commits and is created only after the milestone
+candidate has passed its review gate. The first legitimate Phase 5 status
+update must also repair the known stale Phase 4 overview-table row from
+`IN PROGRESS` to `COMPLETE`; the existing Phase 4 narrative and audit are the
+evidence for that repair.
+
+After the M5B closeout, status must show approximately:
+
+```text
+Phase 4 — COMPLETE
+Phase 5 — IN PROGRESS
+
+M5A — COMPLETE
+M5B — COMPLETE
+M5C — NOT STARTED
+M5D — NOT STARTED
+M5E — NOT STARTED
+M5F — NOT STARTED
+
+Phase 6 — NOT STARTED
+```
+
+Each later closeout advances only the milestone that has just passed its
+review and closeout gates. Phase 5 remains `IN PROGRESS` until M5F completes.
+
 ## Transaction Strategy
 
 The later implementation must follow this exact boundary:
 
 ```text
-preflight reads on supplied session
-    → explicit session.rollback() to close SQLAlchemy autobegin
-    → provider call outside any final write transaction
-    → pure five-input engine call
+initial preflight reads on supplied session
+    → explicit session.rollback() to close initial SQLAlchemy autobegin
+    → provider call with no DB transaction open
+    → local ValidationFacts reads in a second short read transaction
+    → explicit session.rollback() to close the second read transaction
+    → pure five-input engine call with no DB transaction open
     → explicit session.begin()
         → SELECT ... FOR UPDATE order row
         → state/source/snapshot replay-conflict checks
@@ -978,20 +1052,23 @@ preflight reads on supplied session
     → one commit
 ```
 
-Preflight repository reads may autobegin a read transaction because SQLAlchemy
-2 async sessions autobegin on the first database operation. The service must
-explicitly roll that session back before `async with session.begin()`; the
-preflight phase makes no writes, so this does not discard application work. A
-provider exception occurs after that rollback and before the final transaction.
+Each database read phase may autobegin a transaction because SQLAlchemy 2 async
+sessions autobegin on the first database operation. The service must explicitly
+roll the supplied session back immediately after the initial order/source/
+snapshot preflight, before the provider call. The provider therefore runs with
+no transaction open on that session. Local-fact repository reads then use a
+second short read transaction, which the service immediately rolls back before
+the engine call. Both read phases make no writes, so these rollbacks discard no
+application work.
 
 No repository helper calls `commit`, begins an independent transaction, or
-reruns the engine. The final transaction locks the order first, revalidates
-state/source/snapshot identity, re-queries both local facts, and compares the
-fresh immutable `ValidationFacts` to the exact value used by the engine. Any
-difference raises `ValidationFactsChangedError` and the transaction context
-rolls back. The same guard is applied to both routes. Any later write failure
-also rolls back the snapshot, issue replacement, graph, state, and all audit
-events together.
+reruns the engine. After the second rollback, the final transaction locks the
+order first, revalidates state/source/snapshot identity, re-queries both local
+facts, and compares the fresh immutable `ValidationFacts` to the exact value
+used by the engine. Any difference raises `ValidationFactsChangedError` and
+the transaction context rolls back. The same guard is applied to both routes.
+Any later write failure also rolls back the snapshot, issue replacement, graph,
+state, and all audit events together.
 
 ## Testing and Verification Ladder
 
@@ -1114,8 +1191,15 @@ Before committing this plan, verify the following:
   invalid drafts never become `OrderLine` objects, and no Phase 2 creation API
   is silently changed.
 - [x] The transaction plan identifies SQLAlchemy autobegin, explicitly closes
-  preflight reads, locks the final order, rechecks local facts uniformly, and
-  proves all-or-nothing rollback without a repository-side engine rerun.
+  both pre-final read transactions before provider/engine work, locks the final
+  order, rechecks local facts uniformly, and proves all-or-nothing rollback
+  without a repository-side engine rerun.
+- [x] Routine user-approval stops were removed; explicit user direction is
+  reserved for architecture, material scope, product decisions, or an
+  independent-review decision not resolved by the approved design.
+- [x] README.md and docs/roadmap/project-roadmap.md are planned only for
+  separate post-review status commits, including the first stale Phase 4 row
+  repair and truthful M5B–M5E progression.
 - [x] The plan has no future API/UI/integration framework, no generic rule or
   persistence abstraction, no speculative dependency, and no M5F artifact.
 - [x] Unresolved-marker and contradiction scans are required before commit; the
@@ -1126,6 +1210,7 @@ Before committing this plan, verify the following:
 This document authorizes later implementation planning only. The current task
 must change exactly this plan file, must not modify the approved design, and
 must leave all production, test, migration, dependency, README, roadmap,
-status, audit, API, and PR artifacts absent. The later plan candidate is
-complete only after `git diff --check`, Markdown-link validation, exact-head
-CI, and an independent review gate are recorded.
+status, audit, API, and PR artifacts unchanged. Later milestone closeouts may
+modify only the planned status files after their review and CI gates. The
+current remediation is complete only after `git diff --check`, Markdown-link
+validation, exact-head CI, and the final independent review gate are recorded.
