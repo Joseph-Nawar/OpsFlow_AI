@@ -6,6 +6,13 @@ from opsflow.extraction.errors import (
     ProviderError,
     ProviderTimeoutError,
 )
+from opsflow.extraction.extractor import (
+    convert_provider_response,
+    parse_decimal_text,
+    parse_iso_date,
+    parse_provider_response,
+    validate_evidence,
+)
 from opsflow.extraction.fake import FakeOutcome, FakeProvider
 from opsflow.extraction.models import (
     Evidence,
@@ -50,5 +57,10 @@ __all__ = [
     "ProviderTimeoutError",
     "build_extraction_request",
     "build_provider_response_schema",
+    "convert_provider_response",
+    "parse_decimal_text",
+    "parse_iso_date",
+    "parse_provider_response",
     "render_canonical_document",
+    "validate_evidence",
 ]
