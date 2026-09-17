@@ -6,6 +6,7 @@ from opsflow.extraction.errors import (
     ProviderError,
     ProviderTimeoutError,
 )
+from opsflow.extraction.fake import FakeOutcome, FakeProvider
 from opsflow.extraction.models import (
     Evidence,
     ExtractedLine,
@@ -15,6 +16,11 @@ from opsflow.extraction.models import (
     ProviderLineResponse,
     build_provider_response_schema,
 )
+from opsflow.extraction.provider import (
+    LLMProvider,
+    StructuredGenerationRequest,
+    StructuredGenerationResult,
+)
 
 __all__ = [
     "Evidence",
@@ -22,10 +28,15 @@ __all__ = [
     "ExtractionDraft",
     "ExtractionError",
     "ExtractionResponseError",
+    "FakeOutcome",
+    "FakeProvider",
+    "LLMProvider",
     "ProviderError",
     "ProviderEvidenceResponse",
     "ProviderExtractionResponse",
     "ProviderLineResponse",
+    "StructuredGenerationRequest",
+    "StructuredGenerationResult",
     "ProviderTimeoutError",
     "build_provider_response_schema",
 ]
