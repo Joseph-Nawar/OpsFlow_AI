@@ -15,6 +15,7 @@ from opsflow.extraction.extractor import (
     validate_evidence,
 )
 from opsflow.extraction.fake import FakeOutcome, FakeProvider
+from opsflow.extraction.gemini import GeminiConfig, GeminiProvider
 from opsflow.extraction.models import (
     Evidence,
     ExtractedLine,
@@ -45,6 +46,8 @@ __all__ = [
     "ExtractionResponseError",
     "FakeOutcome",
     "FakeProvider",
+    "GeminiConfig",
+    "GeminiProvider",
     "LLMProvider",
     "OrderExtractor",
     "PROMPT_VERSION",
