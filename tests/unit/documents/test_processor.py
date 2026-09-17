@@ -152,6 +152,24 @@ def test_process_document_rejects_form_before_parser_dispatch(
         processor.process_document(document)
 
 
+def test_process_document_rejects_malformed_mime_before_text_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_parser(*_args: object, **_kwargs: object) -> _ParsedDocumentContent:
+        pytest.fail("malformed MIME reached the text parser")
+
+    monkeypatch.setattr(processor, "parse_text_document", fail_parser)
+
+    document = _document(
+        SourceDocumentType.EMAIL_BODY,
+        b"body",
+        mime_type="text/ plain",
+    )
+
+    with pytest.raises(DocumentValidationError, match="MIME"):
+        processor.process_document(document)
+
+
 @pytest.mark.parametrize(
     ("document_type", "mime_type"),
     [

@@ -138,21 +138,25 @@ def test_document_limits_match_approved_defaults() -> None:
 
 
 @pytest.mark.parametrize(
-    "field_name",
+    ("field_name", "invalid_value"),
     [
-        "max_input_bytes",
-        "max_text_characters",
-        "max_pdf_pages",
-        "max_xlsx_sheets",
-        "max_xlsx_rows_per_sheet",
-        "max_xlsx_populated_cells",
-        "max_csv_rows",
-        "max_table_columns",
-        "max_xlsx_expanded_bytes",
+        (field_name, invalid_value)
+        for field_name in (
+            "max_input_bytes",
+            "max_text_characters",
+            "max_pdf_pages",
+            "max_xlsx_sheets",
+            "max_xlsx_rows_per_sheet",
+            "max_xlsx_populated_cells",
+            "max_csv_rows",
+            "max_table_columns",
+            "max_xlsx_expanded_bytes",
+        )
+        for invalid_value in (0, -1)
     ],
 )
 def test_document_limits_reject_each_nonpositive_value_independently(
-    field_name: str,
+    field_name: str, invalid_value: int
 ) -> None:
     values = {
         "max_input_bytes": 1,
@@ -165,7 +169,7 @@ def test_document_limits_reject_each_nonpositive_value_independently(
         "max_table_columns": 1,
         "max_xlsx_expanded_bytes": 1,
     }
-    values[field_name] = 0
+    values[field_name] = invalid_value
 
     with pytest.raises(DocumentValidationError, match=field_name):
         DocumentLimits(**values)

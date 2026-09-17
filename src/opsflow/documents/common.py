@@ -85,7 +85,7 @@ def normalize_mime_type(declared: str) -> str:
     base = components[0].strip()
     if base.count("/") != 1:
         raise DocumentValidationError("MIME type declaration has an invalid base type")
-    media_type, subtype = (part.strip() for part in base.split("/"))
+    media_type, subtype = base.split("/", 1)
     if not _MIME_TOKEN.fullmatch(media_type) or not _MIME_TOKEN.fullmatch(subtype):
         raise DocumentValidationError("MIME type declaration has an invalid base type")
     for parameter in components[1:]:
