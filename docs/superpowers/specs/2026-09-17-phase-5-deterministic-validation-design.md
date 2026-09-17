@@ -54,6 +54,7 @@ The input to Phase 5 is:
 ```text
 ExtractionDraft
 + trusted business data
++ OpsFlow-local ValidationFacts
 + explicit ValidationPolicy
 + explicit ValidationContext
 ```
@@ -83,7 +84,7 @@ ExtractionDraft
     ↓
 durable extraction snapshot
     ↓
-TrustedBusinessData + ValidationPolicy + ValidationContext
+TrustedBusinessData + ValidationFacts + ValidationPolicy + ValidationContext
     ↓
 ValidationEngine
 [PURE / SYNC / NO I/O]
@@ -291,6 +292,7 @@ Its conceptual signature is:
 ```text
 ExtractionDraft
 + TrustedBusinessData
++ ValidationFacts
 + ValidationPolicy
 + ValidationContext
 → ValidationResult
@@ -336,7 +338,8 @@ stable issue tuple for multiple simultaneous violations.
 
 Trusted reference data is an immutable input snapshot to the engine. The
 provider never returns a route, severity, approval level, or `ValidationIssue`.
-It returns records and lookup facts; the engine applies the policy.
+It returns external reference records and exact-match candidate sets; the
+engine applies the policy.
 
 Conceptually:
 
@@ -362,8 +365,6 @@ class TrustedProduct:
 class TrustedBusinessData:
     customer_candidates: tuple[TrustedCustomer, ...]
     products_by_line: tuple[TrustedProduct | None, ...]
-    duplicate_customer_po: bool
-    document_already_processed: bool
 ```
 
 The conceptual types are implementation targets, not source files created by
@@ -385,37 +386,84 @@ M5A. Their invariants are:
 - a trusted product lookup returns at most one exact SKU record. Duplicate
   exact SKU records are a trusted-data configuration/operational error, not a
   fabricated validation issue;
-- `duplicate_customer_po` is true only for a customer-scoped exact identity
-  match excluding the current order;
-- `document_already_processed` is true only when the same source SHA-256 has
-  an earlier processed extraction snapshot under another order/source;
+- the records contain no OpsFlow order history, extraction-snapshot history,
+  customer+PO duplicate fact, processed-source fact, or local workflow ID;
 - no record contains an API key, provider object, raw source content, raw
   provider response, or environment-dependent value.
 
-### 5.2 `BusinessDataProvider` protocol
+### 5.2 `ValidationFacts`
 
-The provider-neutral protocol is intentionally one narrow async retrieval
-operation so a future network-backed adapter can retrieve all trusted data
-before the final database write transaction:
+`ValidationFacts` is a separate immutable local-facts contract. It contains
+facts owned by OpsFlow persistence, not external business reference records:
 
 ```python
+@dataclass(frozen=True, slots=True)
+class ValidationFacts:
+    duplicate_customer_po: bool
+    document_already_processed: bool
+```
+
+The exact meanings are:
+
+- `duplicate_customer_po=True` only when OpsFlow persistence contains another
+  order with the resolved canonical customer reference and exact PO number,
+  excluding the current order;
+- `document_already_processed=True` only when OpsFlow persistence contains a
+  qualifying extraction snapshot for the same lowercase source SHA-256 under
+  another order/source, according to the duplicate semantics in Section 14;
+- a fact is `False` when its required identity is not available for lookup or
+  no qualifying local record exists;
+- both fields are ordinary booleans in an immutable value object; they do not
+  contain ORM rows, query objects, source content, provider data, or timestamps.
+
+`ValidationFacts` is computed by the Phase 5 application service from focused
+OpsFlow repository reads. It is passed into the pure engine as an explicit
+input and is never obtained by `ValidationEngine` itself. The application
+service re-queries both facts inside the final locked transaction before
+commit and rejects a changed fact set rather than committing a stale result.
+
+### 5.3 `BusinessDataProvider` protocol
+
+The provider-neutral protocol is intentionally one narrow async retrieval
+operation for external business reference data. It does not receive an order
+ID, PO number, source SHA-256, or any other argument needed only for OpsFlow
+local-history queries:
+
+```python
+@dataclass(frozen=True, slots=True)
+class BusinessDataLookupRequest:
+    customer_reference: str | None
+    customer_name: str | None
+    skus: tuple[str | None, ...]
+
+
 class BusinessDataProvider(Protocol):
     async def get_validation_data(
         self,
-        draft: ExtractionDraft,
-        *,
-        current_order_id: UUID,
-        source_sha256: str,
+        request: BusinessDataLookupRequest,
     ) -> TrustedBusinessData: ...
 ```
 
-The method performs deterministic exact lookups for:
+The application builds `BusinessDataLookupRequest` from the draft. It contains
+only the identity values needed for these deterministic exact lookups:
 
 - customer reference, when present and authoritative;
-- normalized exact customer name, only when customer reference is absent;
+- customer name, only when customer reference is absent; the provider applies
+  the locked normalized-exact matching procedure;
 - each non-null SKU, with no description fallback;
-- customer-scoped existing PO references;
-- processed source hashes.
+
+The provider supplies only:
+
+- exact customer-reference/name candidates and customer active status;
+- exact SKU records and product active status;
+- catalogue price;
+- product currency;
+- inventory availability.
+
+The provider does not know about the OpsFlow `orders` table,
+`extraction_snapshots` table, processed-source history, or duplicate-PO history.
+Those facts are not included in `TrustedBusinessData` and are not looked up by
+the provider.
 
 The method may be async because Phase 9 may later use a network-backed Odoo
 adapter. Phase 5 does not implement Odoo, HTTP, credentials, retries, caching,
@@ -423,15 +471,16 @@ or a generic integration framework. The provider must not mutate any external
 system or reserve inventory. An operational/provider exception is an
 application error, not a `ValidationIssue`.
 
-### 5.3 `SandboxBusinessDataProvider`
+### 5.4 `SandboxBusinessDataProvider`
 
 Phase 5 includes `SandboxBusinessDataProvider` with synthetic in-memory data.
 It is deterministic, credential-free, network-free, and suitable for CI.
 
-Its immutable configuration contains tuples of customers and products, a
-customer+PO reference set, and a processed-source-hash set. It canonicalizes
-lookup result order by customer reference and SKU. It uses no environment
-variables or current time.
+Its immutable configuration contains only tuples of synthetic customers and
+products. It canonicalizes lookup result order by customer reference and SKU.
+It uses no environment variables or current time. Local duplicate PO and
+processed-source facts are supplied by persistence/application test fixtures,
+not by the sandbox provider.
 
 Customer-name normalization is exactly:
 
@@ -449,7 +498,8 @@ The sandbox permits duplicate normalized customer names so the engine can
 produce `AMBIGUOUS_CUSTOMER`. It rejects duplicate exact customer references
 and duplicate exact SKUs as invalid trusted-data configuration. It returns
 known-zero inventory distinctly from missing inventory and returns deterministic
-snapshots for repeated equal requests.
+reference-data snapshots for repeated equal requests. It contains no OpsFlow
+local-history configuration.
 
 ## 6. Deterministic identity and matching rules
 
@@ -627,11 +677,26 @@ existing `transition_to` operation for `EXTRACTED → VALIDATED` and
 `VALIDATED → READY_FOR_APPROVAL`. The review path never invokes the promotion
 operation and never copies invalid extracted values into trusted order lines.
 
+### 9.3 Elevated-approval durability
+
+`ValidationResult.approval_level` is the in-memory result contract. Phase 5 does
+not add an `approval_level` column or another persistence field. When elevated
+approval applies, the persisted `HIGH_VALUE_APPROVAL_REQUIRED` warning is the
+durable, machine-readable Phase 5 signal. Phase 6 may use that stable rule code
+when displaying or enforcing elevated approval unless a later Phase 6 design
+intentionally introduces a dedicated approval-policy field. The order remains
+in `READY_FOR_APPROVAL`; no new `OrderState` represents approval elevation.
+
 ## 10. Stable rule matrix
 
 All rules in this Phase 5 matrix emit `ValidationIssue` records. `ERROR` is
 blocking; `WARNING` is non-blocking. The final route is always derived from
 severity, not from a second hard-coded list.
+
+`DUPLICATE_CUSTOMER_PO` consumes `ValidationFacts.duplicate_customer_po` and
+`DOCUMENT_ALREADY_PROCESSED` consumes
+`ValidationFacts.document_already_processed`. No rule reads those local facts
+from `TrustedBusinessData` or calls a repository/provider directly.
 
 `expected` and `actual` are JSON-safe deterministic values. Decimal values are
 canonical strings, dates are ISO strings, enums are their `.value` strings,
@@ -777,8 +842,10 @@ canonical trusted customer reference and exact PO string, excludes the current
 order, and treats any existing persisted order reference as a duplicate. No
 case-folding or fuzzy normalization is applied to PO numbers.
 
-The current order cannot be a duplicate of itself. The provider or repository
-must obtain the canonical customer reference before performing this lookup.
+The current order cannot be a duplicate of itself. The application repository
+query obtains the canonical customer reference before constructing
+`ValidationFacts.duplicate_customer_po`; the external business-data provider
+does not perform this local-history lookup.
 
 ### 14.2 Source SHA-256 identity
 
@@ -790,8 +857,12 @@ Two cases are distinct:
    conflict; do not create a second immutable snapshot and do not manufacture a
    validation issue;
 2. **same SHA-256 is processed under another order/source:** the engine receives
-   `document_already_processed=True` and emits
+   `ValidationFacts.document_already_processed=True` and emits
    `DOCUMENT_ALREADY_PROCESSED`.
+
+The application obtains this fact from the focused extraction-snapshot
+repository lookup. The `BusinessDataProvider` and `TrustedBusinessData` do not
+own or carry OpsFlow processed-source history.
 
 Phase 5 does not implement Phase 10's general idempotency or concurrency
 framework. It uses the snapshot uniqueness constraint and the final order-row
@@ -850,23 +921,36 @@ The service sequence is:
 2. verify the source document belongs to the order and the draft source hash
    and type exactly match the persisted source identity;
 3. verify the order is eligible for validation in `EXTRACTED`;
-4. check the existing snapshot uniqueness boundary and classify replay versus
+4. obtain `TrustedBusinessData` from the provider using only the
+   `BusinessDataLookupRequest`, before the final write transaction; no provider
+   call holds the final mutation transaction open;
+5. query the focused OpsFlow repository functions for the local
+   `ValidationFacts`: the customer-scoped duplicate PO fact and the processed
+   source-SHA fact. The repository is the sole authority for both facts;
+   when duplicate lookup is applicable, it uses the single active trusted
+   customer candidate's canonical reference and the exact draft PO number;
+   missing, ambiguous, or inactive customer identity yields `false` for that
+   lookup rather than a provider query;
+6. check the existing snapshot uniqueness boundary and classify replay versus
    conflict without inserting a second row;
-5. obtain `TrustedBusinessData` from the provider before the final write
-   transaction; no provider call holds the final mutation transaction open;
-6. call the synchronous `ValidationEngine` with the draft, trusted data, policy,
-   and context;
-7. open the final database write transaction;
-8. re-read and lock the order row with `SELECT ... FOR UPDATE` or the
+7. call the synchronous `ValidationEngine` with the draft, trusted data,
+   validation facts, policy, and context;
+8. open the final database write transaction;
+9. re-read and lock the order row with `SELECT ... FOR UPDATE` or the
    SQLAlchemy equivalent, verify it is still `EXTRACTED`, and re-verify source
    ownership and snapshot replay/conflict conditions;
-9. insert the immutable snapshot;
-10. replace the current validation issues in the deterministic result order;
-11. on the ready path only, call the narrow domain promotion operation, persist
+10. re-query both focused local-fact lookups inside the transaction. If either
+    value differs from the `ValidationFacts` used by the engine, abort with a
+    safe application-level validation-data-changed/race error. Apply this guard
+    uniformly to both `NEEDS_REVIEW` and `READY_FOR_APPROVAL` results; do not
+    rerun the engine inside the repository;
+11. insert the immutable snapshot;
+12. replace the current validation issues in the deterministic result order;
+13. on the ready path only, call the narrow domain promotion operation, persist
     the trusted order columns and replace the ordered `order_lines` graph;
-12. apply the legal `EXTRACTED → VALIDATED` and final route transition;
-13. persist the deterministic audit events;
-14. commit once, returning the validation outcome only after the commit
+14. apply the legal `EXTRACTED → VALIDATED` and final route transition;
+15. persist the deterministic audit events;
+16. commit once, returning the validation outcome only after the commit
     succeeds.
 
 The final transaction atomically includes the snapshot, current issues,
@@ -877,7 +961,10 @@ an application/infrastructure failure, not as a fake business issue.
 
 The service must not blindly overwrite an order that changed state between its
 initial read and final write. The row lock and state re-check reject that race.
-Phase 10 owns broader idempotency and concurrency hardening.
+The local-fact recheck rejects a result calculated from changed local history;
+the caller may retry the validation operation at the application level. This
+is a narrow Phase 5 correctness guard. Phase 10 owns broader idempotency and
+concurrency hardening.
 
 ## 17. Persistence design
 
@@ -898,11 +985,17 @@ Expected functions are narrow and transaction-owned by the caller:
   excluding a supplied current order ID;
 - find a processed extraction snapshot by source SHA-256, excluding the current
   order/source identity;
+- construct the immutable local `ValidationFacts` value from those two focused
+  lookups;
 - replace current validation issues for one order in supplied tuple order;
 - lock/read an order for final validation mutation;
 - replace the trusted order business graph from a validated immutable `Order`
   snapshot and preserve ordered child positions;
 - persist the state and audit records without committing independently.
+
+The customer+PO and processed-SHA queries are OpsFlow-local fact sources and
+are not provider operations. No external adapter may replace them or obtain
+them from `TrustedBusinessData`.
 
 No repository function commits on behalf of the application service. The
 existing order graph remains the source of truth for trusted business state;
@@ -1038,11 +1131,14 @@ Equal values for:
 ```text
 ExtractionDraft
 + TrustedBusinessData
++ ValidationFacts
 + ValidationPolicy
 + ValidationContext
 ```
 
-produce equal `ValidationResult` values. Equality includes:
+produce equal `ValidationResult` values. All five input values are part of the
+determinism contract; local history facts are no less explicit than external
+reference data or policy. Equality includes:
 
 - issue count, issue order, rule codes, severities, field paths,
   expected/actual representations, and explanations;
@@ -1087,7 +1183,9 @@ The unit suite under `tests/unit/validation/` must cover:
 - standard versus elevated approval level;
 - multiple simultaneous violations;
 - deterministic issue ordering and stable field paths;
-- repeated equal input producing an equal `ValidationResult`;
+- repeated equal values for `ExtractionDraft`, `TrustedBusinessData`,
+  `ValidationFacts`, `ValidationPolicy`, and `ValidationContext` producing an
+  equal `ValidationResult`;
 - no I/O imports or boundaries: no FastAPI, SQLAlchemy, asyncpg, Alembic,
   network client, provider SDK, clock, environment read, random call, or UUID
   generation from the engine.
@@ -1108,8 +1206,9 @@ The sandbox suite must cover:
 - rejected duplicate exact customer references and duplicate exact SKUs;
 - deterministic snapshot values and ordering for repeated equal requests;
 - known-zero versus missing inventory;
-- duplicate customer+PO lookup;
-- processed source-hash lookup;
+- no configuration or fixture for duplicate customer+PO or processed source
+  history; those local facts are constructed by persistence/application
+  fixtures;
 - no network access, credentials, environment dependence, or external writes.
 
 ### 23.3 Persistence tests
@@ -1125,8 +1224,10 @@ PostgreSQL-backed persistence tests must cover:
 - source snapshot cascade behavior consistent with the order graph;
 - immutable snapshot application semantics and no update/delete repository
   operation;
-- customer-scoped duplicate PO lookup excluding the current order;
-- processed source-SHA lookup excluding the current order/source;
+- customer-scoped duplicate PO lookup excluding the current order and
+  construction of `ValidationFacts.duplicate_customer_po`;
+- processed source-SHA lookup excluding the current order/source and
+  construction of `ValidationFacts.document_already_processed`;
 - current validation-issue replacement and stable positions;
 - order-graph replacement with trusted catalogue prices and Phase 1-valid
   `OrderLine` rows;
@@ -1149,10 +1250,13 @@ The application integration suite must cover:
 - state-race or incorrect-state rejection after the preflight read;
 - same order/source replay and conflict without a second snapshot;
 - duplicate SHA under another order producing `DOCUMENT_ALREADY_PROCESSED`;
+- local-fact staleness detection after the final order lock for both
+  `NEEDS_REVIEW` and `READY_FOR_APPROVAL`, with no repository-side engine rerun;
 - high-value valid order remaining `READY_FOR_APPROVAL` with `ELEVATED`;
-- no LLM or provider-SDK invocation: the service receives a draft and uses only
-  the intended trusted-business-data contract; the sandbox itself makes no
-  network request;
+- no LLM or provider-SDK invocation: the service receives a draft, invokes the
+  trusted-business-data contract only for external reference data, and obtains
+  local facts only through focused OpsFlow repository fixtures; the sandbox
+  itself makes no network request;
 - no network requirement and no live Gemini, Odoo, CRM, email, Slack, or n8n
   interaction.
 
@@ -1262,21 +1366,28 @@ and independently reviewable. Acceptance requires:
   raw provider material;
 - replay/conflict and duplicate-source semantics are distinct;
 - the engine contract is pure, synchronous, deterministic, and clock/I/O-free;
-- trusted customer, product, inventory, catalogue, duplicate, and processed
-  hash data have a narrow provider-neutral contract;
+- trusted customer, product, inventory, catalogue, and status data have a
+  narrow external-business-data provider contract;
+- `ValidationFacts` separately contains the two immutable OpsFlow-local facts,
+  and focused persistence repository functions are their sole authority;
 - matching, policy, context, result, promotion, price, inventory, date,
   duplicate, severity, and routing semantics are explicit;
+- the engine signature and determinism contract include all five inputs:
+  `ExtractionDraft`, `TrustedBusinessData`, `ValidationFacts`,
+  `ValidationPolicy`, and `ValidationContext`;
 - the stable rule matrix covers every required rule code and deterministic
   explanation/field-path behavior;
 - invalid values cannot be promoted into trusted order lines;
 - high-value valid orders remain ready with elevated approval;
 - the application transaction, lock, rollback, and audit boundaries are
   explicit;
+- local validation facts are re-queried uniformly inside the final locked
+  transaction and changed facts abort without a repository-side engine rerun;
 - no API/UI/n8n/external integration/future-phase behavior is accidentally
   included;
 - the required unit, persistence, integration, regression, and CI tests are
   specified without creating them in M5A;
-- the document contains no unresolved design markers;
+- the specification is internally resolved and implementation-ready;
 - only the requested design file is changed.
 
 Before M5B begins, this design must receive independent review and user
