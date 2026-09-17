@@ -77,6 +77,20 @@ pytest configuration measures coverage across all `opsflow` modules. It does
 not weaken the `>=80%` coverage requirement enforced by the full repository
 quality gates, including `make backend-check` and `make check`.
 
+## Focused Phase 3 document verification
+
+With PostgreSQL, Docker, the API server, AI providers, and internet access
+unavailable, use the following command to verify the document-processing
+subsystem:
+
+```bash
+uv run pytest tests/unit/documents -q --no-cov
+```
+
+This focused suite is infrastructure-independent. Complete GitHub Backend CI
+continues to run the PostgreSQL-backed Phase 2 integration tests alongside the
+document-processing tests.
+
 ## Verified M0D frontend commands
 
 The following commands were run successfully during M0D from `web/` with Node.js 24.21.0 and npm 11.19.0:
