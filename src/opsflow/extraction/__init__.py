@@ -16,6 +16,13 @@ from opsflow.extraction.models import (
     ProviderLineResponse,
     build_provider_response_schema,
 )
+from opsflow.extraction.prompt import (
+    PROMPT_VERSION,
+    RenderedSource,
+    SourceSegment,
+    build_extraction_request,
+    render_canonical_document,
+)
 from opsflow.extraction.provider import (
     LLMProvider,
     StructuredGenerationRequest,
@@ -31,12 +38,17 @@ __all__ = [
     "FakeOutcome",
     "FakeProvider",
     "LLMProvider",
+    "PROMPT_VERSION",
     "ProviderError",
     "ProviderEvidenceResponse",
     "ProviderExtractionResponse",
     "ProviderLineResponse",
+    "RenderedSource",
+    "SourceSegment",
     "StructuredGenerationRequest",
     "StructuredGenerationResult",
     "ProviderTimeoutError",
+    "build_extraction_request",
     "build_provider_response_schema",
+    "render_canonical_document",
 ]
