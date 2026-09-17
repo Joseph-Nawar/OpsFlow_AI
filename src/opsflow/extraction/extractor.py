@@ -118,9 +118,7 @@ def validate_evidence(
 
         segment = segments_by_location.get(item.source_location)
         if segment is None:
-            raise ExtractionResponseError(
-                f"evidence source location does not exist: {item.source_location}"
-            )
+            raise ExtractionResponseError("evidence source location does not exist")
         if not isinstance(item.quote, str) or not item.quote:
             raise ExtractionResponseError("evidence quote must be non-empty")
         if item.quote not in segment.text:

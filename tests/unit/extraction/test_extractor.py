@@ -323,8 +323,28 @@ def test_validate_evidence_rejects_invented_location() -> None:
         }
     )
 
-    with pytest.raises(ExtractionResponseError, match="page:99"):
+    with pytest.raises(ExtractionResponseError):
         validate_evidence(response, _source(SourceSegment("text:body", "PO-1")))
+
+
+def test_validate_evidence_does_not_echo_provider_controlled_location() -> None:
+    provider_secret_location = "customer-private-sheet APIKEY-EXAMPLE raw-order-content"
+    response = _response_with_evidence(
+        {
+            "field_path": "po_number",
+            "source_location": provider_secret_location,
+            "quote": "PO-1",
+        }
+    )
+
+    with pytest.raises(ExtractionResponseError) as raised:
+        validate_evidence(response, _source(SourceSegment("text:body", "PO-1")))
+
+    message = str(raised.value)
+    assert "evidence source location does not exist" in message
+    assert provider_secret_location not in message
+    assert "APIKEY-EXAMPLE" not in message
+    assert "raw-order-content" not in message
 
 
 def test_validate_evidence_rejects_quote_from_wrong_segment() -> None:
