@@ -62,6 +62,38 @@ def validate_trusted_business_data(
             "provider customer candidates are not in canonical reference order"
         )
 
+    if draft.customer_reference is not None:
+        if any(
+            candidate.reference != draft.customer_reference
+            for candidate in data.customer_candidates
+        ):
+            raise TrustedBusinessDataContractError(
+                "provider customer references do not match the requested reference"
+            )
+    elif draft.customer_name is not None:
+        normalized_name = normalize_customer_name(draft.customer_name)
+        if any(
+            normalize_customer_name(candidate.name) != normalized_name
+            for candidate in data.customer_candidates
+        ):
+            raise TrustedBusinessDataContractError(
+                "provider customer candidate names do not match the requested normalized name"
+            )
+    elif data.customer_candidates:
+        raise TrustedBusinessDataContractError(
+            "provider returned customer candidates without a requested identity"
+        )
+
     for product in data.products_by_line:
         if product is not None and type(product) is not TrustedProduct:
             raise TrustedBusinessDataContractError("provider returned an invalid product record")
+
+    for line, product in zip(draft.lines, data.products_by_line, strict=True):
+        if line.sku is None and product is not None:
+            raise TrustedBusinessDataContractError(
+                "provider returned a product for a line without an SKU"
+            )
+        if line.sku is not None and product is not None and product.sku != line.sku:
+            raise TrustedBusinessDataContractError(
+                "provider product does not match the requested line SKU"
+            )
