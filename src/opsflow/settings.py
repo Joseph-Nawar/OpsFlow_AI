@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     """Runtime settings with safe local-development defaults."""
 
     database_url: str = "postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow"
+    gemini_api_key: str | None = None
+    gemini_model: str | None = None
+    gemini_timeout_seconds: float | None = None
 
     model_config = SettingsConfigDict(
         env_prefix="OPSFLOW_",
