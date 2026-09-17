@@ -36,6 +36,10 @@ class _FakeClient:
     def __init__(self, async_client: _FakeAsyncClient, http_options: object | None = None):
         self.aio = async_client
         self._api_client = SimpleNamespace(_http_options=http_options)
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def _request() -> StructuredGenerationRequest:
@@ -181,6 +185,28 @@ def test_provider_maps_timeout_failures_to_provider_timeout(error: Exception) ->
     assert "secret-api-key" not in str(raised.value)
 
 
+def test_provider_maps_current_sdk_wrapped_timeout_to_provider_timeout() -> None:
+    from google.genai._gaos.lib import compat_errors
+
+    request = httpx.Request("POST", "https://example.test")
+    wrapped_timeout = compat_errors.wrap_sdk_error(
+        httpx.ReadTimeout("provider timeout", request=request)
+    )
+    assert isinstance(wrapped_timeout, compat_errors.APITimeoutError)
+
+    interactions = _FakeInteractions(error=wrapped_timeout)
+    provider = GeminiProvider(
+        GeminiConfig("secret-api-key", "gemini-test-model", 10.0),
+        client=_FakeClient(_FakeAsyncClient(interactions)),
+    )
+
+    with pytest.raises(ProviderTimeoutError) as raised:
+        asyncio.run(provider.generate_structured(_request()))
+
+    assert str(raised.value) == "Gemini provider request timed out"
+    assert "provider timeout" not in str(raised.value)
+
+
 def test_owned_client_receives_explicit_key_and_zero_retry_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -189,10 +215,13 @@ def test_owned_client_receives_explicit_key_and_zero_retry_configuration(
     interactions = _FakeInteractions()
     async_client = _FakeAsyncClient(interactions)
     captured: dict[str, object] = {}
+    created: list[_FakeClient] = []
 
     def fake_client(**kwargs: object) -> _FakeClient:
         captured.update(kwargs)
-        return _FakeClient(async_client, kwargs["http_options"])
+        client = _FakeClient(async_client, kwargs["http_options"])
+        created.append(client)
+        return client
 
     monkeypatch.setattr(gemini_module.genai, "Client", fake_client)
     monkeypatch.setenv("GEMINI_API_KEY", "ambient-secret")
@@ -207,7 +236,78 @@ def test_owned_client_receives_explicit_key_and_zero_retry_configuration(
     retry_options = http_options.retry_options  # type: ignore[union-attr]
     assert retry_options.attempts == 0
     assert async_client.closed is True
+    assert created[0].closed is True
     assert len(interactions.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("output_text", "error"),
+    [
+        ('{"value": "ok"}', None),
+        ("not-json", None),
+        ('{"value": "ignored"}', RuntimeError("provider failure")),
+    ],
+)
+def test_owned_client_closes_both_sides_on_success_and_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    output_text: str,
+    error: Exception | None,
+) -> None:
+    from opsflow.extraction import gemini as gemini_module
+
+    interactions = _FakeInteractions(output_text=output_text, error=error)
+    async_client = _FakeAsyncClient(interactions)
+    created: list[_FakeClient] = []
+
+    def fake_client(**kwargs: object) -> _FakeClient:
+        client = _FakeClient(async_client, kwargs["http_options"])
+        created.append(client)
+        return client
+
+    monkeypatch.setattr(gemini_module.genai, "Client", fake_client)
+    provider = GeminiProvider(GeminiConfig("explicit-secret", "gemini-test-model", 10.0))
+
+    if error is not None or output_text == "not-json":
+        with pytest.raises(ProviderError):
+            asyncio.run(provider.generate_structured(_request()))
+    else:
+        asyncio.run(provider.generate_structured(_request()))
+
+    assert async_client.closed is True
+    assert created[0].closed is True
+
+
+def test_injected_client_remains_caller_owned() -> None:
+    async_client = _FakeAsyncClient(_FakeInteractions())
+    root_client = _FakeClient(async_client)
+    provider = GeminiProvider(
+        GeminiConfig("explicit-secret", "gemini-test-model", 10.0),
+        client=root_client,
+    )
+
+    asyncio.run(provider.generate_structured(_request()))
+
+    assert async_client.closed is False
+    assert root_client.closed is False
+
+
+def test_actual_sdk_retry_bridge_consumes_zero_interactions_retries() -> None:
+    from opsflow.extraction.gemini import _create_client
+
+    client = _create_client(GeminiConfig("synthetic-test-key", "gemini-test-model", 10.0))
+    async_client = None
+    try:
+        retry_options = client._api_client._http_options.retry_options
+        assert retry_options is not None
+        assert retry_options.attempts == 0
+
+        async_client = client.aio
+        interactions = async_client.interactions
+        assert interactions.sdk_configuration.retry_config.max_retries == 0
+    finally:
+        if async_client is not None:
+            asyncio.run(async_client.aclose())
+        client.close()
 
 
 def test_settings_remain_constructible_without_gemini_configuration(

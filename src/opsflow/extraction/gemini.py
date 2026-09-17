@@ -59,6 +59,19 @@ def _create_client(config: GeminiConfig) -> genai.Client:
     return client
 
 
+def _is_timeout_error(exc: BaseException) -> bool:
+    """Recognize direct and SDK-wrapped timeout exceptions safely."""
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (TimeoutError, httpx.TimeoutException)):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 class GeminiProvider(LLMProvider):
     """Translate one provider-neutral request into one stateless Gemini call."""
 
@@ -104,13 +117,22 @@ class GeminiProvider(LLMProvider):
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise ProviderTimeoutError("Gemini provider request timed out") from exc
         except Exception as exc:
+            if _is_timeout_error(exc):
+                raise ProviderTimeoutError("Gemini provider request timed out") from exc
             raise ProviderError("Gemini provider request failed") from exc
         finally:
-            if owns_client and async_client is not None:
-                close = getattr(async_client, "aclose", None)
-                if close is not None:
-                    with suppress(Exception):
-                        await close()
+            if owns_client:
+                if async_client is not None:
+                    async_close = getattr(async_client, "aclose", None)
+                    if async_close is not None:
+                        with suppress(Exception):
+                            await async_close()
+
+                if root_client is not None:
+                    sync_close = getattr(root_client, "close", None)
+                    if sync_close is not None:
+                        with suppress(Exception):
+                            sync_close()
 
 
 __all__ = ["GeminiConfig", "GeminiProvider"]
