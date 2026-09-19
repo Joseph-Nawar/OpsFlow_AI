@@ -15,6 +15,7 @@ from opsflow.application.errors import (
     OrderNotFoundError,
     SnapshotConflictError,
     SnapshotReplayError,
+    SourceDocumentNotFoundError,
     SourceIdentityMismatchError,
     SourceOwnershipError,
 )
@@ -366,6 +367,32 @@ def test_validate_order_rejects_different_source_sha_before_provider_engine_or_w
     assert calls["audits"] == []
 
 
+def test_validate_order_rejects_document_type_mismatch_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+    calls = install_repository_doubles(monkeypatch)
+    provider = RecordingProvider(session, make_business_data())
+
+    with pytest.raises(SourceIdentityMismatchError):
+        asyncio.run(
+            validation_module.validate_order(
+                session,
+                ORDER_ID,
+                SOURCE_ID,
+                replace(make_draft(), source_document_type=SourceDocumentType.CSV),
+                provider,
+                validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
+                validation_module.ValidationContext(date(2030, 1, 2)),
+                RECORDED_AT,
+            )
+        )
+
+    assert provider.calls == []
+    assert calls["facts"] == []
+    assert calls["orders"] == []
+
+
 def test_validate_order_builds_reference_request_and_closes_read_transactions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -443,6 +470,27 @@ def test_validate_order_distinguishes_missing_order_and_source_owner(
     monkeypatch.setattr(validation_module, "get_order", _async_current_order)
 
     with pytest.raises(SourceOwnershipError):
+        asyncio.run(
+            validation_module.validate_order(
+                session,
+                ORDER_ID,
+                UUID(int=99),
+                make_draft(),
+                provider,
+                validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
+                validation_module.ValidationContext(date(2030, 1, 2)),
+                RECORDED_AT,
+            )
+        )
+
+    session = FakeSession()
+    install_repository_doubles(monkeypatch)
+
+    async def missing_owner(session: FakeSession, source_document_id: UUID) -> UUID | None:
+        return None
+
+    monkeypatch.setattr(validation_module, "get_source_document_order_id", missing_owner)
+    with pytest.raises(SourceDocumentNotFoundError):
         asyncio.run(
             validation_module.validate_order(
                 session,

@@ -332,6 +332,19 @@ def test_line_required_rules_do_not_run_product_dependent_checks() -> None:
     ]
 
 
+def test_invalid_line_prerequisites_suppress_total_and_high_value_classification() -> None:
+    value = result(
+        draft_value=draft(lines=(extracted_line(quantity=None),)),
+        data=business_data(products=(product(),)),
+        validation_policy=policy(threshold=Decimal("0")),
+    )
+
+    assert value.order_total is None
+    assert "HIGH_VALUE_APPROVAL_REQUIRED" not in codes(value)
+    assert value.route is ValidationRoute.NEEDS_REVIEW
+    assert value.validated_order_data is None
+
+
 def test_unknown_and_inactive_sku_rules_have_no_description_fallback() -> None:
     unknown = result(
         draft_value=draft(lines=(extracted_line(sku="sku-001"),)),
@@ -464,6 +477,19 @@ def test_high_value_threshold_is_inclusive_and_warning_only() -> None:
     assert exact.route is ValidationRoute.READY_FOR_APPROVAL
     assert exact.approval_level is ApprovalLevel.ELEVATED
     assert exact.validated_order_data is not None
+
+
+def test_high_value_warning_is_last_after_independent_line_issues() -> None:
+    value = result(
+        draft_value=draft(lines=(extracted_line(quantity=Decimal("10")),)),
+        data=business_data(products=(product(available_quantity=Decimal("5")),)),
+        validation_policy=policy(threshold=Decimal("100")),
+    )
+
+    assert codes(value) == ["INSUFFICIENT_INVENTORY", "HIGH_VALUE_APPROVAL_REQUIRED"]
+    assert value.issues[-1].severity is ValidationSeverity.WARNING
+    assert value.route is ValidationRoute.NEEDS_REVIEW
+    assert value.validated_order_data is None
 
 
 def test_multiple_violations_continue_independently_in_stable_matrix_order() -> None:

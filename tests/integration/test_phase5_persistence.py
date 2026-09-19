@@ -474,7 +474,8 @@ async def _assert_customer_po_repository() -> None:
 
 
 async def _assert_processed_sha_repository() -> None:
-    current, current_source = _repository_order(source_hashes=("a" * 64, "b" * 64))
+    current, current_source = _repository_order(source_hashes=("a" * 64, "a" * 64))
+    current_other_source = current.source_documents[1]
     current_only, current_only_source = _repository_order(source_hashes=("c" * 64,))
     other_order, other_source = _repository_order(source_hashes=("a" * 64,))
     engine = create_async_engine(Settings().database_url)
@@ -485,8 +486,8 @@ async def _assert_processed_sha_repository() -> None:
             await session.commit()
             for snapshot in (
                 _repository_snapshot(current.id, current_source.id, "a" * 64),
+                _repository_snapshot(current.id, current_other_source.id, "a" * 64),
                 _repository_snapshot(current_only.id, current_only_source.id, "c" * 64),
-                _repository_snapshot(other_order.id, other_source.id, "a" * 64),
             ):
                 await insert_extraction_snapshot(session, snapshot)
             await session.commit()
@@ -497,6 +498,27 @@ async def _assert_processed_sha_repository() -> None:
                 exclude_order_id=current_only.id,
                 exclude_source_document_id=current_only_source.id,
             )
+            assert await has_processed_source_sha(
+                session,
+                "a" * 64,
+                exclude_order_id=current.id,
+                exclude_source_document_id=current_source.id,
+            )
+            assert (
+                await has_processed_source_sha(
+                    session,
+                    "a" * 64,
+                    exclude_order_id=current.id,
+                    exclude_source_document_id=current_other_source.id,
+                )
+                is True
+            )
+
+            await insert_extraction_snapshot(
+                session,
+                _repository_snapshot(other_order.id, other_source.id, "a" * 64),
+            )
+            await session.commit()
             assert await has_processed_source_sha(
                 session,
                 "a" * 64,

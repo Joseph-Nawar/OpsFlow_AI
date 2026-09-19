@@ -157,6 +157,10 @@ def test_high_value_ready_validation_is_elevated_without_new_order_state() -> No
     asyncio.run(_assert_high_value_validation())
 
 
+def test_duplicate_customer_po_from_another_order_becomes_local_validation_fact() -> None:
+    asyncio.run(_assert_duplicate_customer_po_validation())
+
+
 def test_duplicate_source_sha_from_another_order_becomes_local_validation_fact() -> None:
     asyncio.run(_assert_duplicate_sha_validation())
 
@@ -217,6 +221,11 @@ async def _assert_ready_validation() -> None:
             "ORDER_READY_FOR_APPROVAL",
         ]
         assert [event.actor for event in audits] == ["system"] * 3
+        assert [event.description for event in audits] == [
+            "Immutable extraction snapshot recorded for the order source document.",
+            "Deterministic validation completed.",
+            "Deterministic validation passed; order is ready for approval.",
+        ]
     finally:
         await engine.dispose()
 
@@ -295,10 +304,15 @@ async def _assert_review_validation() -> None:
         assert snapshot is not None
         assert snapshot.draft.lines[0].quantity is None
         assert snapshot.draft.lines[0].submitted_price is None
-        assert {issue.rule_code for issue in persisted.validation_issues} >= {
-            "UNSUPPORTED_CURRENCY",
+        assert [issue.rule_code for issue in persisted.validation_issues] == [
             "ORDER_DATE_IN_FUTURE",
-        }
+            "DELIVERY_DATE_IN_PAST",
+            "DELIVERY_BEFORE_ORDER_DATE",
+            "UNSUPPORTED_CURRENCY",
+            "QUANTITY_REQUIRED",
+            "SUBMITTED_PRICE_REQUIRED",
+        ]
+        assert persisted.validation_issues == result.validation_result.issues
         assert [event.event_type for event in audits] == [
             "EXTRACTION_SNAPSHOT_RECORDED",
             "ORDER_VALIDATED",
@@ -332,10 +346,66 @@ async def _assert_high_value_validation() -> None:
             "HIGH_VALUE_APPROVAL_REQUIRED"
         ]
         async with AsyncSession(engine) as session:
+            persisted = await get_order(session, order_id)
             audits = await get_audit_events(session, order_id)
+        assert persisted is not None
+        assert [issue.rule_code for issue in persisted.validation_issues] == [
+            "HIGH_VALUE_APPROVAL_REQUIRED"
+        ]
         assert audits[-1].description == (
             "Deterministic validation passed; elevated approval is required."
         )
+    finally:
+        await engine.dispose()
+
+
+async def _assert_duplicate_customer_po_validation() -> None:
+    first_order_id, first_source_id = uuid4(), uuid4()
+    second_order_id, second_source_id = uuid4(), uuid4()
+    duplicate_po = "DUPLICATE-PO"
+    first_source = make_source(first_source_id)
+    second_source = make_source(second_source_id)
+    first_order = make_extracted_order(first_order_id, first_source)
+    second_order = make_extracted_order(second_order_id, second_source)
+    engine = create_async_engine(Settings().database_url)
+    try:
+        await _commit_order(engine, first_order)
+        async with AsyncSession(engine) as session:
+            first_result = await validate_order(
+                session,
+                first_order_id,
+                first_source_id,
+                make_draft(first_source, po_number=duplicate_po),
+                FixedProvider(make_business_data()),
+                make_policy(),
+                ValidationContext(date(2030, 1, 2)),
+                RECORDED_AT,
+            )
+        assert first_result.order.state is OrderState.READY_FOR_APPROVAL
+
+        await _commit_order(engine, second_order)
+        async with AsyncSession(engine) as session:
+            result = await validate_order(
+                session,
+                second_order_id,
+                second_source_id,
+                make_draft(second_source, po_number=duplicate_po),
+                FixedProvider(make_business_data()),
+                make_policy(),
+                ValidationContext(date(2030, 1, 2)),
+                RECORDED_AT,
+            )
+
+        assert result.order.state is OrderState.NEEDS_REVIEW
+        assert [issue.rule_code for issue in result.validation_result.issues] == [
+            "DUPLICATE_CUSTOMER_PO"
+        ]
+        async with AsyncSession(engine) as session:
+            persisted = await get_order(session, second_order_id)
+        assert persisted is not None
+        assert persisted.validation_issues == result.validation_result.issues
+        assert persisted.order.customer_reference == second_order.customer_reference
+        assert persisted.order.po_number == second_order.po_number
     finally:
         await engine.dispose()
 
