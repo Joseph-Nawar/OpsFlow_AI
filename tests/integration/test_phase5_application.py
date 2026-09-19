@@ -92,14 +92,15 @@ def make_draft(
     currency: str | None = "USD",
     order_date: date | None = date(2030, 1, 1),
     delivery_date: date | None = date(2030, 1, 10),
-    po_number: str | None = "PO-1",
+    po_number: str | None = None,
 ) -> ExtractionDraft:
+    effective_po_number = f"PO-{source.id.hex}" if po_number is None else po_number
     return ExtractionDraft(
         source_sha256=source.sha256,
         source_document_type=source.document_type,
         customer_name="Acme Ltd",
         customer_reference="CUST-1",
-        po_number=po_number,
+        po_number=effective_po_number,
         order_date=order_date,
         requested_delivery_date=delivery_date,
         currency=currency,
