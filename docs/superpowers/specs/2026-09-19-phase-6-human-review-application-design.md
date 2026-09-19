@@ -522,50 +522,71 @@ separate validation action.
 
 The application service performs this sequence:
 
-1. Resolve the server-side `OperatorContext` and require `REVIEWER`.
-2. Perform the initial database preflight: load the order, its owned Phase 5
-   extraction snapshot, the highest review revision, the latest audit event ID,
-   and the effective draft; derive the current ETag and preconditions; require
-   `NEEDS_REVIEW`; and compute the server-side candidate diff needed to reject
-   a no-op.
-3. Explicitly end the SQLAlchemy autobegun read transaction with
+1. At the HTTP/transport boundary, strictly map the exact request body to an
+   immutable typed candidate `ReviewDraft`. The application service receives
+   that typed candidate. Client-supplied actor, role, old values, revision
+   numbers, state, evidence, source identity, and change lists are not
+   accepted as authority.
+2. Resolve the server-side `OperatorContext` and require `REVIEWER`.
+3. Perform the initial database preflight: load the order, its owned Phase 5
+   extraction snapshot, the highest review revision, the latest audit-event
+   generation, and the current effective draft.
+4. Derive the current strong ETag and require/compare the request's
+   `If-Match` during this preflight, before any provider call. A missing header
+   returns `428 Precondition Required`; a malformed or stale tag returns
+   `412 Precondition Failed`. Each failure exits only after the read
+   transaction is rolled back or otherwise closed.
+5. Require `NEEDS_REVIEW`.
+6. Compare the submitted candidate `ReviewDraft` with the current effective
+   draft and reject a no-op. The previous effective draft is used for
+   server-computed old values/change computation and optimistic-concurrency
+   context; it is not the business payload sent through provider lookup or
+   deterministic revalidation after a changed candidate is submitted.
+7. Compose the in-memory untrusted Phase 5 `ExtractionDraft` from the
+   submitted candidate using the immutable source SHA/document type from the
+   owned original snapshot and the immutable original notes/evidence. Its
+   business fields and ordered lines come from the submitted candidate
+   `ReviewDraft`, not the previous effective draft.
+8. Explicitly end the SQLAlchemy autobegun read transaction with
    `await session.rollback()` before any provider work. If an early
-   preflight, authorization, state, validator, or no-op error exits the
-   operation, the supplied request session is likewise rolled back or closed
-   before the error is returned.
-4. Assert at the provider boundary that `session.in_transaction() is False`.
-   Resolve trusted customer/product/catalogue/inventory data through the
-   existing `BusinessDataProvider` exactly once, outside any database
-   transaction. A no-op or other early error may terminate after the first
-   rollback without calling the provider.
-5. Read the current OpsFlow-local `ValidationFacts` in a second short read
-   transaction.
-6. Explicitly end that second read transaction with
-   `await session.rollback()` before deterministic evaluation.
-7. Assert at the engine boundary that `session.in_transaction() is False`.
-   Run the existing pure synchronous `ValidationEngine` exactly once, outside
-   any database transaction, using the explicit Phase 5 policy and the one
-   captured review-time context date.
-8. Begin the final database transaction and lock the order row with
-   `SELECT ... FOR UPDATE`.
-9. Recheck order state, source ownership/identity, the owning extraction
-   snapshot, latest revision number, latest audit generation, and the
-   `If-Match` review state. A stale state/revision/generation returns a safe
-   stale-review error and rolls back.
-10. Re-read the relevant local `ValidationFacts` inside the final transaction.
+   authorization, preflight, precondition, state, validator, or no-op error
+   exits the operation, the supplied request session is likewise rolled back
+   or closed before the error is returned.
+9. Assert at the provider boundary that `session.in_transaction() is False`.
+   Resolve trusted customer/product/catalogue/inventory data exactly once
+   through the existing `BusinessDataProvider`, outside any database
+   transaction, using lookup inputs derived from the composed candidate draft.
+   A no-op or other early error terminates after the preflight rollback
+   without calling the provider.
+10. Read the current OpsFlow-local `ValidationFacts` in a second short read
+    transaction.
+11. Explicitly end that second read transaction with
+    `await session.rollback()` before deterministic evaluation.
+12. Assert at the engine boundary that `session.in_transaction() is False`.
+    Run the existing pure synchronous `ValidationEngine` exactly once, outside
+    any database transaction, with the composed candidate `ExtractionDraft`,
+    provider result, local facts, explicit Phase 5 policy, and one captured
+    review-time context date.
+13. Begin the final database transaction and lock the order row with
+    `SELECT ... FOR UPDATE`.
+14. Recheck order state, source ownership/identity, the owning extraction
+    snapshot, latest revision number, latest audit generation, and the
+    `If-Match` review state. A stale state/revision/generation returns a safe
+    stale-review error and rolls back.
+15. Re-read the relevant local `ValidationFacts` inside the final transaction.
     If they differ from the facts used by the engine, abort safely with no
     revision, issue, graph, state, or audit write. The engine is not rerun in
     the transaction.
-11. Allocate the next positive revision number under the order lock, insert
+16. Allocate the next positive revision number under the order lock, insert
     the immutable complete payload and server-computed changes, and replace
     current validation issues with the engine result.
-12. If errors remain, preserve the trusted order graph and route through
+17. If errors remain, preserve the trusted order graph and route through
     `NEEDS_REVIEW → VALIDATED → NEEDS_REVIEW`.
-13. If no errors remain, promote only `ValidatedOrderData` through the narrow
+18. If no errors remain, promote only `ValidatedOrderData` through the narrow
     reviewed-data promotion operation, then route through
     `NEEDS_REVIEW → VALIDATED → READY_FOR_APPROVAL`.
-14. Insert the deterministic review audit events, then commit once. Return a
-    response only after the commit succeeds.
+19. Insert the deterministic review audit events, then commit once. Return a
+    response only after the commit succeeds, including the fresh review ETag.
 
 No provider, AI model, network call, or external adapter executes inside the
 final transaction. All persistence helpers are transaction-owned and do not
@@ -728,6 +749,17 @@ provider details, or secrets. The application still locks the order and
 rechecks state/revision before every write; ETag is not a replacement for the
 transactional guard.
 
+ETag and precondition ownership is milestone-specific. M6B owns the reusable
+read-side concurrency machinery: reading the latest audit-event generation,
+computing the canonical strong review ETag, returning it with the review-detail
+resource, and implementing/testing the deterministic serializer/helper plus
+any shared safe precondition parser. M6B does not implement Save & revalidate,
+approve, reject, or retry. M6C owns complete `If-Match` enforcement for Save &
+revalidate, including the pre-provider check, final locked recheck, and fresh
+ETag in the successful response. M6D reuses and enforces this existing
+precondition contract for approve, reject, and retry; it does not create a
+second concurrency implementation.
+
 ## 9. HTTP contract
 
 The Phase 6 HTTP surface stays narrow and explicit. All review routes require
@@ -854,8 +886,10 @@ pre-extraction failure, the endpoint returns a safe `409` response with code
 `PUT /v1/review/orders/{order_id}/draft`
 
 Request body is a complete candidate `ReviewDraft` with the exact editable
-fields from Section 4.1. It cannot contain a revision number, old value,
-change list, actor, evidence, notes, source identity, state, or role.
+fields from Section 4.1. The transport boundary strictly maps it to the
+immutable typed candidate received by the application service. It cannot
+contain a revision number, old value, change list, actor, evidence, notes,
+source identity, state, or role; none of those client claims are authoritative.
 
 Success returns `200` with the refreshed review-detail response and a new ETag.
 The returned state is `NEEDS_REVIEW` when blocking errors remain or
@@ -1057,7 +1091,14 @@ Backend application/HTTP coverage must prove:
 - tests can inject explicit immutable operator contexts without real tokens;
 - edit whitelist and complete draft shape are enforced;
 - no-op edit rejection is safe;
+- M6B read-side coverage proves latest-audit-generation reads, canonical ETag
+  serialization, detail-resource ETag emission, and shared safe precondition
+  parsing without implementing a mutation command;
 - missing `If-Match` and stale ETags produce `428`/`412` structured errors;
+- M6C Save & revalidate enforces those preconditions before provider work,
+  rechecks them under the final order lock, and returns a fresh ETag;
+- M6D approve, reject, and retry reuse the same precondition machinery rather
+  than implementing a second concurrency path;
 - ordinary revision, approve, reject, and retry mutations invalidate old
   ETags; the retry-state ABA sequence also rejects the old ETag after the same
   state/failure-origin pair recurs, while external reference-data changes do
@@ -1166,9 +1207,9 @@ provider and deterministic engine remain the reusable Phase 5 contracts.
 | Milestone | Boundary |
 | --- | --- |
 | **M6A — Human Review Contract & Design** | This authority, persistence, concurrency, authorization, API, frontend, testing, non-goal, and source-limitation design; documentation-only status update; no implementation |
-| **M6B — Review Persistence, Authorization & Read Model** | Implement `ReviewDraft`/operator contracts, migration `0004`, immutable revision persistence, effective-draft projection, authentication dependency, queue/detail/reference-data reads, and backend read/authorization coverage |
-| **M6C — Human Correction & Deterministic Revalidation** | Implement Save & revalidate, reviewed-data promotion, provider/engine transaction boundaries, issue replacement, stale-fact guards, revision/audit writes, and correction coverage |
-| **M6D — Approval, Rejection & Retry Commands/API** | Implement command authorization, ETag preconditions, legal state operations, high-value approval restriction, rejection reason, retry restoration, HTTP contracts, and command coverage |
+| **M6B — Review Persistence, Authorization & Read Model** | Implement `ReviewDraft`/operator contracts, migration `0004`, immutable revision persistence, effective-draft projection, authentication dependency, queue/detail/reference-data reads, reusable read-side ETag/precondition machinery, and backend read/authorization coverage; do not implement mutation commands |
+| **M6C — Human Correction & Deterministic Revalidation** | Implement Save & revalidate, its complete `If-Match` enforcement, reviewed-data promotion, provider/engine transaction boundaries, issue replacement, stale-fact guards, revision/audit writes, fresh-ETag response, and correction coverage |
+| **M6D — Approval, Rejection & Retry Commands/API** | Implement command authorization, reuse/enforce the existing ETag precondition contract for approve, reject, and retry, legal state operations, high-value approval restriction, rejection reason, retry restoration, HTTP contracts, and command coverage |
 | **M6E — React Review Application & Cross-Boundary Hardening** | Implement the two React routes, typed fetch layer, access interaction, queue/detail/forms/panels, accessible states, Vitest/RTL coverage, frontend CI, and backend/frontend hardening |
 | **M6F — Independent Phase 6 Audit & Closeout** | Fresh read-only audit, justified remediation if required, exact-head CI evidence, status closeout, and durable audit report |
 
@@ -1208,6 +1249,10 @@ cross-boundary invariants:
     obligations cover serialization, authorization, concurrency, rollback,
     state routes, privacy, UI states, and regression behavior without creating
     tests in M6A.
+17. ETag ownership is sequenced without a gap or duplicate implementation:
+    M6B supplies read-side generation/serialization and detail-resource
+    machinery, M6C enforces `If-Match` for Save & revalidate, and M6D reuses
+    that same contract for approve, reject, and retry.
 
 The document contains no unresolved design markers and no secret/token values.
 
