@@ -144,6 +144,18 @@ async def has_processed_source_sha(
     return match is not None
 
 
+async def get_source_document_order_id(
+    session: AsyncSession,
+    source_document_id: UUID,
+) -> UUID | None:
+    """Return the owning order ID for one source document, if it exists."""
+
+    owner_id: UUID | None = await session.scalar(
+        select(SourceDocumentModel.order_id).where(SourceDocumentModel.id == source_document_id)
+    )
+    return owner_id
+
+
 async def build_validation_facts(
     session: AsyncSession,
     *,
