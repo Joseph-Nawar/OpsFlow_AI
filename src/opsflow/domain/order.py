@@ -5,10 +5,14 @@ from dataclasses import dataclass, replace
 from datetime import date
 from enum import Enum
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from .errors import DomainValidationError, InvalidStateTransitionError
 from .records import OrderLine, SourceDocument
+
+if TYPE_CHECKING:
+    from opsflow.validation import ValidatedOrderData
 
 
 class OrderState(Enum):
@@ -116,6 +120,51 @@ class Order:
         if self.state is not OrderState.REJECTED:
             raise InvalidStateTransitionError(self.state, None, "reopen")
         return replace(self, state=OrderState.NEEDS_REVIEW, failure_origin=None)
+
+    def promote_validated_data(
+        self,
+        data: "ValidatedOrderData",
+        line_ids: tuple[UUID, ...],
+    ) -> "Order":
+        """Return a trusted order snapshot without changing lifecycle state."""
+
+        if self.state is not OrderState.EXTRACTED:
+            raise InvalidStateTransitionError(self.state, None, "promote_validated_data")
+
+        from opsflow.validation import ValidatedOrderData
+
+        if not isinstance(data, ValidatedOrderData):
+            raise DomainValidationError("data must be a ValidatedOrderData")
+        if type(line_ids) is not tuple:
+            raise DomainValidationError("line_ids must be an immutable tuple")
+        if len(line_ids) != len(data.lines):
+            raise DomainValidationError("line_ids must match the validated line count")
+        if not all(isinstance(line_id, UUID) for line_id in line_ids):
+            raise DomainValidationError("line_ids must contain UUID values")
+
+        lines = tuple(
+            OrderLine(
+                id=line_id,
+                sku=line.sku,
+                description=line.description,
+                quantity=line.quantity,
+                submitted_price=line.submitted_price,
+                trusted_catalogue_price=line.trusted_catalogue_price,
+            )
+            for line_id, line in zip(line_ids, data.lines, strict=True)
+        )
+        return Order(
+            id=self.id,
+            customer_reference=data.customer_reference,
+            po_number=data.po_number,
+            order_date=data.order_date,
+            requested_delivery_date=data.requested_delivery_date,
+            currency=data.currency,
+            lines=lines,
+            source_documents=self.source_documents,
+            state=self.state,
+            failure_origin=self.failure_origin,
+        )
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
