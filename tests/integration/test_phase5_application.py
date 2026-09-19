@@ -47,13 +47,14 @@ class FixedProvider:
         return self.data
 
 
-def make_source(source_id: UUID, source_sha256: str = "a" * 64) -> SourceDocument:
+def make_source(source_id: UUID, source_sha256: str | None = None) -> SourceDocument:
+    effective_sha256 = uuid4().hex * 2 if source_sha256 is None else source_sha256
     return SourceDocument(
         id=source_id,
         document_type=SourceDocumentType.PDF,
         name="purchase-order.pdf",
         mime_type="application/pdf",
-        sha256=source_sha256,
+        sha256=effective_sha256,
         message_id=None,
         storage_reference="synthetic://purchase-order.pdf",
         metadata=(),
@@ -304,8 +305,9 @@ async def _assert_high_value_validation() -> None:
 async def _assert_duplicate_sha_validation() -> None:
     first_order_id, first_source_id = uuid4(), uuid4()
     second_order_id, second_source_id = uuid4(), uuid4()
-    first_source = make_source(first_source_id)
-    second_source = make_source(second_source_id)
+    shared_sha256 = "f" * 64
+    first_source = make_source(first_source_id, shared_sha256)
+    second_source = make_source(second_source_id, shared_sha256)
     first_order = make_extracted_order(first_order_id, first_source)
     second_order = make_extracted_order(second_order_id, second_source)
     draft = make_draft(second_source)
