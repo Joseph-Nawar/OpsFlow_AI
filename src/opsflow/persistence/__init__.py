@@ -3,6 +3,7 @@
 from .models import (
     AuditEventModel,
     Base,
+    ExtractionSnapshotModel,
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
@@ -13,6 +14,7 @@ from .models import (
 __all__ = [
     "AuditEventModel",
     "Base",
+    "ExtractionSnapshotModel",
     "OrderCreationIdempotencyModel",
     "OrderLineModel",
     "OrderModel",
