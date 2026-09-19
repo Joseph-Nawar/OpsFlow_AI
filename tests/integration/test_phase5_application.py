@@ -87,7 +87,7 @@ def make_draft(
     source: SourceDocument,
     *,
     quantity: Decimal | None = Decimal("2"),
-    submitted_price: Decimal | None = Decimal("10"),
+    submitted_price: Decimal | None = Decimal("12"),
     currency: str | None = "USD",
     order_date: date | None = date(2030, 1, 1),
     delivery_date: date | None = date(2030, 1, 10),
@@ -283,7 +283,7 @@ async def _assert_high_value_validation() -> None:
                 source_id,
                 make_draft(source),
                 FixedProvider(make_business_data()),
-                make_policy("20"),
+                make_policy("24"),
                 ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
             )
