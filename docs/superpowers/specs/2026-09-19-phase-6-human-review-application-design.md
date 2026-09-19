@@ -309,6 +309,62 @@ because they are human-entered. The same Phase 5 provider contract,
 `ValidationFacts`, explicit policy/context, and pure `ValidationEngine` are
 reused; no second validation engine or human-specific rule set is introduced.
 
+### 4.4 Validation runtime composition
+
+Phase 6 revalidation receives its deterministic runtime inputs from one
+explicit backend composition layer. Neither the engine nor the browser
+constructs, infers, or overrides these values.
+
+The application composition creates one explicit `ValidationPolicy` for the
+development/demo runtime:
+
+```text
+supported_currencies       = ("USD",)
+price_tolerance_fraction   = Decimal("0.05")
+high_value_threshold       = Decimal("1000")
+```
+
+These are synthetic portfolio/demo business-policy values, not a claim about
+any real company. They are supplied to every Phase 6 revalidation service
+call, remain outside `ValidationEngine`, and are not inferred from a review
+request. The existing `ValidationPolicy` value object remains unchanged.
+Application and unit tests inject an explicit alternative policy directly;
+they do not mutate environment variables to change policy.
+
+Human revalidation uses a review-time `ValidationContext`, not a historical
+evaluation date reconstructed from the original Phase 5 operation. Future
+order and past-delivery rules therefore reflect the date on which the
+correction is reviewed. At the start of one Save & revalidate command, the
+application obtains one current date from a tiny injectable date-provider
+dependency and constructs exactly one
+`ValidationContext(evaluation_date=<captured review-time date>)`. That captured
+date is reused for the provider-independent engine call and is not read again
+within the command. The engine itself remains clock-free. Tests inject a fixed
+date provider and can prove that review-time, rather than historical
+extraction-time, date semantics apply.
+
+The development/demo composition supplies the existing
+`SandboxBusinessDataProvider` through explicit FastAPI application state or
+dependency wiring. It uses only the following synthetic reference records:
+
+| Kind | Reference | Name/description | Active | Currency | Catalogue price | Available quantity |
+| --- | --- | --- | --- | --- | --- | --- |
+| Customer | `CUST-001` | `Acme Industries` | Yes | — | — | — |
+| Customer | `CUST-002` | `Northstar Retail` | Yes | — | — | — |
+| Customer | `CUST-003` | `Inactive Industries` | No | — | — | — |
+| Product | `SKU-001` | `Widget` | Yes | `USD` | `Decimal("10")` | `Decimal("100")` |
+| Product | `SKU-002` | `Gadget` | Yes | `USD` | `Decimal("25")` | `Decimal("10")` |
+| Product | `SKU-003` | `Legacy Widget` | No | `USD` | `Decimal("5")` | `Decimal("0")` |
+
+All numeric values are `Decimal` values. The records are synthetic demo
+reference data, network-free, and credential-free. No private business data,
+external reference database, or new provider interface is introduced. The
+same explicitly composed provider and policy are available to review services
+and the separate current-reference-data read. Tests replace them with focused
+fakes or sandbox instances without mutating process environment. Phase 9 may
+replace the provider implementation with Odoo while preserving the Phase 6
+review-service contract.
+
 ## 5. Review revision persistence
 
 ### 5.1 Migration and table ownership
@@ -420,17 +476,35 @@ Each `changes` item has this canonical shape:
 
 ```json
 {
-  "field_path": "lines[0].submitted_price",
-  "old_value": "12",
-  "new_value": "10"
+  "field_path": "lines",
+  "old_value": [
+    {
+      "sku": "SKU-001",
+      "description": "Widget",
+      "quantity": "2",
+      "submitted_price": "12"
+    }
+  ],
+  "new_value": [
+    {
+      "sku": "SKU-001",
+      "description": "Widget",
+      "quantity": "2",
+      "submitted_price": "10"
+    }
+  ]
 }
 ```
 
-Top-level paths use their field names. Line paths use the zero-based ordered
-line index. If line count or order changes, one `lines` change records the
-complete old and new canonical line arrays; position-level comparisons are not
-invented for ambiguous line identity. Changes are ordered by the fixed
-top-level field order, then line index, then the fixed line field order.
+Scalar top-level paths use their field names: `customer_name`,
+`customer_reference`, `po_number`, `order_date`,
+`requested_delivery_date`, and `currency`. The ordered line tuple is one
+aggregate. If any canonical difference exists anywhere in its values, count,
+addition, removal, or order, exactly one `lines` change records the complete
+old and new canonical line arrays. No `lines[index].field` entries are
+created; review lines have no durable identity and a reorder must not be
+misrepresented as an individual edit. Changes are ordered by the fixed scalar
+field order, followed by the aggregate `lines` field.
 
 The server inserts a revision only when the complete canonical candidate
 differs from the effective draft. A no-op Save & revalidate is rejected with a
@@ -449,43 +523,59 @@ separate validation action.
 The application service performs this sequence:
 
 1. Resolve the server-side `OperatorContext` and require `REVIEWER`.
-2. Load the order, its owned Phase 5 extraction snapshot, the highest review
-   revision, and the effective draft. Read the current review ETag.
-3. Require and compare `If-Match`. A missing or mismatched validator stops the
-   operation before provider work and returns a safe precondition error.
-4. Require `NEEDS_REVIEW`; other states are rejected without mutation.
-5. Deserialize the complete request candidate and compute the server-side
-   canonical changes from the effective draft. Reject a no-op candidate.
-6. Compose an untrusted `ExtractionDraft` from immutable source/evidence and
-   candidate business values.
-7. Resolve trusted customer/product/catalogue/inventory data through the
-   existing `BusinessDataProvider` outside any final database transaction.
-8. Read the current OpsFlow-local `ValidationFacts` for the composed draft.
-9. Run the existing pure synchronous `ValidationEngine` once, outside any
-   database transaction, using the explicit Phase 5 policy and context.
-10. Begin the final database transaction and lock the order row with
-    `SELECT ... FOR UPDATE`.
-11. Recheck order state, source ownership/identity, the owning extraction
-    snapshot, latest revision number, and the `If-Match` review state. A stale
-    state/revision returns a safe stale-review error and rolls back.
-12. Re-read the relevant local `ValidationFacts` inside the final transaction.
+2. Perform the initial database preflight: load the order, its owned Phase 5
+   extraction snapshot, the highest review revision, the latest audit event ID,
+   and the effective draft; derive the current ETag and preconditions; require
+   `NEEDS_REVIEW`; and compute the server-side candidate diff needed to reject
+   a no-op.
+3. Explicitly end the SQLAlchemy autobegun read transaction with
+   `await session.rollback()` before any provider work. If an early
+   preflight, authorization, state, validator, or no-op error exits the
+   operation, the supplied request session is likewise rolled back or closed
+   before the error is returned.
+4. Assert at the provider boundary that `session.in_transaction() is False`.
+   Resolve trusted customer/product/catalogue/inventory data through the
+   existing `BusinessDataProvider` exactly once, outside any database
+   transaction. A no-op or other early error may terminate after the first
+   rollback without calling the provider.
+5. Read the current OpsFlow-local `ValidationFacts` in a second short read
+   transaction.
+6. Explicitly end that second read transaction with
+   `await session.rollback()` before deterministic evaluation.
+7. Assert at the engine boundary that `session.in_transaction() is False`.
+   Run the existing pure synchronous `ValidationEngine` exactly once, outside
+   any database transaction, using the explicit Phase 5 policy and the one
+   captured review-time context date.
+8. Begin the final database transaction and lock the order row with
+   `SELECT ... FOR UPDATE`.
+9. Recheck order state, source ownership/identity, the owning extraction
+   snapshot, latest revision number, latest audit generation, and the
+   `If-Match` review state. A stale state/revision/generation returns a safe
+   stale-review error and rolls back.
+10. Re-read the relevant local `ValidationFacts` inside the final transaction.
     If they differ from the facts used by the engine, abort safely with no
     revision, issue, graph, state, or audit write. The engine is not rerun in
     the transaction.
-13. Allocate the next positive revision number under the order lock, insert
+11. Allocate the next positive revision number under the order lock, insert
     the immutable complete payload and server-computed changes, and replace
     current validation issues with the engine result.
-14. If errors remain, preserve the trusted order graph and route through
+12. If errors remain, preserve the trusted order graph and route through
     `NEEDS_REVIEW → VALIDATED → NEEDS_REVIEW`.
-15. If no errors remain, promote only `ValidatedOrderData` through the narrow
+13. If no errors remain, promote only `ValidatedOrderData` through the narrow
     reviewed-data promotion operation, then route through
     `NEEDS_REVIEW → VALIDATED → READY_FOR_APPROVAL`.
-16. Insert the deterministic review audit events, then commit once. Return a
+14. Insert the deterministic review audit events, then commit once. Return a
     response only after the commit succeeds.
 
 No provider, AI model, network call, or external adapter executes inside the
 final transaction. All persistence helpers are transaction-owned and do not
 commit independently.
+
+The provider and engine test seams must be able to inspect the supplied
+`AsyncSession` and prove that `session.in_transaction()` is false at their
+invocation points. This is a transaction-boundary assertion, not a business
+decision. The same close-before-network rule applies even when the eventual
+provider is a network-backed Odoo adapter.
 
 ### 6.2 Stale state and facts
 
@@ -542,22 +632,30 @@ malformed context cannot acquire a capability through fallback behavior.
 ### 7.2 Lightweight bearer authentication
 
 Phase 6 uses FastAPI's standard bearer-security dependency. Development server
-configuration maps one configured bearer credential to one configured actor and
-one configured role. The credential is compared by the server; the client
-never supplies the role as an authority claim. Missing credentials, unknown
-credentials, and invalid configured role values fail safely with `401
-Unauthorized`; protected endpoints do not become anonymous by default.
+configuration maps a small configured collection of development bearer
+credentials to their configured actors and roles. The conceptual setting is
+`review_dev_operators`, exposed through the existing `OPSFLOW_` settings
+prefix as `OPSFLOW_REVIEW_DEV_OPERATORS`. It is an immutable tuple/list of
+records containing exactly:
 
-The configuration fields are `review_dev_token`, `review_dev_actor`, and
-`review_dev_role`, exposed through the existing `OPSFLOW_` settings prefix as
-`OPSFLOW_REVIEW_DEV_TOKEN`, `OPSFLOW_REVIEW_DEV_ACTOR`, and
-`OPSFLOW_REVIEW_DEV_ROLE`. The token is optional only in the sense that an
-unset token disables authenticated access; it never creates an anonymous
-fallback. Any `.env.example` additions made by later implementation contain
-empty or descriptive values only and never contain a real token. No secret or
-token is committed. Tests may bypass the transport dependency by injecting an
-explicit `OperatorContext` into the application service or test app
-dependency override.
+- opaque bearer `token`;
+- nonblank, bounded `actor`;
+- one server-parsed `OperatorRole`.
+
+The environment representation may be a JSON array parsed by the existing
+Pydantic Settings layer. It contains no usable repository token values. The
+configured collection must reject duplicate tokens, invalid roles, and blank
+or overlong actors. An empty or unset collection disables protected review
+access; it never creates an anonymous fallback. The server compares bearer
+tokens without logging them and should use standard-library constant-time
+comparison. The client never supplies the role as an authority claim.
+
+Missing credentials, unknown credentials, and invalid configured operator
+values fail safely with `401 Unauthorized`; protected endpoints do not become
+anonymous by default. Tests may bypass the transport dependency by injecting
+an explicit `OperatorContext` into the application service or test-app
+dependency override. Any later `.env.example` additions contain only empty or
+descriptive configuration values and never a real token.
 
 This is demo/development authentication plumbing. OAuth/OIDC, account
 persistence, passwords, refresh tokens, session management, production IAM,
@@ -594,16 +692,27 @@ order_id |
 current_state |
 failure_origin-or-null |
 latest_review_revision_number-or-null |
-latest_review_revision_id-or-null
+latest_review_revision_id-or-null |
+latest_audit_event_id-or-null
 ```
 
 The canonical separators and null spelling are fixed by the application
 serializer; the hash is over UTF-8 bytes. Including the revision ID and
-failure origin makes the validator sensitive to all Phase 6 mutations while
+failure origin, plus the latest audit event ID as an opaque mutation-generation
+component, makes the validator sensitive to all Phase 6 mutations while
 retaining the required order identity, lifecycle state, and latest revision
 presence/number. The ETag does not include current external reference data,
-provider output, prompts, credentials, or an audit history that is outside the
-review mutation model.
+provider output, prompts, credentials, or embedded audit-history content.
+
+The latest audit event ID closes the retry-state ABA case without adding a
+generic order-version column. A browser may observe `FAILED_RETRYABLE` with an
+`EXTRACTED` failure origin, another operator may retry it, and later processing
+may fail again from `EXTRACTED`. The lifecycle state and failure origin can
+then look identical to the first observation, but the successful retry wrote a
+fresh audit event, so the latest audit event ID differs and the old strong ETag
+cannot become valid again. Different ETags for otherwise equal visible
+representations are intentional; one strong ETag never spans two mutation
+generations.
 
 `If-Match` is required for:
 
@@ -711,6 +820,21 @@ trusted reference data** and contains:
 - one product/reference result per effective line position, with SKU,
   description, active status, currency, catalogue price, and available
   quantity, or `null` when no exact trusted product exists.
+
+The endpoint follows the same transaction boundary as Save & revalidate:
+
+```text
+database read of effective draft
+    → explicit session.rollback() to close the read transaction
+    → assert session.in_transaction() is False
+    → provider call with no database transaction open
+```
+
+If the effective draft is missing, the safe `409` response is returned after
+closing the read transaction and no provider call is made. A future network or
+Odoo provider must never hold a database transaction or connection open during
+this lookup. The future reference-data test seam must prove that the provider
+is called with `session.in_transaction() is False`.
 
 The response is never included in the stable review-detail ETag and is not
 persisted as a review revision. No broad customer/product search or catalogue
@@ -911,8 +1035,9 @@ Backend persistence coverage must prove:
   canonical Decimal strings, ordered lines, and no extra/provider fields;
 - strict deserialization rejects wrong types, missing/extra keys,
   noncanonical dates/Decimals, mutable collections, and source/evidence fields;
-- field changes are canonical, ordered, server-computed, and based on the
-  previous effective draft;
+- scalar field changes are canonical, ordered, server-computed, and based on
+  the previous effective draft, while any line-tuple difference produces
+  exactly one complete `lines` aggregate change;
 - no-op candidates create no revision, no audit, and no current-issue change;
 - revision insert/read is append-only and no update/delete operation exists;
 - effective-draft projection is correct for zero revisions and highest
@@ -924,12 +1049,19 @@ Backend application/HTTP coverage must prove:
 
 - the complete role matrix, including ordinary versus high-value approval;
 - missing, unknown, and malformed bearer credentials fail safely;
+- two or more configured development credentials can be active at once, and a
+  browser can switch between reviewer and approver credentials without a
+  server restart;
 - actor/role request-body or arbitrary-header claims are ignored and cannot
   grant authority;
 - tests can inject explicit immutable operator contexts without real tokens;
 - edit whitelist and complete draft shape are enforced;
 - no-op edit rejection is safe;
 - missing `If-Match` and stale ETags produce `428`/`412` structured errors;
+- ordinary revision, approve, reject, and retry mutations invalidate old
+  ETags; the retry-state ABA sequence also rejects the old ETag after the same
+  state/failure-origin pair recurs, while external reference-data changes do
+  not change the ETag;
 - final order locking, state/revision checks, local-fact staleness, and safe
   rollback protect every review mutation;
 - safe errors do not disclose provider payloads, source content, credentials,
@@ -940,7 +1072,15 @@ Backend application/HTTP coverage must prove:
 Application integration coverage must prove:
 
 - provider lookup and pure-engine execution occur outside the final database
-  transaction;
+  transaction, with `session.in_transaction() is False` proven at both
+  invocation points;
+- the first read transaction is explicitly closed before the provider call,
+  the local-fact read transaction is explicitly closed before the engine call,
+  and the reference-data endpoint closes its read transaction before its
+  provider call;
+- one explicit injectable policy, one captured review-time evaluation date,
+  and one synthetic network-free demo provider are composed at the backend
+  boundary and can be replaced in tests without environment mutation;
 - invalid correction remains `NEEDS_REVIEW`, preserves the trusted order
   graph, replaces current issues, and records revision/revalidation/review
   audit events atomically;
@@ -970,6 +1110,8 @@ configuration. Component/integration tests must cover:
 - labelled edit form, complete Save & revalidate behavior, invalid correction,
   clean correction, and no-op error;
 - ETag capture, `If-Match` submission, stale `412` handling without replay;
+- switching between two configured development credentials in one running test
+  application, with backend-resolved actor/role display;
 - allowed/hidden actions, ordinary approval, high-value approval restriction,
   elevated approval, rejection, retry, and API error rendering;
 - operator credential entry, session-only handling, backend-resolved role
@@ -1035,35 +1177,39 @@ define ownership and sequencing without authorizing M6B–M6F implementation.
 
 ## 16. Design self-review checklist
 
-The design was reviewed against the requested Phase 6 boundary:
+The fresh remediation self-review covers each independent finding and the
+cross-boundary invariants:
 
-- Phase 1 state transitions remain authoritative; no new state or implicit
-  reopening is introduced.
-- The Phase 5 extraction snapshot remains immutable and untrusted; human data
-  is stored in a separate immutable complete review revision.
-- Human edits are composed with original source identity, notes, and evidence,
-  and the existing deterministic engine is reused exactly once outside the
-  final transaction.
-- Trusted order fields and lines are never populated from invalid review
-  values; clean promotion uses validated trusted data through a separate
-  `NEEDS_REVIEW`-specific path.
-- Actors and roles are server-resolved through a bearer dependency and fixed
-  role matrix; client claims cannot grant authority.
-- High-value approval uses the persisted Phase 5 warning and no
-  `approval_level` column.
-- Every mutation requires `If-Match`, uses a strong ETag, locks the order, and
-  rechecks state, revision, source ownership, and local facts before commit.
-- Provider/network and pure-engine calls are outside the final write
-  transaction; all final writes are atomic.
-- Queue ordering/pagination, stable detail response, separate current trusted
-  reference data, and reuse of the existing audit endpoint are explicit.
-- Raw-source persistence/viewing, external integrations, generic frameworks,
-  and Phase 7–12 functionality are excluded.
-- Backend and frontend test obligations cover serialization, authorization,
-  concurrency, rollback, state routes, privacy, UI states, and regression
-  behavior without creating tests in M6A.
-- The document contains no unresolved design markers and no secret/token
-  values.
+1. Initial database reads are explicitly rolled back before provider execution.
+2. OpsFlow-local fact reads are explicitly rolled back before engine execution.
+3. The reference-data endpoint closes its read transaction before its provider
+   call.
+4. Validation policy composition is explicit, synthetic, injectable, and
+   outside the engine.
+5. Review-time `ValidationContext` captures exactly one injectable date per
+   command; historical extraction-time dates are not reused.
+6. The existing sandbox provider has an explicit synthetic, network-free demo
+   composition.
+7. Multiple development operators can be active in one server instance.
+8. Browser actor/role claims are never authoritative.
+9. Latest audit-event ID prevents stale ETags from reviving after retry-state
+   ABA, while volatile reference-data changes remain outside the ETag.
+10. Line history uses one complete ordered aggregate change and requires no
+    stable review-line identity.
+11. Phase 1 state transitions remain authoritative; no new state or implicit
+    reopening is introduced.
+12. The Phase 5 extraction snapshot remains immutable and untrusted; human data
+    is stored in a separate immutable complete review revision.
+13. Human values remain untrusted until the existing deterministic Phase 5
+    validation produces promotable trusted data.
+14. No external side effect enters Phase 6.
+15. No Phase 7+ implementation or dependency is introduced.
+16. No unnecessary general framework is added; backend and frontend test
+    obligations cover serialization, authorization, concurrency, rollback,
+    state routes, privacy, UI states, and regression behavior without creating
+    tests in M6A.
+
+The document contains no unresolved design markers and no secret/token values.
 
 ## 17. M6A acceptance boundary
 
