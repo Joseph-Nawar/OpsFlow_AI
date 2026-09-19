@@ -433,6 +433,96 @@ def test_validate_order_builds_reference_request_and_closes_read_transactions(
     assert result.order.state is OrderState.READY_FOR_APPROVAL
 
 
+@pytest.mark.parametrize(
+    ("candidates", "expected_reference"),
+    (
+        ((), None),
+        ((TrustedCustomer("CUST-1", "Acme Ltd", False),), None),
+        ((TrustedCustomer("CUST-1", "Acme Ltd", True),), "CUST-1"),
+        (
+            (
+                TrustedCustomer("CUST-1", "Acme Ltd", True),
+                TrustedCustomer("CUST-2", "Acme Ltd", True),
+            ),
+            None,
+        ),
+    ),
+)
+def test_canonical_customer_reference_requires_one_active_candidate(
+    candidates: tuple[TrustedCustomer, ...],
+    expected_reference: str | None,
+) -> None:
+    data = TrustedBusinessData(candidates, ())
+
+    assert validation_module._canonical_customer_reference(data) == expected_reference
+
+
+def test_ambiguous_mixed_customer_candidates_do_not_supply_local_duplicate_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+    ambiguous_data = TrustedBusinessData(
+        customer_candidates=(
+            TrustedCustomer("CUST-1", "Acme Ltd", True),
+            TrustedCustomer("CUST-2", "Acme Ltd", False),
+        ),
+        products_by_line=make_business_data().products_by_line,
+    )
+    provider = RecordingProvider(session, ambiguous_data)
+    install_repository_doubles(monkeypatch)
+    fact_kwargs: list[dict[str, object]] = []
+
+    async def build_facts(session: FakeSession, **kwargs: object) -> ValidationFacts:
+        fact_kwargs.append(kwargs)
+        return ValidationFacts(False, True)
+
+    monkeypatch.setattr(validation_module, "build_validation_facts", build_facts)
+    engine_calls: list[tuple[object, ...]] = []
+    original_validate = validation_module.validation_engine.validate
+
+    def validate(*args: object) -> ValidationResult:
+        engine_calls.append(args)
+        return original_validate(*args)
+
+    monkeypatch.setattr(validation_module.validation_engine, "validate", validate)
+    draft = make_draft()
+    draft = replace(
+        draft,
+        customer_reference=None,
+        customer_name="Acme Ltd",
+        lines=(replace(draft.lines[0], submitted_price=Decimal("12")),),
+    )
+
+    result = asyncio.run(
+        validation_module.validate_order(
+            session,
+            ORDER_ID,
+            SOURCE_ID,
+            draft,
+            provider,
+            validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
+            validation_module.ValidationContext(date(2030, 1, 2)),
+            RECORDED_AT,
+        )
+    )
+
+    assert len(provider.calls) == 1
+    assert len(engine_calls) == 1
+    assert engine_calls[0][1] is ambiguous_data
+    assert engine_calls[0][2] == ValidationFacts(False, True)
+    assert len(fact_kwargs) == 2
+    assert [kwargs["canonical_customer_reference"] for kwargs in fact_kwargs] == [None, None]
+    assert [kwargs["po_number"] for kwargs in fact_kwargs] == ["PO-1", "PO-1"]
+    assert result.order.state is OrderState.NEEDS_REVIEW
+    assert [issue.rule_code for issue in result.validation_result.issues] == [
+        "AMBIGUOUS_CUSTOMER",
+        "DOCUMENT_ALREADY_PROCESSED",
+    ]
+    assert "DUPLICATE_CUSTOMER_PO" not in {
+        issue.rule_code for issue in result.validation_result.issues
+    }
+
+
 def test_validate_order_distinguishes_missing_order_and_source_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

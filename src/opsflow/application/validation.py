@@ -279,12 +279,12 @@ def _raise_snapshot_status(
 
 
 def _canonical_customer_reference(data: TrustedBusinessData) -> str | None:
-    active_candidates = tuple(
-        candidate for candidate in data.customer_candidates if candidate.active
-    )
-    if len(active_candidates) != 1:
+    if len(data.customer_candidates) != 1:
         return None
-    return active_candidates[0].reference
+    candidate = data.customer_candidates[0]
+    if not candidate.active:
+        return None
+    return candidate.reference
 
 
 def _route_description(result: ValidationResult) -> str:
