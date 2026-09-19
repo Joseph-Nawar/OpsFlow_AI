@@ -1,7 +1,9 @@
 """Explicit conversion between Phase 1 records and persistence models."""
 
+import re
 from collections.abc import Sequence
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -16,14 +18,68 @@ from opsflow.domain import (
     ValidationIssue,
     ValidationSeverity,
 )
+from opsflow.extraction.models import Evidence, ExtractedLine, ExtractionDraft
 
 from .models import (
     AuditEventModel,
+    ExtractionSnapshotModel,
     OrderLineModel,
     OrderModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
+
+_DRAFT_KEYS = frozenset(
+    {
+        "source",
+        "customer_name",
+        "customer_reference",
+        "po_number",
+        "order_date",
+        "requested_delivery_date",
+        "currency",
+        "lines",
+        "notes",
+        "evidence",
+    }
+)
+_SOURCE_KEYS = frozenset({"sha256", "document_type"})
+_LINE_KEYS = frozenset({"sku", "description", "quantity", "submitted_price"})
+_EVIDENCE_KEYS = frozenset({"field_path", "source_location", "quote"})
+_CANONICAL_DECIMAL = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", flags=re.ASCII)
+_CANONICAL_SHA256 = re.compile(r"[0-9a-f]{64}", flags=re.ASCII)
+_CANONICAL_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", flags=re.ASCII)
+
+
+@dataclass(frozen=True, slots=True)
+class PersistedExtractionSnapshot:
+    """Typed persistence envelope for one immutable extraction draft."""
+
+    id: UUID
+    order_id: UUID
+    source_document_id: UUID
+    source_sha256: str
+    source_document_type: SourceDocumentType
+    draft: ExtractionDraft
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.id, UUID):
+            raise DomainValidationError("snapshot id must be a UUID")
+        if not isinstance(self.order_id, UUID):
+            raise DomainValidationError("snapshot order_id must be a UUID")
+        if not isinstance(self.source_document_id, UUID):
+            raise DomainValidationError("snapshot source_document_id must be a UUID")
+        _require_canonical_sha(self.source_sha256, "snapshot source_sha256")
+        if not isinstance(self.source_document_type, SourceDocumentType):
+            raise DomainValidationError("snapshot source_document_type is invalid")
+        if not isinstance(self.draft, ExtractionDraft):
+            raise DomainValidationError("snapshot draft must be an ExtractionDraft")
+        if self.source_sha256 != self.draft.source_sha256:
+            raise DomainValidationError("snapshot source_sha256 disagrees with draft")
+        if self.source_document_type is not self.draft.source_document_type:
+            raise DomainValidationError("snapshot document type disagrees with draft")
+        _require_aware_datetime(self.created_at, "snapshot created_at")
 
 
 def order_to_model(order: Order, created_at: datetime) -> OrderModel:
@@ -196,6 +252,196 @@ def source_document_from_model(
         raise DomainValidationError("persisted source document violates Phase 1") from error
 
 
+def extraction_draft_to_payload(draft: ExtractionDraft) -> dict[str, object]:
+    """Serialize an extraction draft into its strict canonical JSON shape."""
+
+    if not isinstance(draft, ExtractionDraft):
+        raise DomainValidationError("draft must be an ExtractionDraft")
+    if type(draft.lines) is not tuple or type(draft.evidence) is not tuple:
+        raise DomainValidationError("draft collections must be immutable tuples")
+    _require_canonical_sha(draft.source_sha256, "draft source_sha256")
+    if not isinstance(draft.source_document_type, SourceDocumentType):
+        raise DomainValidationError("draft source_document_type is invalid")
+
+    lines: list[dict[str, object]] = []
+    for line in draft.lines:
+        if not isinstance(line, ExtractedLine):
+            raise DomainValidationError("draft lines must contain ExtractedLine values")
+        lines.append(
+            {
+                "sku": line.sku,
+                "description": line.description,
+                "quantity": _optional_decimal_to_string(line.quantity, "quantity"),
+                "submitted_price": _optional_decimal_to_string(
+                    line.submitted_price, "submitted_price"
+                ),
+            }
+        )
+
+    evidence: list[dict[str, object]] = []
+    for item in draft.evidence:
+        if not isinstance(item, Evidence):
+            raise DomainValidationError("draft evidence must contain Evidence values")
+        evidence.append(
+            {
+                "field_path": item.field_path,
+                "source_location": item.source_location,
+                "quote": item.quote,
+            }
+        )
+
+    return {
+        "source": {
+            "sha256": draft.source_sha256,
+            "document_type": draft.source_document_type.value,
+        },
+        "customer_name": draft.customer_name,
+        "customer_reference": draft.customer_reference,
+        "po_number": draft.po_number,
+        "order_date": _optional_date_to_string(draft.order_date, "order_date"),
+        "requested_delivery_date": _optional_date_to_string(
+            draft.requested_delivery_date, "requested_delivery_date"
+        ),
+        "currency": draft.currency,
+        "lines": lines,
+        "notes": draft.notes,
+        "evidence": evidence,
+    }
+
+
+def extraction_draft_from_payload(payload: object) -> ExtractionDraft:
+    """Parse only the strict canonical JSON shape into an untrusted draft."""
+
+    root = _require_object(payload, "payload")
+    _require_exact_keys(root, _DRAFT_KEYS, "payload")
+    source = _require_object(root["source"], "payload.source")
+    _require_exact_keys(source, _SOURCE_KEYS, "payload.source")
+
+    source_sha256 = _require_canonical_sha(source["sha256"], "payload.source.sha256")
+    source_document_type = _source_document_type(
+        source["document_type"], "payload.source.document_type"
+    )
+    lines_value = root["lines"]
+    if type(lines_value) is not list:
+        raise DomainValidationError("payload.lines must be a list")
+    lines: list[ExtractedLine] = []
+    for index, item in enumerate(lines_value):
+        line = _require_object(item, f"payload.lines[{index}]")
+        _require_exact_keys(line, _LINE_KEYS, f"payload.lines[{index}]")
+        try:
+            lines.append(
+                ExtractedLine(
+                    sku=_optional_text(line["sku"], f"payload.lines[{index}].sku"),
+                    description=_optional_text(
+                        line["description"], f"payload.lines[{index}].description"
+                    ),
+                    quantity=_optional_decimal_from_string(
+                        line["quantity"], f"payload.lines[{index}].quantity"
+                    ),
+                    submitted_price=_optional_decimal_from_string(
+                        line["submitted_price"], f"payload.lines[{index}].submitted_price"
+                    ),
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise DomainValidationError(f"payload.lines[{index}] is invalid") from error
+
+    evidence_value = root["evidence"]
+    if type(evidence_value) is not list:
+        raise DomainValidationError("payload.evidence must be a list")
+    evidence: list[Evidence] = []
+    for index, item in enumerate(evidence_value):
+        evidence_object = _require_object(item, f"payload.evidence[{index}]")
+        _require_exact_keys(evidence_object, _EVIDENCE_KEYS, f"payload.evidence[{index}]")
+        try:
+            evidence.append(
+                Evidence(
+                    field_path=_required_text(
+                        evidence_object["field_path"],
+                        f"payload.evidence[{index}].field_path",
+                    ),
+                    source_location=_required_text(
+                        evidence_object["source_location"],
+                        f"payload.evidence[{index}].source_location",
+                    ),
+                    quote=_required_text(
+                        evidence_object["quote"], f"payload.evidence[{index}].quote"
+                    ),
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise DomainValidationError(f"payload.evidence[{index}] is invalid") from error
+
+    try:
+        return ExtractionDraft(
+            source_sha256=source_sha256,
+            source_document_type=source_document_type,
+            customer_name=_optional_text(root["customer_name"], "payload.customer_name"),
+            customer_reference=_optional_text(
+                root["customer_reference"], "payload.customer_reference"
+            ),
+            po_number=_optional_text(root["po_number"], "payload.po_number"),
+            order_date=_optional_date_from_string(root["order_date"], "payload.order_date"),
+            requested_delivery_date=_optional_date_from_string(
+                root["requested_delivery_date"], "payload.requested_delivery_date"
+            ),
+            currency=_optional_text(root["currency"], "payload.currency"),
+            lines=tuple(lines),
+            notes=_optional_text(root["notes"], "payload.notes"),
+            evidence=tuple(evidence),
+        )
+    except (TypeError, ValueError) as error:
+        raise DomainValidationError(
+            "payload does not satisfy the ExtractionDraft contract"
+        ) from error
+
+
+def extraction_snapshot_to_model(
+    snapshot: PersistedExtractionSnapshot,
+) -> ExtractionSnapshotModel:
+    """Map a checked typed snapshot into its relational envelope."""
+
+    if not isinstance(snapshot, PersistedExtractionSnapshot):
+        raise DomainValidationError("snapshot must be a PersistedExtractionSnapshot")
+    return ExtractionSnapshotModel(
+        id=snapshot.id,
+        order_id=snapshot.order_id,
+        source_document_id=snapshot.source_document_id,
+        source_sha256=snapshot.source_sha256,
+        source_document_type=snapshot.source_document_type.value,
+        payload=extraction_draft_to_payload(snapshot.draft),
+        created_at=snapshot.created_at,
+    )
+
+
+def extraction_snapshot_from_model(
+    row: ExtractionSnapshotModel,
+) -> PersistedExtractionSnapshot:
+    """Map and validate one persisted relational snapshot envelope."""
+
+    if not isinstance(row, ExtractionSnapshotModel):
+        raise DomainValidationError("row must be an ExtractionSnapshotModel")
+    source_sha256 = _require_canonical_sha(row.source_sha256, "row source_sha256")
+    source_document_type = _source_document_type(
+        row.source_document_type, "row source_document_type"
+    )
+    draft = extraction_draft_from_payload(row.payload)
+    try:
+        return PersistedExtractionSnapshot(
+            id=row.id,
+            order_id=row.order_id,
+            source_document_id=row.source_document_id,
+            source_sha256=source_sha256,
+            source_document_type=source_document_type,
+            draft=draft,
+            created_at=row.created_at,
+        )
+    except (TypeError, ValueError) as error:
+        raise DomainValidationError(
+            "persisted extraction snapshot violates its contract"
+        ) from error
+
+
 def _line_from_model(row: OrderLineModel, expected_order_id: UUID) -> OrderLine:
     if row.order_id != expected_order_id:
         raise DomainValidationError("order line belongs to a different order")
@@ -221,6 +467,99 @@ def _line_from_model(row: OrderLineModel, expected_order_id: UUID) -> OrderLine:
         )
     except (TypeError, ValueError) as error:
         raise DomainValidationError("persisted order line violates Phase 1") from error
+
+
+def _require_object(value: object, field_name: str) -> dict[str, object]:
+    if type(value) is not dict or not all(type(key) is str for key in value):
+        raise DomainValidationError(f"{field_name} must be a JSON object")
+    return value
+
+
+def _require_exact_keys(
+    value: dict[str, object], expected: frozenset[str], field_name: str
+) -> None:
+    if set(value) != expected:
+        raise DomainValidationError(f"{field_name} has unexpected or missing keys")
+
+
+def _required_text(value: object, field_name: str) -> str:
+    if type(value) is not str or not value:
+        raise DomainValidationError(f"{field_name} must be a non-empty string")
+    return value
+
+
+def _optional_text(value: object, field_name: str) -> str | None:
+    if value is not None and type(value) is not str:
+        raise DomainValidationError(f"{field_name} must be a string or null")
+    return value
+
+
+def _canonical_decimal(value: Decimal, field_name: str) -> str:
+    if not isinstance(value, Decimal) or not value.is_finite():
+        raise DomainValidationError(f"{field_name} must be a finite Decimal")
+    if value == 0:
+        return "0"
+    result = format(value, "f")
+    if "." in result:
+        result = result.rstrip("0").rstrip(".")
+    return result
+
+
+def _optional_decimal_to_string(value: Decimal | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _canonical_decimal(value, field_name)
+
+
+def _optional_decimal_from_string(value: object, field_name: str) -> Decimal | None:
+    if value is None:
+        return None
+    if type(value) is not str or _CANONICAL_DECIMAL.fullmatch(value) is None:
+        raise DomainValidationError(f"{field_name} must be a canonical Decimal string or null")
+    try:
+        parsed = Decimal(value)
+    except (TypeError, ValueError) as error:
+        raise DomainValidationError(f"{field_name} is not a Decimal string") from error
+    if _canonical_decimal(parsed, field_name) != value:
+        raise DomainValidationError(f"{field_name} is not canonical")
+    return parsed
+
+
+def _optional_date_to_string(value: date | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if type(value) is not date:
+        raise DomainValidationError(f"{field_name} must be a date or null")
+    return value.isoformat()
+
+
+def _optional_date_from_string(value: object, field_name: str) -> date | None:
+    if value is None:
+        return None
+    if type(value) is not str or _CANONICAL_DATE.fullmatch(value) is None:
+        raise DomainValidationError(f"{field_name} must be a canonical date string or null")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as error:
+        raise DomainValidationError(f"{field_name} is not a valid date") from error
+    if parsed.isoformat() != value:
+        raise DomainValidationError(f"{field_name} is not canonical")
+    return parsed
+
+
+def _require_canonical_sha(value: object, field_name: str) -> str:
+    if type(value) is not str or _CANONICAL_SHA256.fullmatch(value) is None:
+        raise DomainValidationError(f"{field_name} must be a lowercase SHA-256 digest")
+    return value
+
+
+def _source_document_type(value: object, field_name: str) -> SourceDocumentType:
+    if type(value) is not str:
+        raise DomainValidationError(f"{field_name} must be a SourceDocumentType value")
+    try:
+        return SourceDocumentType(value)
+    except ValueError as error:
+        raise DomainValidationError(f"{field_name} is not a valid SourceDocumentType") from error
 
 
 def _ordered_rows[ModelRow: (OrderLineModel, SourceDocumentModel)](

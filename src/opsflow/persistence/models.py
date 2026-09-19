@@ -11,6 +11,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -26,7 +27,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    """Declarative base containing exactly the Phase 2 business tables."""
+    """Declarative base containing the current relational business tables."""
 
 
 _ORDER_STATES = (
@@ -117,6 +118,7 @@ class OrderLineModel(Base):
 class SourceDocumentModel(Base):
     __tablename__ = "source_documents"
     __table_args__ = (
+        UniqueConstraint("id", "order_id", name="uq_source_documents_id_order_id"),
         UniqueConstraint("order_id", "position", name="uq_source_documents_order_position"),
         CheckConstraint("position >= 0", name="ck_source_documents_position"),
         CheckConstraint(
@@ -219,3 +221,43 @@ class OrderCreationIdempotencyModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ExtractionSnapshotModel(Base):
+    """Immutable, application-owned untrusted extraction snapshot envelope."""
+
+    __tablename__ = "extraction_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "order_id",
+            "source_document_id",
+            name="uq_extraction_snapshots_order_source",
+        ),
+        ForeignKeyConstraint(["order_id"], ["orders.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(
+            ["source_document_id", "order_id"],
+            ["source_documents.id", "source_documents.order_id"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "(source_sha256 COLLATE \"C\") ~ '^[0-9a-f]{64}$'",
+            name="ck_extraction_snapshots_sha256",
+        ),
+        CheckConstraint(
+            "source_document_type IN ('EMAIL_BODY', 'PDF', 'XLSX', 'CSV', 'FORM')",
+            name="ck_extraction_snapshots_document_type",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(payload) = 'object'",
+            name="ck_extraction_snapshots_payload_object",
+        ),
+        Index("ix_extraction_snapshots_source_sha256", "source_sha256"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    order_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    source_document_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    source_document_type: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

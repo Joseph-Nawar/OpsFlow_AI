@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from opsflow.persistence.models import (
     AuditEventModel,
     Base,
+    ExtractionSnapshotModel,
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
@@ -84,6 +85,15 @@ EXPECTED_COLUMNS = {
         "order_id",
         "created_at",
     },
+    "extraction_snapshots": {
+        "id",
+        "order_id",
+        "source_document_id",
+        "source_sha256",
+        "source_document_type",
+        "payload",
+        "created_at",
+    },
 }
 
 
@@ -125,7 +135,7 @@ def test_metadata_contains_exactly_the_six_phase_2_tables_and_columns() -> None:
         assert set(metadata.tables[table_name].columns.keys()) == expected_columns
 
 
-def test_named_models_map_to_the_six_phase_2_tables() -> None:
+def test_named_models_map_to_the_expected_relational_tables() -> None:
     assert {
         model.__table__.name
         for model in (
@@ -135,6 +145,7 @@ def test_named_models_map_to_the_six_phase_2_tables() -> None:
             ValidationIssueModel,
             AuditEventModel,
             OrderCreationIdempotencyModel,
+            ExtractionSnapshotModel,
         )
     } == set(EXPECTED_COLUMNS)
 
@@ -148,6 +159,7 @@ def test_primary_keys_match_the_relational_identity_contract() -> None:
         "validation_issues": ("order_id", "position"),
         "audit_events": ("id",),
         "order_creation_idempotency": ("idempotency_key",),
+        "extraction_snapshots": ("id",),
     }
 
     for table_name, expected_primary_key in expected_primary_keys.items():
@@ -171,6 +183,16 @@ def test_children_and_idempotency_rows_have_the_required_foreign_keys() -> None:
         assert foreign_keys[0].parent.name == "order_id"
         assert foreign_keys[0].target_fullname == "orders.id"
         assert foreign_keys[0].ondelete == on_delete
+
+    snapshot_foreign_keys = list(metadata.tables["extraction_snapshots"].foreign_keys)
+    assert {
+        (foreign_key.parent.name, foreign_key.target_fullname, foreign_key.ondelete)
+        for foreign_key in snapshot_foreign_keys
+    } == {
+        ("order_id", "orders.id", "CASCADE"),
+        ("source_document_id", "source_documents.id", "CASCADE"),
+        ("order_id", "source_documents.order_id", "CASCADE"),
+    }
 
 
 def test_ordered_children_have_stable_positions_and_required_access_paths() -> None:
@@ -205,6 +227,16 @@ def test_audit_and_idempotency_constraints_support_current_reads_and_uniqueness(
     )
     assert unique_columns == {("order_id",)}
 
+    snapshots = metadata.tables["extraction_snapshots"]
+    snapshot_indexes = list(snapshots.indexes)
+    assert _column_sets(snapshot_indexes) == {("source_sha256",)}
+    assert [index.name for index in snapshot_indexes] == ["ix_extraction_snapshots_source_sha256"]
+    assert {
+        constraint.name
+        for constraint in snapshots.constraints
+        if isinstance(constraint, UniqueConstraint)
+    } == {"uq_extraction_snapshots_order_source"}
+
 
 def test_columns_use_the_required_postgresql_storage_types_and_nullability() -> None:
     metadata = Base.metadata
@@ -222,6 +254,7 @@ def test_columns_use_the_required_postgresql_storage_types_and_nullability() -> 
     assert isinstance(metadata.tables["source_documents"].c.metadata.type, JSONB)
     assert isinstance(metadata.tables["validation_issues"].c.expected.type, JSONB)
     assert isinstance(metadata.tables["validation_issues"].c.actual.type, JSONB)
+    assert isinstance(metadata.tables["extraction_snapshots"].c.payload.type, JSONB)
     fingerprint_type = metadata.tables["order_creation_idempotency"].c.request_fingerprint.type
     assert isinstance(fingerprint_type, CHAR)
     assert fingerprint_type.length == 64
@@ -247,6 +280,18 @@ def test_columns_use_the_required_postgresql_storage_types_and_nullability() -> 
         assert orders.c[nullable_column].nullable is True
     assert orders.c.state.nullable is False
     assert orders.c.created_at.nullable is False
+
+    snapshots = metadata.tables["extraction_snapshots"]
+    assert snapshots.c.id.nullable is False
+    assert snapshots.c.order_id.nullable is False
+    assert snapshots.c.source_document_id.nullable is False
+    assert snapshots.c.source_sha256.nullable is False
+    assert snapshots.c.source_document_type.nullable is False
+    assert snapshots.c.payload.nullable is False
+    assert snapshots.c.created_at.nullable is False
+    assert snapshots.c.id.server_default is None
+    assert snapshots.c.created_at.server_default is None
+    assert snapshots.c.created_at.type.timezone is True
 
 
 def test_orders_encode_state_currency_and_failure_origin_checks() -> None:
@@ -336,3 +381,20 @@ def test_metadata_has_no_processing_attempt_table_or_custom_enum_type() -> None:
         for table in metadata.tables.values()
         for column in table.columns
     )
+
+
+def test_extraction_snapshot_checks_are_named_and_defense_in_depth_is_explicit() -> None:
+    snapshots = Base.metadata.tables["extraction_snapshots"]
+    assert {
+        constraint.name
+        for constraint in snapshots.constraints
+        if isinstance(constraint, CheckConstraint)
+    } == {
+        "ck_extraction_snapshots_sha256",
+        "ck_extraction_snapshots_document_type",
+        "ck_extraction_snapshots_payload_object",
+    }
+    checks = _normalized_checks(snapshots)
+    assert any("jsonb_typeof(payload) = 'object'" in check for check in checks)
+    assert any("source_sha256" in check and "^[0-9a-f]{64}$" in check for check in checks)
+    assert any("source_document_type" in check for check in checks)

@@ -14,6 +14,7 @@ from opsflow.settings import Settings
 REPOSITORY_ROOT = Path(__file__).parents[2]
 BASELINE_REVISION = "0001_baseline"
 PHASE_2_REVISION = "0002_phase2_persistence"
+CURRENT_HEAD_REVISION = "0003_phase5_extraction_snapshots"
 
 
 def test_migration_upgrade_downgrade_and_reupgrade() -> None:
@@ -27,7 +28,7 @@ def test_migration_upgrade_downgrade_and_reupgrade() -> None:
     assert table_names == {"alembic_version"}
 
     _run_alembic("upgrade", "head")
-    assert PHASE_2_REVISION in _run_alembic("current")
+    assert CURRENT_HEAD_REVISION in _run_alembic("current")
 
 
 def _run_alembic(*arguments: str) -> str:
