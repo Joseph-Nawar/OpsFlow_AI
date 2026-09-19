@@ -11,7 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 import opsflow.application.validation as validation_module
 from opsflow.application.errors import OrderValidationStateError, ValidationFactsChangedError
 from opsflow.application.validation import validate_order
-from opsflow.domain import Order, OrderLine, OrderState, SourceDocument, SourceDocumentType
+from opsflow.domain import (
+    Order,
+    OrderLine,
+    OrderState,
+    SourceDocument,
+    SourceDocumentType,
+    ValidationIssue,
+    ValidationSeverity,
+)
 from opsflow.extraction.models import ExtractedLine, ExtractionDraft
 from opsflow.persistence.mappers import PersistedExtractionSnapshot
 from opsflow.persistence.repositories import (
@@ -21,6 +29,7 @@ from opsflow.persistence.repositories import (
     get_order,
     insert_extraction_snapshot,
     insert_order_graph,
+    replace_validation_issues,
 )
 from opsflow.settings import Settings
 from opsflow.validation import (
@@ -171,6 +180,17 @@ def test_final_write_failure_rolls_back_snapshot_graph_state_and_audits(
     asyncio.run(_assert_final_write_rollback(monkeypatch))
 
 
+@pytest.mark.parametrize(
+    "failure_stage",
+    ("snapshot", "issues", "order", "graph", "audit"),
+)
+def test_each_final_write_failure_rolls_back_the_complete_operation(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+) -> None:
+    asyncio.run(_assert_final_write_failure_stage(monkeypatch, failure_stage))
+
+
 def test_final_state_race_aborts_without_writes(monkeypatch: pytest.MonkeyPatch) -> None:
     asyncio.run(_assert_final_state_race(monkeypatch))
 
@@ -179,6 +199,12 @@ def test_final_validation_facts_change_aborts_without_writes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     asyncio.run(_assert_final_facts_change(monkeypatch))
+
+
+def test_final_validation_facts_change_aborts_review_route_without_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(_assert_final_review_facts_change(monkeypatch))
 
 
 async def _assert_ready_validation() -> None:
@@ -494,6 +520,68 @@ async def _assert_final_write_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
         await engine.dispose()
 
 
+async def _assert_final_write_failure_stage(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+) -> None:
+    order_id, source_id = uuid4(), uuid4()
+    source = make_source(source_id)
+    order = make_extracted_order(order_id, source)
+    prior_issue = ValidationIssue(
+        rule_code="PRIOR_ISSUE",
+        severity=ValidationSeverity.WARNING,
+        field="po_number",
+        expected="present",
+        actual=None,
+        explanation="prior issue",
+    )
+    engine = create_async_engine(Settings().database_url)
+    target_name = {
+        "snapshot": "insert_extraction_snapshot",
+        "issues": "replace_validation_issues",
+        "order": "update_order_snapshot",
+        "graph": "replace_order_graph",
+        "audit": "insert_audit_event",
+    }[failure_stage]
+    original = getattr(validation_module, target_name)
+
+    async def fail_after(*args: object, **kwargs: object) -> None:
+        await original(*args, **kwargs)
+        raise RuntimeError(f"controlled {failure_stage} failure")
+
+    monkeypatch.setattr(validation_module, target_name, fail_after)
+    try:
+        await _commit_order(engine, order)
+        async with AsyncSession(engine) as session:
+            await replace_validation_issues(session, order_id, (prior_issue,))
+            await session.commit()
+
+        async with AsyncSession(engine) as session:
+            with pytest.raises(RuntimeError, match=f"controlled {failure_stage} failure"):
+                await validate_order(
+                    session,
+                    order_id,
+                    source_id,
+                    make_draft(source),
+                    FixedProvider(make_business_data()),
+                    make_policy(),
+                    ValidationContext(date(2030, 1, 2)),
+                    RECORDED_AT,
+                )
+
+        async with AsyncSession(engine) as session:
+            persisted = await get_order(session, order_id)
+            snapshot = await get_extraction_snapshot(session, order_id, source_id)
+            audits = await get_audit_events(session, order_id)
+        assert persisted is not None
+        assert persisted.order == order
+        assert persisted.validation_issues == (prior_issue,)
+        assert snapshot is None
+        assert audits == ()
+    finally:
+        await engine.dispose()
+
+
 async def _assert_final_state_race(monkeypatch: pytest.MonkeyPatch) -> None:
     order_id, source_id = uuid4(), uuid4()
     source = make_source(source_id)
@@ -571,6 +659,50 @@ async def _assert_final_facts_change(monkeypatch: pytest.MonkeyPatch) -> None:
         assert calls == 2
         assert persisted is not None
         assert persisted.order == order
+        assert snapshot is None
+        assert audits == ()
+    finally:
+        await engine.dispose()
+
+
+async def _assert_final_review_facts_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    order_id, source_id = uuid4(), uuid4()
+    source = make_source(source_id)
+    order = make_extracted_order(order_id, source)
+    engine = create_async_engine(Settings().database_url)
+    original_build_facts = validation_module.build_validation_facts
+    calls = 0
+
+    async def changed_facts(session: AsyncSession, **kwargs: object) -> ValidationFacts:
+        nonlocal calls
+        calls += 1
+        facts = await original_build_facts(session, **kwargs)
+        return facts if calls == 1 else ValidationFacts(True, facts.document_already_processed)
+
+    monkeypatch.setattr(validation_module, "build_validation_facts", changed_facts)
+    try:
+        await _commit_order(engine, order)
+        async with AsyncSession(engine) as session:
+            with pytest.raises(ValidationFactsChangedError):
+                await validate_order(
+                    session,
+                    order_id,
+                    source_id,
+                    make_draft(source, quantity=None),
+                    FixedProvider(make_business_data()),
+                    make_policy(),
+                    ValidationContext(date(2030, 1, 2)),
+                    RECORDED_AT,
+                )
+
+        async with AsyncSession(engine) as session:
+            persisted = await get_order(session, order_id)
+            snapshot = await get_extraction_snapshot(session, order_id, source_id)
+            audits = await get_audit_events(session, order_id)
+        assert calls == 2
+        assert persisted is not None
+        assert persisted.order == order
+        assert persisted.validation_issues == ()
         assert snapshot is None
         assert audits == ()
     finally:

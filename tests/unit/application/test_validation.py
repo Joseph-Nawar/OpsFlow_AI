@@ -558,7 +558,9 @@ def test_validate_order_translates_provider_contract_and_operational_failures(
             raise TrustedBusinessDataContractError("malformed provider payload")
 
     session = FakeSession()
-    with pytest.raises(InvalidTrustedDataError, match="Trusted business data failed"):
+    with pytest.raises(
+        InvalidTrustedDataError, match="Trusted business data failed"
+    ) as contract_error:
         asyncio.run(
             validation_module.validate_order(
                 session,
@@ -571,6 +573,8 @@ def test_validate_order_translates_provider_contract_and_operational_failures(
                 RECORDED_AT,
             )
         )
+    assert "malformed provider payload" not in str(contract_error.value)
+    assert contract_error.value.__cause__ is None
 
     class OperationalProvider(RecordingProvider):
         async def get_validation_data(
@@ -580,7 +584,9 @@ def test_validate_order_translates_provider_contract_and_operational_failures(
             raise RuntimeError("provider secret")
 
     session = FakeSession()
-    with pytest.raises(BusinessDataProviderError, match="Business data provider operation"):
+    with pytest.raises(
+        BusinessDataProviderError, match="Business data provider operation"
+    ) as operational_error:
         asyncio.run(
             validation_module.validate_order(
                 session,
@@ -593,6 +599,8 @@ def test_validate_order_translates_provider_contract_and_operational_failures(
                 RECORDED_AT,
             )
         )
+    assert "provider secret" not in str(operational_error.value)
+    assert operational_error.value.__cause__ is None
 
 
 def test_validate_order_aborts_on_changed_facts_without_rerunning_engine(
@@ -614,6 +622,49 @@ def test_validate_order_aborts_on_changed_facts_without_rerunning_engine(
     def validate(*args: object) -> ValidationResult:
         engine_calls.append(args)
         return make_result(ValidationRoute.NEEDS_REVIEW)
+
+    monkeypatch.setattr(validation_module.validation_engine, "validate", validate)
+
+    with pytest.raises(validation_module.ValidationFactsChangedError):
+        asyncio.run(
+            validation_module.validate_order(
+                session,
+                ORDER_ID,
+                SOURCE_ID,
+                make_draft(),
+                provider,
+                validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
+                validation_module.ValidationContext(date(2030, 1, 2)),
+                RECORDED_AT,
+            )
+        )
+
+    assert fact_calls == [False, True]
+    assert len(engine_calls) == 1
+    assert session.commit_count == 0
+    assert session.write_rollback_count == 1
+    assert not any(isinstance(item, PersistedExtractionSnapshot) for item in calls["snapshots"])
+
+
+def test_validate_order_aborts_ready_route_on_changed_facts_without_rerunning_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+    provider = RecordingProvider(session, make_business_data())
+    calls = install_repository_doubles(monkeypatch)
+    fact_values = iter((ValidationFacts(False, False), ValidationFacts(True, False)))
+    fact_calls: list[bool] = []
+
+    async def changing_facts(session: FakeSession, **kwargs: object) -> ValidationFacts:
+        fact_calls.append(session.in_transaction())
+        return next(fact_values)
+
+    monkeypatch.setattr(validation_module, "build_validation_facts", changing_facts)
+    engine_calls: list[object] = []
+
+    def validate(*args: object) -> ValidationResult:
+        engine_calls.append(args)
+        return make_result()
 
     monkeypatch.setattr(validation_module.validation_engine, "validate", validate)
 
