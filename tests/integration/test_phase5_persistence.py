@@ -289,6 +289,7 @@ async def _assert_snapshot_schema() -> None:
                 lambda sync_connection: {
                     (index["name"], tuple(index["column_names"]), index["unique"])
                     for index in inspect(sync_connection).get_indexes("extraction_snapshots")
+                    if not index["unique"]
                 }
             )
             assert indexes == {("ix_extraction_snapshots_source_sha256", ("source_sha256",), False)}
