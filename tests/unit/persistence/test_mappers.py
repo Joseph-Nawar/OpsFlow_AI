@@ -1,5 +1,6 @@
 """Unit tests for explicit Phase 1 domain and persistence mapping."""
 
+from copy import deepcopy
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -16,8 +17,14 @@ from opsflow.domain import (
     ValidationIssue,
     ValidationSeverity,
 )
+from opsflow.extraction.models import Evidence, ExtractedLine, ExtractionDraft
 from opsflow.persistence.mappers import (
+    PersistedExtractionSnapshot,
     audit_event_from_model,
+    extraction_draft_from_payload,
+    extraction_draft_to_payload,
+    extraction_snapshot_from_model,
+    extraction_snapshot_to_model,
     line_to_model,
     order_from_models,
     order_to_model,
@@ -27,12 +34,59 @@ from opsflow.persistence.mappers import (
 )
 from opsflow.persistence.models import (
     AuditEventModel,
+    ExtractionSnapshotModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
 
 ORDER_ID = UUID("11111111-1111-4111-8111-111111111111")
 CREATED_AT = datetime(2026, 9, 14, 10, 30, tzinfo=UTC)
+SNAPSHOT_ID = UUID("55555555-5555-4555-8555-555555555555")
+SOURCE_DOCUMENT_ID = UUID("66666666-6666-4666-8666-666666666666")
+
+
+def _draft() -> ExtractionDraft:
+    return ExtractionDraft(
+        source_sha256="a" * 64,
+        source_document_type=SourceDocumentType.PDF,
+        customer_name="  Acme  Industries ",
+        customer_reference=" CUST-1 ",
+        po_number="PO-1",
+        order_date=date(2026, 9, 14),
+        requested_delivery_date=date(2026, 10, 1),
+        currency="USD",
+        lines=(
+            ExtractedLine(
+                sku="SKU-1",
+                description="A widget  ",
+                quantity=Decimal("2.500"),
+                submitted_price=Decimal("1E+3"),
+            ),
+            ExtractedLine(
+                sku=None,
+                description=None,
+                quantity=None,
+                submitted_price=None,
+            ),
+        ),
+        notes=None,
+        evidence=(
+            Evidence(field_path="po_number", source_location="page:1", quote="PO-1"),
+            Evidence(field_path="lines[0].sku", source_location="table:1", quote="SKU-1"),
+        ),
+    )
+
+
+def _snapshot(draft: ExtractionDraft | None = None) -> PersistedExtractionSnapshot:
+    return PersistedExtractionSnapshot(
+        id=SNAPSHOT_ID,
+        order_id=ORDER_ID,
+        source_document_id=SOURCE_DOCUMENT_ID,
+        source_sha256=(draft or _draft()).source_sha256,
+        source_document_type=(draft or _draft()).source_document_type,
+        draft=draft or _draft(),
+        created_at=CREATED_AT,
+    )
 
 
 def test_minimal_order_mapping_round_trips_through_phase1_constructor() -> None:
@@ -217,3 +271,214 @@ def test_float_numeric_storage_is_rejected_instead_of_converted() -> None:
 
     with pytest.raises(DomainValidationError):
         order_from_models(order_to_model(order, CREATED_AT), [line_row], [])
+
+
+def test_extraction_draft_payload_has_exact_canonical_shape_and_nulls() -> None:
+    assert extraction_draft_to_payload(_draft()) == {
+        "source": {"sha256": "a" * 64, "document_type": "PDF"},
+        "customer_name": "  Acme  Industries ",
+        "customer_reference": " CUST-1 ",
+        "po_number": "PO-1",
+        "order_date": "2026-09-14",
+        "requested_delivery_date": "2026-10-01",
+        "currency": "USD",
+        "lines": [
+            {
+                "sku": "SKU-1",
+                "description": "A widget  ",
+                "quantity": "2.5",
+                "submitted_price": "1000",
+            },
+            {"sku": None, "description": None, "quantity": None, "submitted_price": None},
+        ],
+        "notes": None,
+        "evidence": [
+            {"field_path": "po_number", "source_location": "page:1", "quote": "PO-1"},
+            {
+                "field_path": "lines[0].sku",
+                "source_location": "table:1",
+                "quote": "SKU-1",
+            },
+        ],
+    }
+
+
+def test_extraction_draft_payload_round_trip_preserves_values_and_order() -> None:
+    draft = _draft()
+
+    restored = extraction_draft_from_payload(extraction_draft_to_payload(draft))
+
+    assert restored == draft
+    assert [line.sku for line in restored.lines] == ["SKU-1", None]
+    assert [item.field_path for item in restored.evidence] == ["po_number", "lines[0].sku"]
+    assert restored.lines[1].quantity is None
+    assert restored.lines[1].submitted_price is None
+
+
+def test_extraction_payload_object_key_order_is_not_semantic() -> None:
+    payload = extraction_draft_to_payload(_draft())
+    reordered = dict(reversed(tuple(payload.items())))
+    reordered["source"] = dict(reversed(tuple(payload["source"].items())))
+
+    assert extraction_draft_from_payload(reordered) == _draft()
+
+
+@pytest.mark.parametrize(
+    ("level", "key"),
+    (
+        ("top", "notes"),
+        ("source", "sha256"),
+        ("line", "sku"),
+        ("evidence", "quote"),
+    ),
+)
+def test_extraction_payload_rejects_missing_keys_at_every_object_level(
+    level: str, key: str
+) -> None:
+    payload = extraction_draft_to_payload(_draft())
+    target: dict[str, object]
+    if level == "top":
+        target = payload
+    elif level == "source":
+        target = payload["source"]  # type: ignore[assignment]
+    elif level == "line":
+        target = payload["lines"][0]  # type: ignore[index]
+    else:
+        target = payload["evidence"][0]  # type: ignore[index]
+    del target[key]
+
+    with pytest.raises(DomainValidationError):
+        extraction_draft_from_payload(payload)
+
+
+@pytest.mark.parametrize(
+    ("level", "key"),
+    (
+        ("top", "provider_response"),
+        ("source", "prompt"),
+        ("line", "raw_response"),
+        ("evidence", "model"),
+    ),
+)
+def test_extraction_payload_rejects_extra_keys_at_every_object_level(level: str, key: str) -> None:
+    payload = extraction_draft_to_payload(_draft())
+    target: dict[str, object]
+    if level == "top":
+        target = payload
+    elif level == "source":
+        target = payload["source"]  # type: ignore[assignment]
+    elif level == "line":
+        target = payload["lines"][0]  # type: ignore[index]
+    else:
+        target = payload["evidence"][0]  # type: ignore[index]
+    target[key] = "unexpected"
+
+    with pytest.raises(DomainValidationError):
+        extraction_draft_from_payload(payload)
+
+
+@pytest.mark.parametrize(
+    "payload_factory",
+    (
+        lambda payload: [],
+        lambda payload: {**payload, "lines": {}},
+        lambda payload: {**payload, "evidence": {}},
+        lambda payload: {**payload, "customer_name": 3},
+        lambda payload: {**payload, "order_date": date(2026, 9, 14)},
+        lambda payload: {**payload, "lines": ["not an object"]},
+        lambda payload: {**payload, "evidence": ["not an object"]},
+    ),
+)
+def test_extraction_payload_rejects_wrong_types(payload_factory: object) -> None:
+    payload = payload_factory(extraction_draft_to_payload(_draft()))  # type: ignore[operator]
+
+    with pytest.raises(DomainValidationError):
+        extraction_draft_from_payload(payload)
+
+
+@pytest.mark.parametrize("value", ("2.50", "2E+0", "-0", "1.0"))
+def test_extraction_payload_rejects_noncanonical_decimal_strings(value: str) -> None:
+    payload = extraction_draft_to_payload(_draft())
+    payload["lines"][0]["quantity"] = value
+
+    with pytest.raises(DomainValidationError):
+        extraction_draft_from_payload(payload)
+
+
+@pytest.mark.parametrize("value", ("2026-9-14", "2026-09-14T00:00:00", "2026-02-30"))
+def test_extraction_payload_rejects_noncanonical_dates(value: str) -> None:
+    payload = extraction_draft_to_payload(_draft())
+    payload["order_date"] = value
+
+    with pytest.raises(DomainValidationError):
+        extraction_draft_from_payload(payload)
+
+
+def test_extraction_snapshot_mapper_round_trips_relational_envelope() -> None:
+    snapshot = _snapshot()
+
+    row = extraction_snapshot_to_model(snapshot)
+    restored = extraction_snapshot_from_model(row)
+
+    assert row.id == SNAPSHOT_ID
+    assert row.order_id == ORDER_ID
+    assert row.source_document_id == SOURCE_DOCUMENT_ID
+    assert row.source_sha256 == "a" * 64
+    assert row.source_document_type == "PDF"
+    assert row.created_at == CREATED_AT
+    assert restored == snapshot
+    assert isinstance(row.payload, dict)
+
+
+def test_extraction_snapshot_mapper_requires_source_and_relational_envelope_agreement() -> None:
+    draft = _draft()
+    with pytest.raises(DomainValidationError):
+        extraction_snapshot_to_model(
+            PersistedExtractionSnapshot(
+                id=SNAPSHOT_ID,
+                order_id=ORDER_ID,
+                source_document_id=SOURCE_DOCUMENT_ID,
+                source_sha256="b" * 64,
+                source_document_type=SourceDocumentType.PDF,
+                draft=draft,
+                created_at=CREATED_AT,
+            )
+        )
+
+    row = ExtractionSnapshotModel(
+        id=SNAPSHOT_ID,
+        order_id=ORDER_ID,
+        source_document_id=SOURCE_DOCUMENT_ID,
+        source_sha256="b" * 64,
+        source_document_type="PDF",
+        payload=extraction_draft_to_payload(draft),
+        created_at=CREATED_AT,
+    )
+    with pytest.raises(DomainValidationError):
+        extraction_snapshot_from_model(row)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda row: setattr(row, "source_document_type", "DOC"),
+        lambda row: setattr(row, "source_sha256", "A" * 64),
+        lambda row: setattr(row, "payload", []),
+        lambda row: setattr(row, "created_at", datetime(2026, 9, 14)),
+    ),
+)
+def test_extraction_snapshot_mapper_rejects_invalid_relational_values(mutate: object) -> None:
+    row = extraction_snapshot_to_model(_snapshot())
+    mutate(row)  # type: ignore[operator]
+
+    with pytest.raises(DomainValidationError):
+        extraction_snapshot_from_model(row)
+
+
+def test_extraction_snapshot_payload_builder_does_not_accept_mutable_draft_collections() -> None:
+    draft = _draft()
+    invalid = deepcopy(draft)
+    object.__setattr__(invalid, "lines", list(draft.lines))
+
+    with pytest.raises(DomainValidationError):
+        extraction_draft_to_payload(invalid)
