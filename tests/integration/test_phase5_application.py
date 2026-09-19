@@ -145,6 +145,10 @@ def test_ready_validation_promotes_trusted_graph_and_audits_atomically() -> None
     asyncio.run(_assert_ready_validation())
 
 
+def test_uppercase_persisted_source_sha_matches_canonical_draft() -> None:
+    asyncio.run(_assert_uppercase_persisted_source_sha())
+
+
 def test_review_validation_preserves_trusted_graph_and_stores_untrusted_snapshot() -> None:
     asyncio.run(_assert_review_validation())
 
@@ -213,6 +217,39 @@ async def _assert_ready_validation() -> None:
             "ORDER_READY_FOR_APPROVAL",
         ]
         assert [event.actor for event in audits] == ["system"] * 3
+    finally:
+        await engine.dispose()
+
+
+async def _assert_uppercase_persisted_source_sha() -> None:
+    order_id, source_id = uuid4(), uuid4()
+    canonical_source = make_source(source_id, "a" * 64)
+    persisted_source = make_source(source_id, "A" * 64)
+    order = make_extracted_order(order_id, persisted_source)
+    engine = create_async_engine(Settings().database_url)
+    try:
+        await _commit_order(engine, order)
+        async with AsyncSession(engine) as session:
+            result = await validate_order(
+                session,
+                order_id,
+                source_id,
+                make_draft(canonical_source),
+                FixedProvider(make_business_data()),
+                make_policy(),
+                ValidationContext(date(2030, 1, 2)),
+                RECORDED_AT,
+            )
+
+        assert result.validation_result.route is ValidationRoute.READY_FOR_APPROVAL
+        async with AsyncSession(engine) as session:
+            snapshot = await get_extraction_snapshot(session, order_id, source_id)
+            persisted = await get_order(session, order_id)
+        assert snapshot is not None
+        assert snapshot.source_sha256 == "a" * 64
+        assert snapshot.draft.source_sha256 == "a" * 64
+        assert persisted is not None
+        assert persisted.order.source_documents[0].sha256 == "A" * 64
     finally:
         await engine.dispose()
 

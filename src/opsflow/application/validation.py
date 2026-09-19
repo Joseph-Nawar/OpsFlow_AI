@@ -249,7 +249,7 @@ def _require_source_identity(
     draft: ExtractionDraft,
 ) -> None:
     if (
-        source_document.sha256 != draft.source_sha256
+        source_document.sha256.casefold() != draft.source_sha256
         or source_document.document_type is not draft.source_document_type
     ):
         raise SourceIdentityMismatchError(order_id, source_document_id)

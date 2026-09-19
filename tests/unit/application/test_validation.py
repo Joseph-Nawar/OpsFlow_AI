@@ -1,6 +1,7 @@
 """Unit tests for the Phase 5 internal validation operation."""
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -14,6 +15,7 @@ from opsflow.application.errors import (
     OrderNotFoundError,
     SnapshotConflictError,
     SnapshotReplayError,
+    SourceIdentityMismatchError,
     SourceOwnershipError,
 )
 from opsflow.domain import Order, OrderLine, OrderState, SourceDocument, SourceDocumentType
@@ -280,6 +282,88 @@ def install_repository_doubles(
     }.items():
         monkeypatch.setattr(validation_module, name, function)
     return calls
+
+
+def test_validate_order_accepts_case_difference_in_persisted_source_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+    persisted = replace(
+        make_persisted_order(),
+        order=replace(
+            make_order(),
+            source_documents=(replace(make_source(), sha256="A" * 64),),
+        ),
+    )
+    calls = install_repository_doubles(monkeypatch, persisted=persisted)
+    provider = RecordingProvider(session, make_business_data())
+    engine_calls: list[tuple[object, ...]] = []
+
+    def validate(*args: object) -> ValidationResult:
+        engine_calls.append(args)
+        return make_result()
+
+    monkeypatch.setattr(validation_module.validation_engine, "validate", validate)
+
+    result = asyncio.run(
+        validation_module.validate_order(
+            session,
+            ORDER_ID,
+            SOURCE_ID,
+            replace(make_draft(), source_sha256="a" * 64),
+            provider,
+            validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
+            validation_module.ValidationContext(date(2030, 1, 2)),
+            RECORDED_AT,
+        )
+    )
+
+    assert result.validation_result.route is ValidationRoute.READY_FOR_APPROVAL
+    assert len(provider.calls) == 1
+    assert len(engine_calls) == 1
+    assert len(calls["orders"]) == 2
+
+
+def test_validate_order_rejects_different_source_sha_before_provider_engine_or_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+    persisted = replace(
+        make_persisted_order(),
+        order=replace(
+            make_order(),
+            source_documents=(replace(make_source(), sha256="A" * 64),),
+        ),
+    )
+    calls = install_repository_doubles(monkeypatch, persisted=persisted)
+    provider = RecordingProvider(session, make_business_data())
+    engine_calls: list[tuple[object, ...]] = []
+
+    def validate(*args: object) -> ValidationResult:
+        engine_calls.append(args)
+        return make_result()
+
+    monkeypatch.setattr(validation_module.validation_engine, "validate", validate)
+
+    with pytest.raises(SourceIdentityMismatchError):
+        asyncio.run(
+            validation_module.validate_order(
+                session,
+                ORDER_ID,
+                SOURCE_ID,
+                replace(make_draft(), source_sha256="b" * 64),
+                provider,
+                validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
+                validation_module.ValidationContext(date(2030, 1, 2)),
+                RECORDED_AT,
+            )
+        )
+
+    assert provider.calls == []
+    assert engine_calls == []
+    assert calls["facts"] == []
+    assert calls["orders"] == []
+    assert calls["audits"] == []
 
 
 def test_validate_order_builds_reference_request_and_closes_read_transactions(
