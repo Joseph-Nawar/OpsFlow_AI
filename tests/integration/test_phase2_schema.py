@@ -66,6 +66,11 @@ async def _assert_schema() -> None:
                     ("order_id", "position"),
                 ),
                 (
+                    "source_documents",
+                    "uq_source_documents_id_order_id",
+                    ("id", "order_id"),
+                ),
+                (
                     "order_creation_idempotency",
                     "uq_order_creation_idempotency_order_id",
                     ("order_id",),
