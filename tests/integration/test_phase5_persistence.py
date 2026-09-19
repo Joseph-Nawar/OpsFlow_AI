@@ -12,7 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import inspect, select, text, update
+from sqlalchemy import DateTime, inspect, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
@@ -215,7 +215,7 @@ async def _assert_snapshot_schema() -> None:
             assert columns["source_sha256"]["type"].__class__.__name__ == "TEXT"
             assert columns["source_document_type"]["type"].__class__.__name__ == "TEXT"
             assert columns["payload"]["type"].__class__.__name__ == "JSONB"
-            assert columns["created_at"]["type"].__class__.__name__ == "DateTime"
+            assert isinstance(columns["created_at"]["type"], DateTime)
             assert columns["created_at"]["type"].timezone is True
 
             primary_key = await connection.run_sync(
@@ -360,7 +360,7 @@ async def _assert_snapshot_identity_and_cascade() -> None:
         )
 
         mismatch_source_id = uuid4()
-        await _insert_phase2_order_and_source(first_order_id, mismatch_source_id, "b" * 64, 1)
+        await _insert_phase2_order_and_source(uuid4(), mismatch_source_id, "b" * 64, 1)
         await _assert_snapshot_rejected(
             engine,
             order_id=second_order_id,
