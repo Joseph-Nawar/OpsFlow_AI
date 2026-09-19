@@ -58,6 +58,7 @@ Actions.
 - No n8n, Gmail, Slack, Odoo, HubSpot, ERP/CRM mutation, stock reservation, raw-file persistence, OCR, object storage, PDF/email viewer, broad catalogue search, or Phase 7–12 implementation is included.
 - Use ordinary React state, native `fetch`, a small typed API layer, semantic accessible HTML, focused CSS, Vite `/v1` proxying, and React Router Declarative Mode. Do not add Redux, Zustand, TanStack Query, Tailwind, Material UI, shadcn, a design system, a meta-framework, or a generated API client.
 - Only the frontend packages explicitly approved by the design may be added: current stable `react-router`, Vitest, React Testing Library, `@testing-library/user-event`, DOM matchers, and jsdom support.
+- Frontend API fixtures representing backend responses must use the actual snake_case wire format; only the API module maps them once to camelCase application types. Component tests may use mapped camelCase objects after that boundary.
 - Every implementation task follows RED → intended failure → minimal implementation → focused GREEN → relevant regression checks → diff inspection → one coherent commit.
 - No task may weaken existing assertions, skip tests, add sleeps, swallow broad exceptions, call live providers, use real credentials, or change status documentation before its milestone closeout gate.
 
@@ -69,7 +70,7 @@ test task rather than left as narrative guidance.
 1. **Stale operator tab / retry-state ABA:** old ETags must not authorize a later mutation generation after `FAILED_RETRYABLE` returns to the same state and failure origin. Test ownership: Task 10 command integration tests and Task 15 frontend stale-screen coverage.
 2. **Invalid human correction:** revision and issues persist, the trusted order graph remains unchanged, and the final state is `NEEDS_REVIEW`. Test ownership: Task 8 PostgreSQL revalidation tests and Task 14 component behavior tests.
 3. **Network provider transaction boundary:** provider and reference-data lookup run with `session.in_transaction() is False`. Test ownership: Task 5 reference-data read tests and Task 8 revalidation boundary tests.
-4. **High-value authorization:** ordinary approvers cannot approve high-value orders, elevated approvers can, and ordinary approvers can still reject high-value ready orders. Test ownership: Task 10 command tests and Task 15 action UI tests.
+4. **High-value authorization:** ordinary approvers cannot approve high-value orders, elevated approvers can, and ordinary approvers can still reject high-value ready orders. Test ownership: Task 10 command tests, Task 13 server-resolved detail identity/action-summary tests, and Task 15 action UI tests.
 5. **Original evidence versus human changes:** original extraction evidence is immutable provenance and never presented as proof of later human values. Test ownership: Task 5 detail contract tests and Task 13 detail component tests.
 
 ## Repository Findings and File Map
@@ -133,8 +134,8 @@ creating aliases solely to match conceptual names.
 
 - `web/src/app/Router.tsx` — Declarative Mode router shell for `/review` and `/review/:orderId`.
 - `web/src/api/review.ts` — typed native-fetch client, response parsing, ETag storage, bearer header, and safe error decoding.
-- `web/src/auth/operatorAccess.ts` — session-only credential access form state and backend-resolved operator summary.
-- `web/src/auth/OperatorAccessForm.tsx` — labelled credential entry, sign-out, and backend-resolved actor/role display.
+- `web/src/auth/operatorAccess.ts` — session-only credential state, sign-out, and protected-request authentication status.
+- `web/src/auth/OperatorAccessForm.tsx` — labelled credential entry, sign-out, and protected-request authentication status.
 - `web/src/pages/ReviewQueuePage.tsx` — queue filters, pagination, and explicit state rendering.
 - `web/src/pages/ReviewDetailPage.tsx` — detail orchestration and mutation refresh behavior.
 - `web/src/components/review/ReviewEvidencePanel.tsx` — original extraction/evidence and source limitation presentation.
@@ -427,8 +428,8 @@ under the locked order row; the unique constraint is the database backstop.
 **Steps:**
 
 - [ ] Write RED metadata tests for the migration chain, exact table/column types, named constraints, positive/bounded checks, cascade behavior, composite ownership, and absence of global SHA/approval-level fields.
-- [ ] Write mapper tests for canonical payload/change round trips, explicit nulls, ordered changes, timezone-aware `created_at`, and rejection of invalid or cross-order snapshot ownership.
-- [ ] Write PostgreSQL tests for upgrade from `0003`, downgrade/re-upgrade, revision insert/latest/history ordering, uniqueness, cascade behavior, latest audit ID ordering, and absence of update/delete repository functions.
+- [ ] Write mapper/unit tests for strict canonical payload and change mapping, explicit nulls, ordered change round trips, timezone-aware `created_at`, and structural `ReviewRevision` validation. Do not make the mapper pretend to enforce relational ownership.
+- [ ] Write PostgreSQL tests for upgrade from `0003`, downgrade/re-upgrade, revision insert/latest/history ordering, uniqueness, cascade behavior, latest audit ID ordering, absence of update/delete repository functions, and the cross-order ownership attempt where `order_id` belongs to Order A but `extraction_snapshot_id` belongs to Order B; prove the composite foreign key rejects it.
 - [ ] Run `uv run pytest tests/unit/persistence/test_models.py tests/unit/persistence/test_review_mappers.py tests/integration/test_phase6_persistence.py -q --no-cov`; the RED result must identify the missing migration/model/repository surface.
 - [ ] Implement the migration explicitly with Alembic operations, then the ORM model, mapper, and narrow transaction-owned repository functions. Keep existing Phase 5 snapshot mapping unchanged.
 - [ ] Run the focused PostgreSQL suite plus `uv run pytest tests/integration/test_phase5_persistence.py tests/integration/test_phase2_migrations.py -q --no-cov`.
@@ -683,8 +684,8 @@ The reference-data service reads and composes the effective draft, explicitly
 rolls back the read transaction, asserts no active transaction at the provider
 boundary, calls the provider once, validates the returned contract, and
 returns volatile `TrustedBusinessData`. Provider failure maps to safe 503
-codes; missing effective draft maps to safe 409; neither changes the detail
-ETag.
+codes; a legitimate missing effective draft maps to `409
+REVIEW_DRAFT_UNAVAILABLE`; neither changes the detail ETag.
 
 The HTTP router exposes only:
 
@@ -703,7 +704,7 @@ response, prompt, SQL, credentials, or audit history is serialized.
 
 - [ ] Write RED repository/read tests for allowed queue states, oldest-first ordering, deterministic pagination, issue/high-value projections, detail source ownership, zero/multiple snapshot outcomes, revision history, action matrix, and ETag emission.
 - [ ] Write a provider spy test that proves reference-data lookup begins after `session.rollback()` with `session.in_transaction() is False`, and failure leaves the request session usable.
-- [ ] Write HTTP tests for missing/unknown bearer credentials, queue defaults/filters, detail safe errors, ETag header/envelope consistency, and reference-data unavailable/retryable behavior.
+- [ ] Write HTTP tests for missing/unknown bearer credentials, queue defaults/filters, detail safe errors, ETag header/envelope consistency, `409` with code `REVIEW_DRAFT_UNAVAILABLE` when no effective draft exists, and reference-data unavailable/retryable behavior.
 - [ ] Run focused tests and confirm the intended absent-router/read failures.
 - [ ] Implement bounded repository reads, read DTOs, Pydantic schemas, router dependencies, ETag response headers, and safe mappings. Reuse the existing audit endpoint rather than adding a review audit endpoint.
 - [ ] Run `uv run pytest tests/unit/review tests/unit/application/test_review_reads.py tests/integration/test_phase6_reads.py -q --no-cov`, existing order API tests, Ruff, format, mypy, and `uv build`.
@@ -769,7 +770,7 @@ wrong state, mutable IDs, wrong ID count, and invalid trusted line values.
 
 **Interfaces:**
 
-- Consumes: Tasks 1–6, Task 3 repository functions, Task 4 ETag/runtime contracts, Task 5 read dependencies, existing Phase 5 `build_validation_facts`, `validate_trusted_business_data`, `ValidationEngine`, `replace_validation_issues`, `get_order_for_update`, `update_order_snapshot`, and `insert_audit_event`.
+- Consumes: Tasks 1–6, Task 3 repository functions, Task 4 ETag/runtime contracts, Task 5 read dependencies, existing Phase 5 `TrustedBusinessData`, `build_validation_facts`, `validate_trusted_business_data`, `ValidationEngine`, `replace_validation_issues`, `get_order_for_update`, `update_order_snapshot`, and `insert_audit_event`.
 - Produces:
 
 ```python
@@ -795,6 +796,19 @@ async def save_and_revalidate(
     date_provider: ReviewDateProvider,
     recorded_at: datetime,
 ) -> ReviewRevalidationResult: ...
+
+
+def canonical_customer_reference(
+    trusted_data: TrustedBusinessData,
+) -> str | None:
+    if len(trusted_data.customer_candidates) != 1:
+        return None
+
+    candidate = trusted_data.customer_candidates[0]
+    if not candidate.active:
+        return None
+
+    return candidate.reference
 ```
 
 The operation must implement this exact sequence:
@@ -813,12 +827,18 @@ The operation must implement this exact sequence:
    command.
 8. Explicitly `await session.rollback()` to close the preflight transaction; early errors leave the supplied session rolled back or closed.
 9. Assert `session.in_transaction() is False`; build the candidate lookup and call `provider.get_validation_data(...)` exactly once; validate its result; never call a provider in a transaction.
-10. Read `ValidationFacts` in a second short transaction using the candidate PO/source SHA and canonical customer reference only when exactly one active customer candidate exists.
+10. Compute `canonical_customer_reference(trusted_data)` using the exact
+    Phase 5 complete-candidate-set rule above, then read `ValidationFacts` in a
+    second short transaction using that result, the candidate PO, and source
+    SHA. Both the pre-engine and final locked facts reads use this same result.
 11. Explicitly roll back the second read transaction.
 12. Assert `session.in_transaction() is False`; construct one `ValidationContext(evaluation_date=evaluation_date)` and call `validation_engine.validate(composed_draft, trusted_data, facts, policy, context)` exactly once.
 13. Begin the final transaction and lock the order with `SELECT ... FOR UPDATE` through `get_order_for_update`.
 14. Recheck state, source ownership/identity, owned snapshot, latest revision, latest audit generation, and recomputed current ETag against `If-Match`.
-15. Re-read local facts inside the final transaction. If they differ, raise the safe facts-changed error and write nothing; do not rerun the engine.
+15. Re-read local facts inside the final transaction with the same
+    `canonical_customer_reference` result used before the engine. If they
+    differ, raise the safe facts-changed error and write nothing; do not rerun
+    the engine.
 16. Allocate `latest_revision_number + 1` under the order lock, insert the immutable candidate payload and server-computed changes, and replace current validation issues.
 17. For errors, preserve the trusted graph and route `NEEDS_REVIEW → VALIDATED → NEEDS_REVIEW`.
 18. For a clean result, call `promote_reviewed_data` only with `ValidatedOrderData` and fresh application UUIDs, then route `NEEDS_REVIEW → VALIDATED → READY_FOR_APPROVAL`.
@@ -831,11 +851,23 @@ the revision/issues but never replace trusted order fields/lines. Clean
 corrections promote only engine-produced validated data. All writes roll back
 together on any failure.
 
+The Phase 6 application repeats the tiny Phase 5 `_canonical_customer_reference`
+semantics locally rather than importing a private helper or creating a shared
+customer-resolution framework. The complete candidate tuple is evaluated
+before active status: zero candidates, one inactive candidate, multiple active
+candidates, and any mixed active/inactive candidate tuple all produce `None`;
+exactly one active candidate produces its reference. The provider result is
+passed unchanged to the engine, so an ambiguous tuple reaches the engine as
+all candidates and produces `AMBIGUOUS_CUSTOMER`. With `None` identity, the
+local facts path cannot produce `DUPLICATE_CUSTOMER_PO`. Processed-source
+facts remain independently evaluated.
+
 **Steps:**
 
 - [ ] Write RED unit tests for typed candidate use, reviewer authorization, initial ETag/precondition ordering, no-op before provider, candidate composition, exactly-once provider/engine calls, one review-time date, supplied policy identity, and rollback of early errors.
 - [ ] Add provider and engine spies that inspect the same `AsyncSession` and assert `session.in_transaction() is False`; assert provider lookup uses candidate fields rather than the previous effective draft.
 - [ ] Add tests for invalid correction preserving the trusted graph, clean correction promoting only `ValidatedOrderData`, effective revision history, aggregate line changes, high-value warning persistence, and exact audit events/descriptions/actor/timestamps.
+- [ ] Add the exact customer-facts regression: `(active CUST-1, inactive CUST-2)` produces `canonical_customer_reference(...) is None`; the unchanged provider result with both candidates reaches the engine; the result contains `AMBIGUOUS_CUSTOMER` and no `DUPLICATE_CUSTOMER_PO`; both facts reads receive `None`, while processed-source facts remain evaluated independently.
 - [ ] Add race tests for state/source/snapshot/revision/latest-audit ETag changes and local facts changing between the second read and final lock; assert zero writes and no engine replay.
 - [ ] Run the focused application suite and confirm intended RED failures before implementation.
 - [ ] Implement the service with explicit `rollback()` boundaries, one final `async with session.begin()`, order lock, fresh checks, append-only revision, issue replacement, legal transitions, reviewed promotion, and audit.
@@ -882,6 +914,7 @@ or malformed ETag; `428` missing `If-Match`; `503` provider/reference failure;
 - [ ] Write RED transport tests for exact editable fields, rejection of actor/role/revision/old-values/state/evidence/source/change claims, missing/malformed/stale `If-Match`, and safe error envelopes.
 - [ ] Write PostgreSQL integration tests for invalid correction, clean correction, no-op, stale revision, stale audit generation, state/source/snapshot mismatch, stale local facts, provider/engine outside transaction, fresh ETag, and all-or-nothing rollback after each final write stage.
 - [ ] Add explicit assertions that invalid corrections leave trusted scalar/line rows unchanged while revisions/issues/audits persist, and clean corrections reach `READY_FOR_APPROVAL` with the durable high-value warning when appropriate.
+- [ ] Add the cross-boundary ambiguity regression: another order has the same active-customer/PO combination while the reviewed candidate resolves to mixed active/inactive customer candidates; assert `AMBIGUOUS_CUSTOMER`, no `DUPLICATE_CUSTOMER_PO` derived from unresolved identity, deterministic `NEEDS_REVIEW`, equal pre-engine/final `ValidationFacts` customer identity of `None`, and no spurious `VALIDATION_FACTS_CHANGED` error.
 - [ ] Run focused tests and confirm RED identifies the absent route/transaction behavior.
 - [ ] Implement strict request/response schemas, header handling, safe mappings, and route registration without adding a generic patch/state endpoint.
 - [ ] Run `uv run pytest tests/integration/test_phase6_revalidation.py tests/integration/test_phase5_application.py tests/integration/test_orders_api.py -q --no-cov`, all relevant unit suites, Ruff, format, mypy, and build.
@@ -1271,7 +1304,7 @@ export interface ReviewApiClient {
 
 export interface OperatorSession {
   credential: string;
-  operator: { actor: string; role: OperatorRole } | null;
+  operator?: { actor: string; role: OperatorRole } | null;
 }
 
 export function createReviewApiClient(
@@ -1280,13 +1313,221 @@ export function createReviewApiClient(
 ): ReviewApiClient;
 ```
 
+The same module owns the only transport-to-view-model boundary. Its private
+wire DTOs match FastAPI's established snake_case JSON exactly; representative
+definitions are locked below and the same rule applies to every nested
+queue/detail/reference/revision/action field:
+
+```typescript
+interface WireReviewQueueItem {
+  id: string;
+  state: ReviewState;
+  failure_origin: OrderState | null;
+  customer_reference: string | null;
+  po_number: string | null;
+  order_date: string | null;
+  requested_delivery_date: string | null;
+  currency: string | null;
+  created_at: string;
+  validation_issue_count: number;
+  high_value_approval_required: boolean;
+}
+
+interface WireReviewQueuePage {
+  items: WireReviewQueueItem[];
+  states: ReviewState[];
+  limit: number;
+  offset: number;
+  total: number;
+}
+
+interface WireReviewLine {
+  sku: string | null;
+  description: string | null;
+  quantity: string | null;
+  submitted_price: string | null;
+}
+
+interface WireReviewDraft {
+  customer_name: string | null;
+  customer_reference: string | null;
+  po_number: string | null;
+  order_date: string | null;
+  requested_delivery_date: string | null;
+  currency: string | null;
+  lines: WireReviewLine[];
+}
+
+interface WireReviewChange {
+  field_path: string;
+  old_value: CanonicalJsonValue;
+  new_value: CanonicalJsonValue;
+}
+
+interface WireReviewRevision {
+  id: string;
+  order_id: string;
+  extraction_snapshot_id: string;
+  revision_number: number;
+  payload: WireReviewDraft;
+  changes: WireReviewChange[];
+  actor: string;
+  created_at: string;
+}
+
+interface WireSourceDocument {
+  id: string;
+  document_type: string;
+  name: string;
+  mime_type: string;
+  sha256: string;
+  message_id: string | null;
+  storage_reference: string | null;
+  metadata: Array<[string, string]>;
+}
+
+interface WireExtractionEvidence {
+  field_path: string;
+  source_location: string;
+  quote: string;
+}
+
+interface WireOriginalExtraction {
+  snapshot_id: string;
+  source_sha256: string;
+  source_document_type: string;
+  customer_name: string | null;
+  customer_reference: string | null;
+  po_number: string | null;
+  order_date: string | null;
+  requested_delivery_date: string | null;
+  currency: string | null;
+  lines: WireReviewLine[];
+  notes: string | null;
+  evidence: WireExtractionEvidence[];
+}
+
+interface WireTrustedOrderLine {
+  id: string;
+  sku: string;
+  description: string;
+  quantity: string;
+  submitted_price: string;
+  trusted_catalogue_price: string | null;
+}
+
+interface WireTrustedOrder {
+  id: string;
+  state: OrderState;
+  failure_origin: OrderState | null;
+  created_at: string;
+  customer_reference: string | null;
+  po_number: string | null;
+  order_date: string | null;
+  requested_delivery_date: string | null;
+  currency: string | null;
+  lines: WireTrustedOrderLine[];
+  source_documents: WireSourceDocument[];
+}
+
+interface WireValidationIssue {
+  rule_code: string;
+  severity: string;
+  field: string;
+  expected: CanonicalJsonValue;
+  actual: CanonicalJsonValue;
+  explanation: string;
+}
+
+interface WireReviewActions {
+  can_edit: boolean;
+  can_approve: boolean;
+  can_reject: boolean;
+  can_retry: boolean;
+}
+
+interface WireReviewDetail {
+  order: WireTrustedOrder;
+  source_snapshot: WireOriginalExtraction | null;
+  effective_draft: WireReviewDraft | null;
+  revisions: WireReviewRevision[];
+  latest_revision: WireReviewRevision | null;
+  validation_issues: WireValidationIssue[];
+  actions: WireReviewActions;
+  operator: { actor: string; role: OperatorRole };
+  etag: string;
+}
+
+interface WireReferenceData {
+  customer_candidates: Array<{
+    reference: string;
+    name: string;
+    active: boolean;
+  }>;
+  products_by_line: Array<{
+    sku: string;
+    description: string | null;
+    active: boolean;
+    currency: string;
+    catalogue_price: string | null;
+    available_quantity: string | null;
+  } | null>;
+}
+
+interface WireCommandResult {
+  order_id: string;
+  state: OrderState;
+  failure_origin: OrderState | null;
+  etag: string;
+}
+
+interface WireAuditEvent {
+  id: string;
+  order_id: string;
+  event_type: string;
+  actor: string;
+  occurred_at: string;
+  description: string;
+}
+
+interface WireAuditList {
+  items: WireAuditEvent[];
+}
+```
+
+The module exposes focused one-way mappers and no generic serialization
+framework:
+
+```typescript
+function mapQueueItem(value: WireReviewQueueItem): ReviewQueueItem;
+function mapQueuePage(value: WireReviewQueuePage): ReviewQueuePage;
+function mapDraftToWire(value: ReviewDraft): WireReviewDraft;
+function mapReviewDetail(value: WireReviewDetail): ReviewDetail;
+function mapReferenceData(value: WireReferenceData): ReferenceData;
+function mapCommandResult(value: WireCommandResult): ReviewCommandResult;
+function mapAuditEvent(value: WireAuditEvent): AuditEvent;
+function mapAuditList(value: WireAuditList): AuditEvent[];
+```
+
+`saveDraft` maps the camelCase `ReviewDraft` to the snake_case
+`WireReviewDraft` before sending it. `getAudit` explicitly unwraps
+`GET /v1/orders/{orderId}/audit` from wire `{ items: [...] }` to
+`AuditEvent[]`. All other API methods parse wire DTOs first and return only the
+camelCase application interfaces above. Existing Phase 2 snake_case transport
+fields are not renamed, and no Pydantic alias generator or generated API client
+is introduced.
+
 The API client uses native `fetch`, sends only the session bearer credential,
 reads the ETag response header/envelope, sends `If-Match` for every mutation,
 decodes `{detail:{code,message}}`, and throws `ReviewApiError` without raw
 response/credential disclosure. `operatorAccess.ts` stores the credential in
-React state and may mirror it only to `sessionStorage`; it never stores actor
-or role as authority and never uses localStorage, URL, source, or production
-constants for credentials.
+React state and may mirror it only to `sessionStorage`; it never asks for,
+decodes, infers, or requires actor/role data. The optional `operator` field is
+server-returned presentation data only and never an authority input. The
+access form considers a credential usable only after an ordinary protected API
+request succeeds; a rejected request displays safe `401` authentication
+failure. It never uses localStorage, URL, source, or production constants for
+credentials.
 
 Use Declarative Mode with exactly `/review` and `/review/:orderId`. Add the
 Vite `/v1` proxy to the local FastAPI server. Add only `react-router`,
@@ -1297,10 +1538,11 @@ existing GitHub Frontend job. Do not add a frontend data/state framework.
 
 **Steps:**
 
-- [ ] Write RED tests for API URL/headers/body parsing, ETag capture, safe API errors, session-only credential handling, router paths, and access-form/backend-resolved operator display.
+- [ ] Write RED tests for API URL/headers/body parsing, ETag capture, safe API errors, literal snake_case queue/detail/reference/command/audit fixtures mapping to camelCase application objects, session-only credential handling, router paths, and access-form protected-request authentication status.
 - [ ] Configure Vitest jsdom/setup matchers and add synthetic fixtures with no usable credentials. Run `npm --prefix web test -- --run`; the initial failure must identify missing test configuration or clients.
 - [ ] Install only approved packages with npm so `package-lock.json` records the exact resolved graph; do not add production backend packages.
-- [ ] Implement the typed API module, access session helper, router shell, Vite proxy, test setup, and package/CI scripts. Keep `App.tsx` as a small composition root.
+- [ ] Implement the typed API module, one-way snake_case wire mappers, access session helper, credential-only access form, router shell, Vite proxy, test setup, and package/CI scripts. Keep `App.tsx` as a small composition root; do not fabricate an operator identity before a protected request returns it.
+- [ ] Assert with literal snake_case fixtures that queue items/pages, nested detail order/source/issues/revisions/actions, reference data, command results, and the existing audit `{items: [...]}` envelope map to the documented camelCase application objects. Component tests may use only those mapped objects.
 - [ ] Run `npm --prefix web test -- --run`, `npm --prefix web run lint`, and `npm --prefix web run build`; run `make frontend-check` after its script is updated.
 - [ ] Inspect package diff for unapproved packages and commit `feat: add review frontend foundation`.
 
@@ -1357,11 +1599,14 @@ evidence location/quote but never renders or implies persisted raw files. It
 labels evidence as original AI provenance and never presents it as proof of a
 later human edit. The reference panel independently loads current trusted data,
 labels it exactly, shows success/unavailable/retry states, and does not alter
-the detail ETag. Detail loading, safe errors, and action flags remain explicit.
+the detail ETag. The page renders the detail response's server-resolved
+operator actor/role summary and backend-computed action flags; it never derives
+identity or authority from browser state. Detail loading and safe errors remain
+explicit.
 
 **Steps:**
 
-- [ ] Write RTL tests for detail loading/success/error, original extraction/evidence labels, trusted values, validation issues, source limitation, revision history, audit fetch, reference-data success, unavailable, and retry.
+- [ ] Write RTL tests for detail loading/success/error, original extraction/evidence labels, trusted values, validation issues, source limitation, revision history, audit fetch, reference-data success, unavailable, retry, and rendering the server-resolved actor/role summary with backend action flags.
 - [ ] Run the focused tests and confirm missing detail behavior.
 - [ ] Implement the detail page and three focused panels with semantic headings/regions; keep audit retrieval on the existing endpoint.
 - [ ] Run detail tests, full frontend tests, lint, and build. Inspect rendered labels for the evidence/human/trusted distinction.
@@ -1416,18 +1661,31 @@ submission.
 
 The UI must support signing out/changing from a reviewer credential to an
 approver or elevated credential in one running server without restart. The
-backend-resolved actor/role is displayed; browser claims never grant actions.
+credential-switch flow is:
+
+```text
+reviewer credential
+→ load protected resource/detail
+→ server reports reviewer identity/actions
+→ sign out/change credential
+→ approver or elevated credential
+→ reload protected resource/detail
+→ server reports the new identity/actions
+```
+
+The backend-resolved actor/role is displayed from the detail response; browser
+claims never grant actions.
 Every stale `412`, `401`, `403`, wrong-state response, provider error, and
 safe API error remains visible without replay. The task adds no Playwright or
 Cypress.
 
 **Steps:**
 
-- [ ] Write RTL tests for allowed/hidden actions, ordinary approval, high-value restriction, elevated approval, ordinary high-value rejection, rejection reason, retry, API errors, stale ETag, and switching between two configured credentials in one running test application.
+- [ ] Write RTL tests for allowed/hidden actions, ordinary approval, high-value restriction, elevated approval, ordinary high-value rejection, rejection reason, retry, API errors, stale ETag, and switching between two configured credentials in one running test application; assert the protected detail reload reports the new server-resolved actor/role/actions without restart.
 - [ ] Add/extend backend integration tests for the complete role/state matrix, high-value rejection, ABA, privacy, rollback, and review-detail/read regressions discovered during cross-boundary review.
 - [ ] Run frontend tests, backend focused Phase 6 suites, the complete backend suite, lint, format, mypy, build, `make frontend-check`, and `make check` when PostgreSQL is available.
 - [ ] Inspect the complete diff for evidence/trust confusion, client authority, future-phase leakage, unapproved dependencies, and generated files. Run `git diff --check`.
-- [ ] Commit `test: harden Phase 6 review workflow`.
+- [ ] Commit `feat: add review action interface`.
 
 **M6E candidate gate:** Tasks 11–15 provide the two React routes, typed fetch
 layer, development access interaction, queue/detail/evidence/reference-data
@@ -1464,6 +1722,7 @@ semantics match; do not add one exception class per endpoint.
 | Missing `If-Match` | `PRECONDITION_REQUIRED` | 428 | Task 4 helper; Task 7/8 enforcement |
 | Malformed/stale `If-Match` | `PRECONDITION_FAILED` | 412 | Task 4 helper; Task 7/8 enforcement |
 | No actual draft change | `NO_REVIEW_CHANGES` | 409 | Task 7/8 |
+| No effective review draft | `REVIEW_DRAFT_UNAVAILABLE` | 409 | Task 5 |
 | Invalid/unavailable reference provider | `REFERENCE_DATA_INVALID` / `REFERENCE_DATA_UNAVAILABLE` | 503 | Task 5 |
 | Local facts changed | `VALIDATION_FACTS_CHANGED` | 409 | Task 7/8 |
 | Invalid rejection reason | `REJECTION_REASON_INVALID` | 422 | Task 9/10 |
@@ -1472,7 +1731,9 @@ semantics match; do not add one exception class per endpoint.
 Every mapping uses a bounded message and excludes credentials, provider raw
 exceptions, source text, private cross-order payloads, SQL, SDK objects, and
 stack traces. Pydantic transport failures remain standard 422 responses with
-the repository's existing FastAPI behavior.
+the repository's existing FastAPI behavior. `REVIEW_CASE_UNAVAILABLE` is
+reserved for persistence/integrity failure; `REVIEW_DRAFT_UNAVAILABLE` is the
+legitimate no-effective-draft case, such as a pre-extraction retryable failure.
 
 ## Audit-Event Ownership and Exact Contracts
 
@@ -1532,6 +1793,7 @@ web/src/
   app/Router.tsx
   api/review.ts
   auth/operatorAccess.ts
+  auth/OperatorAccessForm.tsx
   pages/ReviewQueuePage.tsx
   pages/ReviewDetailPage.tsx
   components/review/ReviewEvidencePanel.tsx
@@ -1623,7 +1885,7 @@ inspection:
 12. `feat: add review queue interface`
 13. `feat: add review detail interface`
 14. `feat: add human correction interface`
-15. `test: harden Phase 6 review workflow`
+15. `feat: add review action interface`
 
 Status-only milestone closeout commits remain separate and occur only after
 independent review and exact-head CI. They must not be folded into task
