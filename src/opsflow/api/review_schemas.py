@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StrictStr
 
 from opsflow.application.review_reads import (
     ReviewDetailData,
@@ -16,7 +16,7 @@ from opsflow.application.review_reads import (
 from opsflow.domain import OrderState, SourceDocumentType, ValidationSeverity
 from opsflow.extraction.models import ExtractionDraft
 from opsflow.persistence.mappers import PersistedExtractionSnapshot
-from opsflow.review import OperatorRole, ReviewChange, ReviewDraft, ReviewRevision
+from opsflow.review import OperatorRole, ReviewChange, ReviewDraft, ReviewLine, ReviewRevision
 from opsflow.validation import TrustedBusinessData
 
 
@@ -53,6 +53,52 @@ class ReviewLineResponse(BaseModel):
     description: str | None
     quantity: Decimal | None
     submitted_price: Decimal | None
+
+
+class ReviewLineRequest(BaseModel):
+    """One editable untrusted line; trusted catalogue values are not accepted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sku: StrictStr | None
+    description: StrictStr | None
+    quantity: Decimal | None
+    submitted_price: Decimal | None
+
+
+class ReviewDraftRequest(BaseModel):
+    """Complete strict HTTP candidate containing editable review values only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    customer_name: StrictStr | None
+    customer_reference: StrictStr | None
+    po_number: StrictStr | None
+    order_date: date | None
+    requested_delivery_date: date | None
+    currency: StrictStr | None
+    lines: list[ReviewLineRequest]
+
+    def to_contract(self) -> ReviewDraft:
+        """Convert mutable transport arrays to the immutable application value."""
+
+        return ReviewDraft(
+            customer_name=self.customer_name,
+            customer_reference=self.customer_reference,
+            po_number=self.po_number,
+            order_date=self.order_date,
+            requested_delivery_date=self.requested_delivery_date,
+            currency=self.currency,
+            lines=tuple(
+                ReviewLine(
+                    sku=line.sku,
+                    description=line.description,
+                    quantity=line.quantity,
+                    submitted_price=line.submitted_price,
+                )
+                for line in self.lines
+            ),
+        )
 
 
 class ReviewDraftResponse(BaseModel):

@@ -37,7 +37,7 @@ PHASE_6_REVISION = "0004_phase6_review_revisions"
 _TOKEN = "test-review-reader-credential"
 
 
-def test_openapi_exposes_only_the_three_review_read_routes() -> None:
+def test_openapi_exposes_only_approved_review_routes() -> None:
     openapi_paths = create_app(_settings()).openapi()["paths"]
     paths = set(openapi_paths)
     review_paths = {path for path in paths if path.startswith("/v1/review/")}
@@ -45,9 +45,15 @@ def test_openapi_exposes_only_the_three_review_read_routes() -> None:
         "/v1/review/orders",
         "/v1/review/orders/{order_id}",
         "/v1/review/orders/{order_id}/reference-data",
+        "/v1/review/orders/{order_id}/draft",
     }
-    assert not any(path.endswith(("/draft", "/approve", "/reject", "/retry")) for path in paths)
-    assert all(set(openapi_paths[path]) == {"get"} for path in review_paths)
+    assert not any(path.endswith(("/approve", "/reject", "/retry")) for path in paths)
+    assert {path: set(openapi_paths[path]) for path in review_paths} == {
+        "/v1/review/orders": {"get"},
+        "/v1/review/orders/{order_id}": {"get"},
+        "/v1/review/orders/{order_id}/reference-data": {"get"},
+        "/v1/review/orders/{order_id}/draft": {"put"},
+    }
 
 
 def test_review_http_authentication_fails_closed_without_database_access() -> None:
