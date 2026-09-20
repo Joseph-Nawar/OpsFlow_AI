@@ -84,7 +84,6 @@ REVIEWER = OperatorContext("reviewer-integration", OperatorRole.REVIEWER)
 POLICY = ValidationPolicy(("USD",), Decimal("0.05"), Decimal("1000"))
 RECORDED_AT = datetime(2030, 1, 2, 3, 4, 5, tzinfo=UTC)
 EVALUATION_DATE = date(2030, 1, 2)
-SOURCE_SHA = "a" * 64
 
 
 def test_openapi_exposes_exact_m6c_review_surface() -> None:
@@ -375,18 +374,20 @@ class ReviewCase:
     order_id: UUID
     source_id: UUID
     snapshot_id: UUID
+    source_sha256: str
     original_draft: ExtractionDraft
     order: Order
 
 
 def _make_case() -> ReviewCase:
     order_id, source_id, snapshot_id, line_id = (uuid4() for _ in range(4))
+    source_sha256 = uuid4().hex * 2
     source = SourceDocument(
         id=source_id,
         document_type=SourceDocumentType.PDF,
         name="purchase-order.pdf",
         mime_type="application/pdf",
-        sha256=SOURCE_SHA,
+        sha256=source_sha256,
         message_id="synthetic-message",
         storage_reference="synthetic://phase6-test.pdf",
         metadata=(("source", "phase6-test"),),
@@ -411,7 +412,7 @@ def _make_case() -> ReviewCase:
         state=OrderState.NEEDS_REVIEW,
     )
     draft = ExtractionDraft(
-        source_sha256=SOURCE_SHA,
+        source_sha256=source_sha256,
         source_document_type=SourceDocumentType.PDF,
         customer_name="Acme Industries",
         customer_reference="CUST-001",
@@ -423,7 +424,7 @@ def _make_case() -> ReviewCase:
         notes="Original untrusted note",
         evidence=(Evidence("po_number", "page 1", "PO-100"),),
     )
-    return ReviewCase(order_id, source_id, snapshot_id, draft, order)
+    return ReviewCase(order_id, source_id, snapshot_id, source_sha256, draft, order)
 
 
 async def _seed_case(
@@ -669,7 +670,7 @@ async def _assert_invalid_correction_is_untrusted() -> None:
             {"field_path": "po_number", "source_location": "page 1", "quote": "PO-100"}
         ]
         assert body["effective_draft"]["po_number"] == "PO-101"
-        assert body["source_snapshot"]["source_sha256"] == SOURCE_SHA
+        assert body["source_snapshot"]["source_sha256"] == case.source_sha256
         assert [item["rule_code"] for item in body["validation_issues"]] == ["UNKNOWN_SKU"]
         assert len(body["revisions"]) == 1
         assert body["latest_revision"]["actor"] == REVIEWER.actor
@@ -701,7 +702,13 @@ async def _assert_invalid_correction_is_untrusted() -> None:
         assert (
             raw_after["snapshots"]
             == raw_before["snapshots"]
-            == ((case.snapshot_id, SOURCE_SHA, extraction_draft_to_payload(case.original_draft)),)
+            == (
+                (
+                    case.snapshot_id,
+                    case.source_sha256,
+                    extraction_draft_to_payload(case.original_draft),
+                ),
+            )
         )
         assert raw_after["revision_count"] == 1
         assert raw_after["issue_codes"] == ("UNKNOWN_SKU",)
@@ -999,10 +1006,7 @@ async def _assert_locked_rechecks() -> None:
             order, _, revisions, audits = await _read_case_state(session_factory, case.order_id)
             assert order is not None
             assert len(revisions) == (1 if kind == "revision" else 0)
-            if kind != "audit":
-                assert len(audits) == (2 if kind == "revision" else 1)
-            else:
-                assert len(audits) == 2
+            assert len(audits) == (2 if kind == "audit" else 1)
 
 
 def _make_concurrent_mutation(
