@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from opsflow.api.orders import router as orders_router
 from opsflow.database import create_engine, create_sessionmaker, database_is_available
+from opsflow.review.composition import build_demo_review_runtime
 from opsflow.settings import Settings, get_settings
 
 
@@ -27,10 +28,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Create the application with environment-driven database settings."""
 
-    engine = create_engine(settings or get_settings())
+    resolved_settings = settings or get_settings()
+    engine = create_engine(resolved_settings)
     app = FastAPI(title="OpsFlow AI", lifespan=lifespan)
     app.state.database_engine = engine
     app.state.database_sessionmaker = create_sessionmaker(engine)
+    app.state.review_runtime = build_demo_review_runtime()
+    app.state.review_dev_operators = resolved_settings.review_dev_operators
     app.include_router(orders_router)
 
     @app.get("/health")

@@ -7,15 +7,25 @@ import pytest
 
 from opsflow.application.errors import (
     BusinessDataProviderError,
+    ForbiddenError,
     IdempotencyConflictError,
+    InvalidRejectionReasonError,
+    InvalidReviewStateError,
     InvalidTrustedDataError,
+    NoReviewChangesError,
     OrderNotFoundError,
     OrderValidationStateError,
+    ReviewCaseUnavailableError,
+    ReviewDraftUnavailableError,
+    ReviewPersistenceConflictError,
+    ReviewPreconditionFailedError,
+    ReviewPreconditionRequiredError,
     SnapshotConflictError,
     SnapshotReplayError,
     SourceDocumentNotFoundError,
     SourceIdentityMismatchError,
     SourceOwnershipError,
+    UnauthenticatedError,
     ValidationFactsChangedError,
 )
 from opsflow.domain import OrderState
@@ -91,3 +101,50 @@ def test_provider_and_trusted_data_errors_do_not_leak_details() -> None:
     assert str(trusted) == "Trusted business data failed contract validation."
     assert "provider detail" not in str(provider)
     assert "malformed payload" not in str(trusted)
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        UnauthenticatedError,
+        ForbiddenError,
+        ReviewCaseUnavailableError,
+        InvalidReviewStateError,
+        ReviewPreconditionRequiredError,
+        ReviewPreconditionFailedError,
+        NoReviewChangesError,
+        ReviewDraftUnavailableError,
+        InvalidRejectionReasonError,
+        ReviewPersistenceConflictError,
+    ],
+)
+def test_phase6_errors_are_transport_independent_and_safe(error_type: type[Exception]) -> None:
+    assert issubclass(error_type, Exception)
+    source = inspect.getsource(error_type).lower()
+    assert "fastapi" not in source
+    assert "http" not in source
+    assert "sql" not in source
+
+
+def test_phase6_safe_errors_never_include_supplied_credentials_or_private_details() -> None:
+    safe_errors = (
+        UnauthenticatedError(),
+        ForbiddenError(),
+        ReviewCaseUnavailableError(),
+        InvalidReviewStateError(),
+        ReviewPreconditionRequiredError(),
+        ReviewPreconditionFailedError(),
+        NoReviewChangesError(),
+        ReviewDraftUnavailableError(),
+        InvalidRejectionReasonError(),
+        ReviewPersistenceConflictError(),
+        BusinessDataProviderError(),
+        InvalidTrustedDataError(),
+        ValidationFactsChangedError(UUID(int=1)),
+    )
+
+    for error in safe_errors:
+        assert len(str(error)) <= 160
+        assert "fake-credential" not in str(error)
+        assert "provider payload" not in str(error)
+        assert "SELECT" not in str(error)
