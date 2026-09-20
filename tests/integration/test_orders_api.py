@@ -12,7 +12,8 @@ from opsflow.settings import Settings
 
 def test_openapi_exposes_only_the_approved_business_routes() -> None:
     app = create_app(Settings())
-    paths = set(app.openapi()["paths"])
+    openapi_paths = app.openapi()["paths"]
+    paths = set(openapi_paths)
 
     assert {
         "/v1/orders",
@@ -21,14 +22,24 @@ def test_openapi_exposes_only_the_approved_business_routes() -> None:
         "/health",
         "/ready",
     } <= paths
-    assert not any(
-        any(term in path for term in ("approve", "reject", "transition", "upload", "review"))
-        for path in paths
-    )
+    assert {path for path in paths if path.startswith("/v1/orders")} == {
+        "/v1/orders",
+        "/v1/orders/{order_id}",
+        "/v1/orders/{order_id}/audit",
+    }
+    review_paths = {path for path in paths if path.startswith("/v1/review/")}
+    assert review_paths == {
+        "/v1/review/orders",
+        "/v1/review/orders/{order_id}",
+        "/v1/review/orders/{order_id}/reference-data",
+    }
+    assert all(set(openapi_paths[path]) == {"get"} for path in review_paths)
+    assert not any(term in path for path in paths for term in ("transition", "upload"))
     assert {path for path in paths if path.startswith("/v1/")} == {
         "/v1/orders",
         "/v1/orders/{order_id}",
         "/v1/orders/{order_id}/audit",
+        *review_paths,
     }
 
 
