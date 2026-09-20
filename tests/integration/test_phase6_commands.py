@@ -241,17 +241,22 @@ async def _seed_cases(
                 notes="Original extraction note",
                 evidence=(),
             )
-            session.add(
-                ExtractionSnapshotModel(
-                    id=case.snapshot_id,
-                    order_id=case.order_id,
-                    source_document_id=case.source_id,
-                    source_sha256=case.source_sha256,
-                    source_document_type="PDF",
-                    payload=extraction_draft_to_payload(extraction),
-                    created_at=created_at,
-                )
+            has_extraction_snapshot = not (
+                case.state is OrderState.FAILED_RETRYABLE
+                and case.failure_origin in (OrderState.PROCESSING, OrderState.EXTRACTED)
             )
+            if has_extraction_snapshot:
+                session.add(
+                    ExtractionSnapshotModel(
+                        id=case.snapshot_id,
+                        order_id=case.order_id,
+                        source_document_id=case.source_id,
+                        source_sha256=case.source_sha256,
+                        source_document_type="PDF",
+                        payload=extraction_draft_to_payload(extraction),
+                        created_at=created_at,
+                    )
+                )
             if case.high_value:
                 session.add(
                     ValidationIssueModel(
@@ -480,7 +485,14 @@ async def _assert_command_matrix() -> None:
             (OrderState.PROCESSING, OrderState.EXTRACTED, OrderState.SYNCING),
             strict=True,
         ):
-            retry_etag = _etag_from_detail(await _get_detail(client, case.order_id, REVIEWER_TOKEN))
+            detail = await _get_detail(client, case.order_id, REVIEWER_TOKEN)
+            if origin in (OrderState.PROCESSING, OrderState.EXTRACTED):
+                assert detail.json()["source_snapshot"] is None
+                assert detail.json()["effective_draft"] is None
+            else:
+                assert detail.json()["source_snapshot"] is not None
+                assert detail.json()["effective_draft"] is not None
+            retry_etag = _etag_from_detail(detail)
             retried = await _post_command(
                 client, "retry", case.order_id, REVIEWER_TOKEN, retry_etag
             )
