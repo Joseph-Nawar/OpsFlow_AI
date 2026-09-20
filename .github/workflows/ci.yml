@@ -85,6 +85,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Run frontend tests
+        run: npm test -- --run
+
       - name: Run ESLint
         run: npm run lint
 
