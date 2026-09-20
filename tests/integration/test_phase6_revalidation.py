@@ -436,6 +436,7 @@ async def _seed_case(
     extra_source_count: int = 0,
 ) -> None:
     created_at = datetime(2029, 1, 1, tzinfo=UTC)
+    initial_audit_at = datetime(2000, 1, 1, tzinfo=UTC)
     async with session_factory() as session:
         order = case.order
         if extra_source_count:
@@ -528,7 +529,7 @@ async def _seed_case(
                 order_id=case.order_id,
                 event_type="ORDER_NEEDS_REVIEW",
                 actor="system",
-                occurred_at=created_at,
+                occurred_at=initial_audit_at,
                 description="Initial deterministic review required.",
             ),
         )
@@ -782,10 +783,10 @@ async def _assert_clean_high_value_correction_promotes_trusted_values(monkeypatc
             session_factory, case.order_id
         )
         assert persisted is not None
-        assert persisted.order.state is OrderState.READY_FOR_APPROVAL
-        assert persisted.order.po_number == "PO-HIGH-VALUE"
-        assert persisted.order.lines[0].trusted_catalogue_price == Decimal("25")
-        assert persisted.order.lines[0].id != case.order.lines[0].id
+        assert persisted.state is OrderState.READY_FOR_APPROVAL
+        assert persisted.po_number == "PO-HIGH-VALUE"
+        assert persisted.lines[0].trusted_catalogue_price == Decimal("25")
+        assert persisted.lines[0].id != case.order.lines[0].id
         assert any(issue.rule_code == "HIGH_VALUE_APPROVAL_REQUIRED" for issue in issues)
         assert len(revisions) == 1
         assert [event.event_type for event in audits[-3:]] == [
