@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsflow.domain import AuditEvent, Order, OrderState, ValidationIssue
+from opsflow.review import ReviewRevision
 from opsflow.validation import ValidationFacts
 
 from .mappers import (
@@ -20,6 +21,8 @@ from .mappers import (
     line_to_model,
     order_from_models,
     order_to_model,
+    review_revision_from_model,
+    review_revision_to_model,
     source_document_to_model,
     validation_issue_from_model,
 )
@@ -29,6 +32,7 @@ from .models import (
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
+    ReviewRevisionModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
@@ -96,6 +100,59 @@ async def get_extraction_snapshot(
     if row is None:
         return None
     return extraction_snapshot_from_model(row)
+
+
+async def insert_review_revision(
+    session: AsyncSession,
+    revision: ReviewRevision,
+) -> None:
+    """Insert one immutable review revision without committing the transaction."""
+
+    session.add(review_revision_to_model(revision))
+    await session.flush()
+
+
+async def get_latest_review_revision(
+    session: AsyncSession,
+    order_id: UUID,
+) -> ReviewRevision | None:
+    """Return the highest-numbered immutable review revision for one order."""
+
+    row = await session.scalar(
+        select(ReviewRevisionModel)
+        .where(ReviewRevisionModel.order_id == order_id)
+        .order_by(ReviewRevisionModel.revision_number.desc())
+        .limit(1)
+    )
+    return review_revision_from_model(row) if row is not None else None
+
+
+async def get_review_revision_history(
+    session: AsyncSession,
+    order_id: UUID,
+) -> tuple[ReviewRevision, ...]:
+    """Return append-only review history in revision order."""
+
+    rows = (
+        await session.scalars(
+            select(ReviewRevisionModel)
+            .where(ReviewRevisionModel.order_id == order_id)
+            .order_by(ReviewRevisionModel.revision_number.asc())
+        )
+    ).all()
+    return tuple(review_revision_from_model(row) for row in rows)
+
+
+async def get_latest_audit_event_id(session: AsyncSession, order_id: UUID) -> UUID | None:
+    """Return the opaque generation ID of the latest deterministic audit event."""
+
+    audit_id: UUID | None = await session.scalar(
+        select(AuditEventModel.id)
+        .where(AuditEventModel.order_id == order_id)
+        .order_by(AuditEventModel.occurred_at.desc(), AuditEventModel.id.desc())
+        .limit(1)
+    )
+    return audit_id
 
 
 async def has_customer_po_duplicate(
