@@ -8,7 +8,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import delete, func, select
@@ -127,46 +127,6 @@ async def _assert_review_read_contracts() -> None:
                         failure_origin=None,
                         created_at=created_at,
                     ),
-                    SourceDocumentModel(
-                        id=source_id,
-                        order_id=order_id,
-                        position=0,
-                        document_type="PDF",
-                        name="purchase-order.pdf",
-                        mime_type="application/pdf",
-                        sha256="a" * 64,
-                        message_id="message-demo",
-                        storage_reference="synthetic://purchase-order.pdf",
-                        metadata_=[["source", "test"]],
-                    ),
-                    ExtractionSnapshotModel(
-                        id=snapshot_id,
-                        order_id=order_id,
-                        source_document_id=source_id,
-                        source_sha256="a" * 64,
-                        source_document_type="PDF",
-                        payload=extraction_draft_to_payload(draft),
-                        created_at=created_at,
-                    ),
-                    ValidationIssueModel(
-                        order_id=order_id,
-                        position=0,
-                        rule_code="HIGH_VALUE_APPROVAL_REQUIRED",
-                        severity="WARNING",
-                        field=None,
-                        expected=None,
-                        actual=None,
-                        explanation="Elevated approval is required.",
-                    ),
-                    AuditEventModel(
-                        id=audit_id,
-                        order_id=order_id,
-                        event_type="ORDER_NEEDS_REVIEW",
-                        actor="system",
-                        occurred_at=created_at,
-                        description="Deterministic review required.",
-                    ),
-                    review_revision_to_model(revision),
                     OrderModel(
                         id=preextract_id,
                         customer_reference=None,
@@ -192,6 +152,57 @@ async def _assert_review_read_contracts() -> None:
                         )
                         for position, queue_id in enumerate(queue_ids)
                     ],
+                ]
+            )
+            await session.flush()
+            session.add(
+                SourceDocumentModel(
+                    id=source_id,
+                    order_id=order_id,
+                    position=0,
+                    document_type="PDF",
+                    name="purchase-order.pdf",
+                    mime_type="application/pdf",
+                    sha256="a" * 64,
+                    message_id="message-demo",
+                    storage_reference="synthetic://purchase-order.pdf",
+                    metadata_=[["source", "test"]],
+                )
+            )
+            await session.flush()
+            session.add(
+                ExtractionSnapshotModel(
+                    id=snapshot_id,
+                    order_id=order_id,
+                    source_document_id=source_id,
+                    source_sha256="a" * 64,
+                    source_document_type="PDF",
+                    payload=extraction_draft_to_payload(draft),
+                    created_at=created_at,
+                )
+            )
+            await session.flush()
+            session.add_all(
+                [
+                    ValidationIssueModel(
+                        order_id=order_id,
+                        position=0,
+                        rule_code="HIGH_VALUE_APPROVAL_REQUIRED",
+                        severity="WARNING",
+                        field=None,
+                        expected=None,
+                        actual=None,
+                        explanation="Elevated approval is required.",
+                    ),
+                    AuditEventModel(
+                        id=audit_id,
+                        order_id=order_id,
+                        event_type="ORDER_NEEDS_REVIEW",
+                        actor="system",
+                        occurred_at=created_at,
+                        description="Deterministic review required.",
+                    ),
+                    review_revision_to_model(revision),
                     ValidationIssueModel(
                         order_id=queue_ids[0],
                         position=0,
@@ -355,8 +366,11 @@ async def _assert_missing_draft_and_integrity_failures() -> None:
                     ),
                 ]
             )
+            await session.flush()
+            source_documents: list[tuple[UUID, UUID, str]] = []
             for order_id, suffix in ((multiple_snapshot_id, "one"), (multiple_snapshot_id, "two")):
                 source_id = uuid4()
+                source_documents.append((order_id, source_id, suffix))
                 session.add(
                     SourceDocumentModel(
                         id=source_id,
@@ -371,6 +385,8 @@ async def _assert_missing_draft_and_integrity_failures() -> None:
                         metadata_=[],
                     )
                 )
+            await session.flush()
+            for order_id, source_id, suffix in source_documents:
                 snapshot_draft = _extraction_draft(("b" if suffix == "one" else "c") * 64)
                 session.add(
                     ExtractionSnapshotModel(
