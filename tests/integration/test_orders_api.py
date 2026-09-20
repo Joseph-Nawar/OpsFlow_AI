@@ -33,12 +33,18 @@ def test_openapi_exposes_only_the_approved_business_routes() -> None:
         "/v1/review/orders/{order_id}",
         "/v1/review/orders/{order_id}/reference-data",
         "/v1/review/orders/{order_id}/draft",
+        "/v1/review/orders/{order_id}/approve",
+        "/v1/review/orders/{order_id}/reject",
+        "/v1/review/orders/{order_id}/retry",
     }
     assert {path: set(openapi_paths[path]) for path in review_paths} == {
         "/v1/review/orders": {"get"},
         "/v1/review/orders/{order_id}": {"get"},
         "/v1/review/orders/{order_id}/reference-data": {"get"},
         "/v1/review/orders/{order_id}/draft": {"put"},
+        "/v1/review/orders/{order_id}/approve": {"post"},
+        "/v1/review/orders/{order_id}/reject": {"post"},
+        "/v1/review/orders/{order_id}/retry": {"post"},
     }
     assert not any(term in path for path in paths for term in ("transition", "upload"))
     assert {path for path in paths if path.startswith("/v1/")} == {

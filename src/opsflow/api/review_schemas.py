@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, StrictStr
 
+from opsflow.application.review_commands import ReviewCommandResult
 from opsflow.application.review_reads import (
     ReviewDetailData,
     ReviewQueuePage,
@@ -292,6 +293,25 @@ class ReviewReferenceDataResponse(BaseModel):
     products_by_line: list[ReferenceProductResponse | None]
 
 
+class ReviewRejectRequest(BaseModel):
+    """Strict command body containing only the operator's bounded reason."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: StrictStr
+
+
+class ReviewCommandResponse(BaseModel):
+    """Narrow result emitted after one review lifecycle command commits."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: UUID
+    state: OrderState
+    failure_origin: OrderState | None
+    etag: StrictStr
+
+
 def review_queue_response(page: ReviewQueuePage) -> ReviewQueueResponse:
     return ReviewQueueResponse(
         items=[
@@ -433,6 +453,17 @@ def reference_data_response(data: TrustedBusinessData) -> ReviewReferenceDataRes
             )
             for item in data.products_by_line
         ],
+    )
+
+
+def review_command_response(result: ReviewCommandResult) -> ReviewCommandResponse:
+    """Map the committed application result without adding review or audit data."""
+
+    return ReviewCommandResponse(
+        order_id=result.order_id,
+        state=result.state,
+        failure_origin=result.failure_origin,
+        etag=result.etag,
     )
 
 

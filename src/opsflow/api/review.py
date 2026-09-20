@@ -1,4 +1,4 @@
-"""Narrow transport routes for Phase 6 human-review reads."""
+"""Narrow transport routes for Phase 6 human-review reads and commands."""
 
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
@@ -13,6 +13,7 @@ from fastapi.routing import APIRoute
 from opsflow.application.errors import (
     BusinessDataProviderError,
     ForbiddenError,
+    InvalidRejectionReasonError,
     InvalidReviewStateError,
     InvalidTrustedDataError,
     NoReviewChangesError,
@@ -23,6 +24,11 @@ from opsflow.application.errors import (
     ReviewPreconditionFailedError,
     ReviewPreconditionRequiredError,
     ValidationFactsChangedError,
+)
+from opsflow.application.review_commands import (
+    approve_order,
+    reject_order,
+    retry_order,
 )
 from opsflow.application.review_reads import (
     get_current_reference_data,
@@ -36,35 +42,58 @@ from opsflow.review.auth import get_operator_context
 
 from .orders import SessionDependency
 from .review_schemas import (
+    ReviewCommandResponse,
     ReviewDetailResponse,
     ReviewDraftRequest,
     ReviewQueueResponse,
     ReviewReferenceDataResponse,
+    ReviewRejectRequest,
     reference_data_response,
+    review_command_response,
     review_detail_response,
     review_queue_response,
 )
 
 
 class _ReviewRoute(APIRoute):
-    """Keep draft transport validation errors in the bounded review error shape."""
+    """Keep review mutation transport errors in a bounded non-echoing shape."""
 
     def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
         original_handler = super().get_route_handler()
         is_draft_command = self.path == "/v1/review/orders/{order_id}/draft"
+        is_review_command = self.path in {
+            "/v1/review/orders/{order_id}/approve",
+            "/v1/review/orders/{order_id}/reject",
+            "/v1/review/orders/{order_id}/retry",
+        }
 
         async def handler(request: Request) -> Response:
             try:
                 return await original_handler(request)
             except RequestValidationError:
-                if not is_draft_command:
+                if is_draft_command:
+                    return JSONResponse(
+                        status_code=422,
+                        content={
+                            "detail": {
+                                "code": "INVALID_REVIEW_DRAFT",
+                                "message": "The submitted review draft is invalid.",
+                            }
+                        },
+                    )
+                if not is_review_command:
                     raise
+                code = (
+                    "INVALID_REJECTION_REQUEST"
+                    if self.path.endswith("/reject")
+                    else "INVALID_COMMAND_REQUEST"
+                )
                 return JSONResponse(
                     status_code=422,
                     content={
                         "detail": {
-                            "code": "INVALID_REVIEW_DRAFT",
-                            "message": "The submitted review draft is invalid.",
+                            "code": code,
+                            "message": "The review command request is invalid.",
                         }
                     },
                 )
@@ -74,6 +103,31 @@ class _ReviewRoute(APIRoute):
 
 router = APIRouter(prefix="/v1/review/orders", tags=["human review"], route_class=_ReviewRoute)
 OperatorDependency = Annotated[OperatorContext, Depends(get_operator_context)]
+_COMMAND_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"description": "A configured development bearer credential is required."},
+    403: {"description": "The resolved operator lacks this command capability."},
+    404: {"description": "The order was not found."},
+    409: {"description": "The command is invalid for current persisted state."},
+    412: {"description": "If-Match is malformed or no longer current."},
+    422: {"description": "The command request or rejection reason is invalid."},
+    428: {"description": "A strong If-Match review validator is required."},
+}
+_IF_MATCH_OPENAPI_EXTRA = {
+    "parameters": [
+        {
+            "name": "If-Match",
+            "in": "header",
+            "required": True,
+            "description": "Required strong review ETag.",
+            "schema": {"type": "string"},
+        }
+    ]
+}
+_IF_MATCH_HEADER = Header(
+    alias="If-Match",
+    description="Required strong review ETag; missing values return HTTP 428.",
+    include_in_schema=False,
+)
 
 
 @router.get("", response_model=ReviewQueueResponse)
@@ -294,6 +348,169 @@ async def save_review_draft_endpoint(
 
     response.headers["ETag"] = detail.etag
     return review_detail_response(detail)
+
+
+@router.post(
+    "/{order_id}/approve",
+    response_model=ReviewCommandResponse,
+    responses=_COMMAND_RESPONSES,
+    openapi_extra=_IF_MATCH_OPENAPI_EXTRA,
+)
+async def approve_review_order_endpoint(
+    order_id: UUID,
+    request: Request,
+    response: Response,
+    session: SessionDependency,
+    operator: OperatorDependency,
+    if_match: Annotated[str | None, _IF_MATCH_HEADER] = None,
+) -> ReviewCommandResponse:
+    """Approve one eligible order without triggering synchronization."""
+
+    await _require_empty_command_body(request)
+    try:
+        result = await approve_order(
+            session,
+            order_id,
+            if_match,
+            operator,
+            datetime.now(UTC),
+        )
+    except (
+        InvalidReviewStateError,
+        OrderNotFoundError,
+        ReviewPersistenceConflictError,
+        ReviewPreconditionFailedError,
+        ReviewPreconditionRequiredError,
+        DomainValidationError,
+    ) as error:
+        raise _command_error(error) from error
+    response.headers["ETag"] = result.etag
+    return review_command_response(result)
+
+
+@router.post(
+    "/{order_id}/reject",
+    response_model=ReviewCommandResponse,
+    responses=_COMMAND_RESPONSES,
+    openapi_extra=_IF_MATCH_OPENAPI_EXTRA,
+)
+async def reject_review_order_endpoint(
+    order_id: UUID,
+    body: ReviewRejectRequest,
+    response: Response,
+    session: SessionDependency,
+    operator: OperatorDependency,
+    if_match: Annotated[str | None, _IF_MATCH_HEADER] = None,
+) -> ReviewCommandResponse:
+    """Reject one eligible order with a bounded operator reason."""
+
+    try:
+        result = await reject_order(
+            session,
+            order_id,
+            body.reason,
+            if_match,
+            operator,
+            datetime.now(UTC),
+        )
+    except (
+        InvalidRejectionReasonError,
+        InvalidReviewStateError,
+        OrderNotFoundError,
+        ReviewPersistenceConflictError,
+        ReviewPreconditionFailedError,
+        ReviewPreconditionRequiredError,
+        DomainValidationError,
+    ) as error:
+        raise _command_error(error) from error
+    response.headers["ETag"] = result.etag
+    return review_command_response(result)
+
+
+@router.post(
+    "/{order_id}/retry",
+    response_model=ReviewCommandResponse,
+    responses=_COMMAND_RESPONSES,
+    openapi_extra=_IF_MATCH_OPENAPI_EXTRA,
+)
+async def retry_review_order_endpoint(
+    order_id: UUID,
+    request: Request,
+    response: Response,
+    session: SessionDependency,
+    operator: OperatorDependency,
+    if_match: Annotated[str | None, _IF_MATCH_HEADER] = None,
+) -> ReviewCommandResponse:
+    """Clear an eligible retryable failure without resuming processing."""
+
+    await _require_empty_command_body(request)
+    try:
+        result = await retry_order(
+            session,
+            order_id,
+            if_match,
+            operator,
+            datetime.now(UTC),
+        )
+    except (
+        InvalidReviewStateError,
+        OrderNotFoundError,
+        ReviewPersistenceConflictError,
+        ReviewPreconditionFailedError,
+        ReviewPreconditionRequiredError,
+        DomainValidationError,
+    ) as error:
+        raise _command_error(error) from error
+    response.headers["ETag"] = result.etag
+    return review_command_response(result)
+
+
+async def _require_empty_command_body(request: Request) -> None:
+    if await request.body():
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_COMMAND_REQUEST",
+                "message": "This review command does not accept a request body.",
+            },
+        )
+
+
+def _command_error(error: Exception) -> HTTPException:
+    if isinstance(error, ReviewPreconditionRequiredError):
+        return HTTPException(
+            status_code=428,
+            detail={"code": "PRECONDITION_REQUIRED", "message": "If-Match is required."},
+        )
+    if isinstance(error, ReviewPreconditionFailedError):
+        return HTTPException(
+            status_code=412,
+            detail={"code": "PRECONDITION_FAILED", "message": "Review state changed."},
+        )
+    if isinstance(error, OrderNotFoundError):
+        return HTTPException(
+            status_code=404,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order was not found."},
+        )
+    if isinstance(error, InvalidRejectionReasonError):
+        return HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_REJECTION_REASON",
+                "message": "A nonblank rejection reason of at most 500 characters is required.",
+            },
+        )
+    if isinstance(error, InvalidReviewStateError):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "INVALID_REVIEW_STATE", "message": "Review action is unavailable."},
+        )
+    if isinstance(error, ReviewPersistenceConflictError):
+        return _review_persistence_conflict()
+    return HTTPException(
+        status_code=409,
+        detail={"code": "REVIEW_CASE_UNAVAILABLE", "message": "Review case is unavailable."},
+    )
 
 
 def _review_case_unavailable() -> HTTPException:

@@ -86,7 +86,7 @@ RECORDED_AT = datetime(2030, 1, 2, 3, 4, 5, tzinfo=UTC)
 EVALUATION_DATE = date(2030, 1, 2)
 
 
-def test_openapi_exposes_exact_m6c_review_surface() -> None:
+def test_openapi_exposes_exact_phase6_review_surface() -> None:
     openapi = create_app(_settings()).openapi()
     paths = openapi["paths"]
     review_paths = {path: value for path, value in paths.items() if path.startswith("/v1/review/")}
@@ -96,13 +96,18 @@ def test_openapi_exposes_exact_m6c_review_surface() -> None:
         "/v1/review/orders/{order_id}",
         "/v1/review/orders/{order_id}/reference-data",
         "/v1/review/orders/{order_id}/draft",
+        "/v1/review/orders/{order_id}/approve",
+        "/v1/review/orders/{order_id}/reject",
+        "/v1/review/orders/{order_id}/retry",
     }
     assert set(review_paths["/v1/review/orders"]) == {"get"}
     assert set(review_paths["/v1/review/orders/{order_id}"]) == {"get"}
     assert set(review_paths["/v1/review/orders/{order_id}/reference-data"]) == {"get"}
     draft_operation = review_paths["/v1/review/orders/{order_id}/draft"]["put"]
     assert set(review_paths["/v1/review/orders/{order_id}/draft"]) == {"put"}
-    assert not any(path.endswith(("/approve", "/reject", "/retry")) for path in paths)
+    assert set(review_paths["/v1/review/orders/{order_id}/approve"]) == {"post"}
+    assert set(review_paths["/v1/review/orders/{order_id}/reject"]) == {"post"}
+    assert set(review_paths["/v1/review/orders/{order_id}/retry"]) == {"post"}
     if_match = next(
         parameter for parameter in draft_operation["parameters"] if parameter["name"] == "If-Match"
     )
