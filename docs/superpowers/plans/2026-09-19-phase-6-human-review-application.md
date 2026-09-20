@@ -1161,10 +1161,7 @@ export interface ReviewChange {
 
 export interface ReviewRevision {
   id: string;
-  orderId: string;
-  extractionSnapshotId: string;
   revisionNumber: number;
-  payload: ReviewDraft;
   changes: ReviewChange[];
   actor: string;
   createdAt: string;
@@ -1178,17 +1175,24 @@ export interface SourceDocument {
   sha256: string;
   messageId: string | null;
   storageReference: string | null;
-  metadata: Array<[string, string]>;
+  metadata: Array<{ key: string; value: string }>;
 }
 
 export interface ExtractionEvidence {
   fieldPath: string;
-  sourceLocation: string;
-  quote: string;
+  sourceLocation: string | null;
+  quote: string | null;
+}
+
+export interface SourceSnapshot {
+  id: string;
+  sourceDocumentId: string;
+  sourceSha256: string;
+  sourceDocumentType: string;
+  createdAt: string;
 }
 
 export interface OriginalExtraction {
-  snapshotId: string;
   sourceSha256: string;
   sourceDocumentType: string;
   customerName: string | null;
@@ -1204,10 +1208,10 @@ export interface OriginalExtraction {
 
 export interface TrustedOrderLine {
   id: string;
-  sku: string;
-  description: string;
+  sku: string | null;
+  description: string | null;
   quantity: string;
-  submittedPrice: string;
+  submittedPrice: string | null;
   trustedCataloguePrice: string | null;
 }
 
@@ -1222,16 +1226,20 @@ export interface TrustedOrder {
   requestedDeliveryDate: string | null;
   currency: string | null;
   lines: TrustedOrderLine[];
-  sourceDocuments: SourceDocument[];
 }
 
 export interface ValidationIssue {
   ruleCode: string;
   severity: string;
-  field: string;
+  field: string | null;
   expected: CanonicalJsonValue;
   actual: CanonicalJsonValue;
   explanation: string;
+}
+
+export interface ReviewEffectiveDraft extends ReviewDraft {
+  sourceSnapshotId: string | null;
+  latestRevisionNumber: number | null;
 }
 
 export interface ReviewActions {
@@ -1242,18 +1250,21 @@ export interface ReviewActions {
 }
 
 export interface ReviewDetail {
+  etag: string;
   order: TrustedOrder;
-  sourceSnapshot: OriginalExtraction | null;
-  effectiveDraft: ReviewDraft | null;
+  sourceDocuments: SourceDocument[];
+  sourceSnapshot: SourceSnapshot | null;
+  originalExtraction: OriginalExtraction | null;
+  effectiveDraft: ReviewEffectiveDraft | null;
   revisions: ReviewRevision[];
   latestRevision: ReviewRevision | null;
   validationIssues: ValidationIssue[];
   actions: ReviewActions;
   operator: { actor: string; role: OperatorRole };
-  etag: string;
 }
 
 export interface ReferenceData {
+  label: string;
   customerCandidates: Array<{
     reference: string;
     name: string;
@@ -1348,7 +1359,7 @@ interface WireReviewLine {
   submitted_price: string | null;
 }
 
-interface WireReviewDraft {
+interface WireReviewDraftRequest {
   customer_name: string | null;
   customer_reference: string | null;
   po_number: string | null;
@@ -1356,6 +1367,18 @@ interface WireReviewDraft {
   requested_delivery_date: string | null;
   currency: string | null;
   lines: WireReviewLine[];
+}
+
+interface WireReviewEffectiveDraft {
+  customer_name: string | null;
+  customer_reference: string | null;
+  po_number: string | null;
+  order_date: string | null;
+  requested_delivery_date: string | null;
+  currency: string | null;
+  lines: WireReviewLine[];
+  source_snapshot_id: string | null;
+  latest_revision_number: number | null;
 }
 
 interface WireReviewChange {
@@ -1366,13 +1389,10 @@ interface WireReviewChange {
 
 interface WireReviewRevision {
   id: string;
-  order_id: string;
-  extraction_snapshot_id: string;
   revision_number: number;
-  payload: WireReviewDraft;
-  changes: WireReviewChange[];
   actor: string;
   created_at: string;
+  changes: WireReviewChange[];
 }
 
 interface WireSourceDocument {
@@ -1383,17 +1403,24 @@ interface WireSourceDocument {
   sha256: string;
   message_id: string | null;
   storage_reference: string | null;
-  metadata: Array<[string, string]>;
+  metadata: Array<{ key: string; value: string }>;
 }
 
 interface WireExtractionEvidence {
   field_path: string;
-  source_location: string;
-  quote: string;
+  source_location: string | null;
+  quote: string | null;
+}
+
+interface WireSourceSnapshot {
+  id: string;
+  source_document_id: string;
+  source_sha256: string;
+  source_document_type: string;
+  created_at: string;
 }
 
 interface WireOriginalExtraction {
-  snapshot_id: string;
   source_sha256: string;
   source_document_type: string;
   customer_name: string | null;
@@ -1409,10 +1436,10 @@ interface WireOriginalExtraction {
 
 interface WireTrustedOrderLine {
   id: string;
-  sku: string;
-  description: string;
+  sku: string | null;
+  description: string | null;
   quantity: string;
-  submitted_price: string;
+  submitted_price: string | null;
   trusted_catalogue_price: string | null;
 }
 
@@ -1427,13 +1454,12 @@ interface WireTrustedOrder {
   requested_delivery_date: string | null;
   currency: string | null;
   lines: WireTrustedOrderLine[];
-  source_documents: WireSourceDocument[];
 }
 
 interface WireValidationIssue {
   rule_code: string;
   severity: string;
-  field: string;
+  field: string | null;
   expected: CanonicalJsonValue;
   actual: CanonicalJsonValue;
   explanation: string;
@@ -1447,18 +1473,21 @@ interface WireReviewActions {
 }
 
 interface WireReviewDetail {
+  etag: string;
   order: WireTrustedOrder;
-  source_snapshot: WireOriginalExtraction | null;
-  effective_draft: WireReviewDraft | null;
+  source_documents: WireSourceDocument[];
+  source_snapshot: WireSourceSnapshot | null;
+  original_extraction: WireOriginalExtraction | null;
+  effective_draft: WireReviewEffectiveDraft | null;
   revisions: WireReviewRevision[];
   latest_revision: WireReviewRevision | null;
   validation_issues: WireValidationIssue[];
-  actions: WireReviewActions;
   operator: { actor: string; role: OperatorRole };
-  etag: string;
+  actions: WireReviewActions;
 }
 
 interface WireReferenceData {
+  label: "Current trusted reference data";
   customer_candidates: Array<{
     reference: string;
     name: string;
@@ -1501,7 +1530,7 @@ framework:
 ```typescript
 function mapQueueItem(value: WireReviewQueueItem): ReviewQueueItem;
 function mapQueuePage(value: WireReviewQueuePage): ReviewQueuePage;
-function mapDraftToWire(value: ReviewDraft): WireReviewDraft;
+function mapDraftToWire(value: ReviewDraft): WireReviewDraftRequest;
 function mapReviewDetail(value: WireReviewDetail): ReviewDetail;
 function mapReferenceData(value: WireReferenceData): ReferenceData;
 function mapCommandResult(value: WireCommandResult): ReviewCommandResult;
@@ -1510,12 +1539,31 @@ function mapAuditList(value: WireAuditList): AuditEvent[];
 ```
 
 `saveDraft` maps the camelCase `ReviewDraft` to the snake_case
-`WireReviewDraft` before sending it. `getAudit` explicitly unwraps
+`WireReviewDraftRequest` before sending it; that request contains only the seven
+editable business fields. The distinct `WireReviewEffectiveDraft` detail
+response additionally contains nullable `source_snapshot_id` and
+`latest_revision_number`. `getAudit` explicitly unwraps
 `GET /v1/orders/{orderId}/audit` from wire `{ items: [...] }` to
 `AuditEvent[]`. All other API methods parse wire DTOs first and return only the
 camelCase application interfaces above. Existing Phase 2 snake_case transport
 fields are not renamed, and no Pydantic alias generator or generated API client
 is introduced.
+
+The review-detail wire DTO mirrors the existing FastAPI response shape:
+`source_documents` is top-level and maps once to `ReviewDetail.sourceDocuments`
+(not `TrustedOrder`); metadata remains an ordered array of `{ key, value }`
+objects in the application model to preserve ordering and duplicate keys.
+`source_snapshot` maps to `SourceSnapshot`, while `original_extraction` maps
+separately to `OriginalExtraction`; the latter has no synthetic snapshot ID.
+Historical revisions expose only `id`, `revision_number`, `changes`, `actor`,
+and `created_at` through this detail API. Their full payload remains persisted
+server-side but is not exposed by this Phase 6 HTTP contract and must not be
+synthesized from the latest/effective draft. The actor, timestamp, and
+structured change records are sufficient for Task 13's revision-history
+panel. Nullable trusted-line `sku`/`description`/`submitted_price`, evidence
+`source_location`/`quote`, and validation-issue `field` match the response
+schemas. Reference data retains its `label` field, whose current backend value
+is `Current trusted reference data`.
 
 The API client uses native `fetch`, sends only the session bearer credential,
 reads the ETag response header/envelope, sends `If-Match` for every mutation,
@@ -1542,7 +1590,7 @@ existing GitHub Frontend job. Do not add a frontend data/state framework.
 - [ ] Configure Vitest jsdom/setup matchers and add synthetic fixtures with no usable credentials. Run `npm --prefix web test -- --run`; the initial failure must identify missing test configuration or clients.
 - [ ] Install only approved packages with npm so `package-lock.json` records the exact resolved graph; do not add production backend packages.
 - [ ] Implement the typed API module, one-way snake_case wire mappers, access session helper, credential-only access form, router shell, Vite proxy, test setup, and package/CI scripts. Keep `App.tsx` as a small composition root; do not fabricate an operator identity before a protected request returns it.
-- [ ] Assert with literal snake_case fixtures that queue items/pages, nested detail order/source/issues/revisions/actions, reference data, command results, and the existing audit `{items: [...]}` envelope map to the documented camelCase application objects. Component tests may use only those mapped objects.
+- [ ] Assert with literal snake_case fixtures that queue items/pages, nested detail order, top-level source documents and metadata, distinct source snapshot/original extraction, effective-draft response metadata, nullable line/evidence/issue fields, summary-only revisions, actions, labeled reference data, command results, and the existing audit `{items: [...]}` envelope map to the documented camelCase application objects. Assert the Save & revalidate request contains only the seven editable fields. Component tests may use only those mapped objects.
 - [ ] Run `npm --prefix web test -- --run`, `npm --prefix web run lint`, and `npm --prefix web run build`; run `make frontend-check` after its script is updated.
 - [ ] Inspect package diff for unapproved packages and commit `feat: add review frontend foundation`.
 
