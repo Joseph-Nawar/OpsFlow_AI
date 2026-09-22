@@ -5,10 +5,11 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from opsflow.domain import AuditEvent, Order, OrderState, ValidationIssue
+from opsflow.domain import AuditEvent, Order, OrderState, ValidationIssue, ValidationSeverity
+from opsflow.review import ReviewRevision
 from opsflow.validation import ValidationFacts
 
 from .mappers import (
@@ -20,6 +21,8 @@ from .mappers import (
     line_to_model,
     order_from_models,
     order_to_model,
+    review_revision_from_model,
+    review_revision_to_model,
     source_document_to_model,
     validation_issue_from_model,
 )
@@ -29,6 +32,7 @@ from .models import (
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
+    ReviewRevisionModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
@@ -55,6 +59,23 @@ class OrderSummary:
     currency: str | None
     state: OrderState
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewOrderSummary:
+    """Bounded review-queue projection including aggregated issue signals."""
+
+    id: UUID
+    state: OrderState
+    failure_origin: OrderState | None
+    customer_reference: str | None
+    po_number: str | None
+    order_date: date | None
+    requested_delivery_date: date | None
+    currency: str | None
+    created_at: datetime
+    validation_issue_count: int
+    high_value_approval_required: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +117,76 @@ async def get_extraction_snapshot(
     if row is None:
         return None
     return extraction_snapshot_from_model(row)
+
+
+async def get_extraction_snapshots_for_order(
+    session: AsyncSession,
+    order_id: UUID,
+) -> tuple[PersistedExtractionSnapshot, ...]:
+    """Return at most two snapshots, enough to enforce the single-snapshot contract."""
+
+    rows = (
+        await session.scalars(
+            select(ExtractionSnapshotModel)
+            .where(ExtractionSnapshotModel.order_id == order_id)
+            .order_by(ExtractionSnapshotModel.created_at.asc(), ExtractionSnapshotModel.id.asc())
+            .limit(2)
+        )
+    ).all()
+    return tuple(extraction_snapshot_from_model(row) for row in rows)
+
+
+async def insert_review_revision(
+    session: AsyncSession,
+    revision: ReviewRevision,
+) -> None:
+    """Insert one immutable review revision without committing the transaction."""
+
+    session.add(review_revision_to_model(revision))
+    await session.flush()
+
+
+async def get_latest_review_revision(
+    session: AsyncSession,
+    order_id: UUID,
+) -> ReviewRevision | None:
+    """Return the highest-numbered immutable review revision for one order."""
+
+    row = await session.scalar(
+        select(ReviewRevisionModel)
+        .where(ReviewRevisionModel.order_id == order_id)
+        .order_by(ReviewRevisionModel.revision_number.desc())
+        .limit(1)
+    )
+    return review_revision_from_model(row) if row is not None else None
+
+
+async def get_review_revision_history(
+    session: AsyncSession,
+    order_id: UUID,
+) -> tuple[ReviewRevision, ...]:
+    """Return append-only review history in revision order."""
+
+    rows = (
+        await session.scalars(
+            select(ReviewRevisionModel)
+            .where(ReviewRevisionModel.order_id == order_id)
+            .order_by(ReviewRevisionModel.revision_number.asc())
+        )
+    ).all()
+    return tuple(review_revision_from_model(row) for row in rows)
+
+
+async def get_latest_audit_event_id(session: AsyncSession, order_id: UUID) -> UUID | None:
+    """Return the opaque generation ID of the latest deterministic audit event."""
+
+    audit_id: UUID | None = await session.scalar(
+        select(AuditEventModel.id)
+        .where(AuditEventModel.order_id == order_id)
+        .order_by(AuditEventModel.occurred_at.desc(), AuditEventModel.id.desc())
+        .limit(1)
+    )
+    return audit_id
 
 
 async def has_customer_po_duplicate(
@@ -343,6 +434,68 @@ async def list_orders(
             created_at=row.created_at,
         )
         for row in rows
+    )
+    return summaries, int(total or 0)
+
+
+async def list_review_order_summaries(
+    session: AsyncSession,
+    states: tuple[OrderState, ...],
+    limit: int,
+    offset: int,
+) -> tuple[tuple[ReviewOrderSummary, ...], int]:
+    """Read one bounded oldest-first queue page with grouped issue signals."""
+
+    if not states:
+        return (), 0
+
+    issue_summary = (
+        select(
+            ValidationIssueModel.order_id.label("order_id"),
+            func.count().label("issue_count"),
+            func.bool_or(
+                and_(
+                    ValidationIssueModel.rule_code == "HIGH_VALUE_APPROVAL_REQUIRED",
+                    ValidationIssueModel.severity == ValidationSeverity.WARNING.value,
+                )
+            ).label("high_value_required"),
+        )
+        .group_by(ValidationIssueModel.order_id)
+        .subquery()
+    )
+    state_values = tuple(state.value for state in states)
+    total = await session.scalar(
+        select(func.count()).select_from(OrderModel).where(OrderModel.state.in_(state_values))
+    )
+    rows = (
+        await session.execute(
+            select(
+                OrderModel,
+                func.coalesce(issue_summary.c.issue_count, 0),
+                func.coalesce(issue_summary.c.high_value_required, false()),
+            )
+            .outerjoin(issue_summary, issue_summary.c.order_id == OrderModel.id)
+            .where(OrderModel.state.in_(state_values))
+            .order_by(OrderModel.created_at.asc(), OrderModel.id.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    summaries = tuple(
+        ReviewOrderSummary(
+            id=row.id,
+            state=OrderState(row.state),
+            failure_origin=OrderState(row.failure_origin) if row.failure_origin else None,
+            customer_reference=row.customer_reference,
+            po_number=row.po_number,
+            order_date=row.order_date,
+            requested_delivery_date=row.requested_delivery_date,
+            currency=row.currency,
+            created_at=row.created_at,
+            validation_issue_count=int(issue_count),
+            high_value_approval_required=bool(high_value_required),
+        )
+        for row, issue_count, high_value_required in rows
     )
     return summaries, int(total or 0)
 

@@ -1,4 +1,4 @@
-"""Metadata contract tests for the Phase 2 persistence schema."""
+"""Metadata contract tests for the relational persistence schema."""
 
 import re
 from collections.abc import Iterable
@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum,
+    ForeignKeyConstraint,
     Index,
     MetaData,
     Numeric,
@@ -23,6 +24,7 @@ from opsflow.persistence.models import (
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
+    ReviewRevisionModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
@@ -94,6 +96,16 @@ EXPECTED_COLUMNS = {
         "payload",
         "created_at",
     },
+    "review_revisions": {
+        "id",
+        "order_id",
+        "extraction_snapshot_id",
+        "revision_number",
+        "payload",
+        "changes",
+        "actor",
+        "created_at",
+    },
 }
 
 
@@ -127,7 +139,7 @@ def _column_sets(constraints: Iterable[UniqueConstraint | Index]) -> set[tuple[s
     return {tuple(column.name for column in constraint.columns) for constraint in constraints}
 
 
-def test_metadata_contains_exactly_the_six_phase_2_tables_and_columns() -> None:
+def test_metadata_contains_exact_tables_and_columns() -> None:
     metadata = Base.metadata
 
     assert set(metadata.tables) == set(EXPECTED_COLUMNS)
@@ -146,6 +158,7 @@ def test_named_models_map_to_the_expected_relational_tables() -> None:
             AuditEventModel,
             OrderCreationIdempotencyModel,
             ExtractionSnapshotModel,
+            ReviewRevisionModel,
         )
     } == set(EXPECTED_COLUMNS)
 
@@ -160,6 +173,7 @@ def test_primary_keys_match_the_relational_identity_contract() -> None:
         "audit_events": ("id",),
         "order_creation_idempotency": ("idempotency_key",),
         "extraction_snapshots": ("id",),
+        "review_revisions": ("id",),
     }
 
     for table_name, expected_primary_key in expected_primary_keys.items():
@@ -235,7 +249,10 @@ def test_audit_and_idempotency_constraints_support_current_reads_and_uniqueness(
         constraint.name
         for constraint in snapshots.constraints
         if isinstance(constraint, UniqueConstraint)
-    } == {"uq_extraction_snapshots_order_source"}
+    } == {
+        "uq_extraction_snapshots_order_source",
+        "uq_extraction_snapshots_id_order_id",
+    }
 
 
 def test_columns_use_the_required_postgresql_storage_types_and_nullability() -> None:
@@ -398,3 +415,68 @@ def test_extraction_snapshot_checks_are_named_and_defense_in_depth_is_explicit()
     assert any("jsonb_typeof(payload) = 'object'" in check for check in checks)
     assert any("source_sha256" in check and "^[0-9a-f]{64}$" in check for check in checks)
     assert any("source_document_type" in check for check in checks)
+
+
+def test_review_revision_metadata_locks_immutable_ownership_and_constraints() -> None:
+    metadata = Base.metadata
+    revisions = metadata.tables["review_revisions"]
+    snapshots = metadata.tables["extraction_snapshots"]
+
+    assert set(metadata.tables) == set(EXPECTED_COLUMNS)
+    assert _column_sets(
+        constraint
+        for constraint in snapshots.constraints
+        if isinstance(constraint, UniqueConstraint)
+    ) == {("order_id", "source_document_id"), ("id", "order_id")}
+    assert {
+        tuple(column.name for column in constraint.columns)
+        for constraint in revisions.constraints
+        if isinstance(constraint, UniqueConstraint)
+    } == {("order_id", "revision_number")}
+    foreign_keys = {
+        (
+            tuple(element.parent.name for element in constraint.elements),
+            tuple(element.target_fullname for element in constraint.elements),
+            constraint.ondelete,
+        )
+        for constraint in revisions.constraints
+        if isinstance(constraint, ForeignKeyConstraint)
+    }
+    assert foreign_keys == {
+        (("order_id",), ("orders.id",), "CASCADE"),
+        (
+            ("extraction_snapshot_id", "order_id"),
+            ("extraction_snapshots.id", "extraction_snapshots.order_id"),
+            "CASCADE",
+        ),
+    }
+    assert {
+        constraint.name
+        for constraint in revisions.constraints
+        if isinstance(constraint, CheckConstraint)
+    } == {
+        "ck_review_revisions_revision_positive",
+        "ck_review_revisions_payload_object",
+        "ck_review_revisions_changes_array",
+        "ck_review_revisions_actor",
+    }
+    checks = _normalized_checks(revisions)
+    assert any("revision_number > 0" in check for check in checks)
+    assert any("jsonb_typeof(payload) = 'object'" in check for check in checks)
+    assert any("jsonb_typeof(changes) = 'array'" in check for check in checks)
+    assert any(
+        "length(btrim(actor)) > 0" in check and "length(actor) <= 128" in check for check in checks
+    )
+    assert isinstance(revisions.c.payload.type, JSONB)
+    assert isinstance(revisions.c.changes.type, JSONB)
+    assert isinstance(revisions.c.created_at.type, DateTime)
+    assert revisions.c.created_at.type.timezone is True
+    assert revisions.c.created_at.nullable is False
+    assert revisions.c.actor.nullable is False
+    assert revisions.c.actor.type.length == 128
+    assert "approval_level" not in revisions.columns
+    assert not any(
+        isinstance(constraint, UniqueConstraint)
+        and tuple(column.name for column in constraint.columns) == ("source_sha256",)
+        for constraint in snapshots.constraints
+    )

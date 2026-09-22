@@ -26,6 +26,7 @@ backend-check: lint format typecheck test
 
 frontend-check:
 	$(NPM) --prefix web ci
+	$(NPM) --prefix web test -- --run
 	$(NPM) --prefix web run lint
 	$(NPM) --prefix web run build
 

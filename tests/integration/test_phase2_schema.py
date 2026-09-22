@@ -19,6 +19,7 @@ PHASE_2_TABLES = {
     "order_creation_idempotency",
 }
 PHASE_5_TABLES = {"extraction_snapshots"}
+PHASE_6_TABLES = {"review_revisions"}
 
 
 def test_phase2_schema_has_exact_tables_constraints_and_indexes() -> None:
@@ -36,7 +37,7 @@ async def _assert_schema() -> None:
             tables = await connection.run_sync(
                 lambda sync_connection: set(inspect(sync_connection).get_table_names())
             )
-            assert tables == PHASE_2_TABLES | PHASE_5_TABLES | {"alembic_version"}
+            assert tables == PHASE_2_TABLES | PHASE_5_TABLES | PHASE_6_TABLES | {"alembic_version"}
 
             foreign_keys = await connection.run_sync(_foreign_keys)
             assert foreign_keys == {

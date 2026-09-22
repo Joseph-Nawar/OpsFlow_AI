@@ -100,3 +100,73 @@ class BusinessDataProviderError(Exception):
 
     def __init__(self) -> None:
         super().__init__("Business data provider operation failed.")
+
+
+class UnauthenticatedError(Exception):
+    """Raised when a protected operation has no recognized bearer credential."""
+
+    def __init__(self) -> None:
+        super().__init__("Development operator authentication is required.")
+
+
+class ForbiddenError(Exception):
+    """Raised when the resolved operator lacks the required Phase 6 capability."""
+
+    def __init__(self) -> None:
+        super().__init__("The resolved operator is not permitted to perform this action.")
+
+
+class ReviewCaseUnavailableError(Exception):
+    """Raised when review persistence is inconsistent or unavailable."""
+
+    def __init__(self) -> None:
+        super().__init__("Review case is unavailable.")
+
+
+class InvalidReviewStateError(Exception):
+    """Raised when a review action is invalid for the persisted lifecycle state."""
+
+    def __init__(self) -> None:
+        super().__init__("Review action is not available in the current order state.")
+
+
+class ReviewPreconditionRequiredError(Exception):
+    """Raised when a mutation omits its required strong If-Match validator."""
+
+    def __init__(self) -> None:
+        super().__init__("If-Match is required for this review operation.")
+
+
+class ReviewPreconditionFailedError(Exception):
+    """Raised when an If-Match value is malformed or no longer current."""
+
+    def __init__(self) -> None:
+        super().__init__("Review state changed; refresh before retrying.")
+
+
+class NoReviewChangesError(Exception):
+    """Raised when a submitted review draft equals the current effective draft."""
+
+    def __init__(self) -> None:
+        super().__init__("No review draft changes were submitted.")
+
+
+class ReviewDraftUnavailableError(Exception):
+    """Raised when a legitimate review case has no effective review draft."""
+
+    def __init__(self) -> None:
+        super().__init__("No effective review draft is available.")
+
+
+class InvalidRejectionReasonError(Exception):
+    """Raised when a rejection reason is blank or exceeds its bounded length."""
+
+    def __init__(self) -> None:
+        super().__init__("A nonblank rejection reason of at most 500 characters is required.")
+
+
+class ReviewPersistenceConflictError(Exception):
+    """Raised when a review write conflicts with a persistence invariant."""
+
+    def __init__(self) -> None:
+        super().__init__("The review operation conflicts with current persisted state.")

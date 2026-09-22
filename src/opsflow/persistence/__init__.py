@@ -7,6 +7,7 @@ from .models import (
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
+    ReviewRevisionModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "OrderCreationIdempotencyModel",
     "OrderLineModel",
     "OrderModel",
+    "ReviewRevisionModel",
     "SourceDocumentModel",
     "ValidationIssueModel",
 ]

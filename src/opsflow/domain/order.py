@@ -166,6 +166,51 @@ class Order:
             failure_origin=self.failure_origin,
         )
 
+    def promote_reviewed_data(
+        self,
+        data: "ValidatedOrderData",
+        line_ids: tuple[UUID, ...],
+    ) -> "Order":
+        """Return a trusted reviewed snapshot without changing lifecycle state."""
+
+        if self.state is not OrderState.NEEDS_REVIEW:
+            raise InvalidStateTransitionError(self.state, None, "promote_reviewed_data")
+
+        from opsflow.validation import ValidatedOrderData
+
+        if not isinstance(data, ValidatedOrderData):
+            raise DomainValidationError("data must be a ValidatedOrderData")
+        if type(line_ids) is not tuple:
+            raise DomainValidationError("line_ids must be an immutable tuple")
+        if len(line_ids) != len(data.lines):
+            raise DomainValidationError("line_ids must match the validated line count")
+        if not all(isinstance(line_id, UUID) for line_id in line_ids):
+            raise DomainValidationError("line_ids must contain UUID values")
+
+        lines = tuple(
+            OrderLine(
+                id=line_id,
+                sku=line.sku,
+                description=line.description,
+                quantity=line.quantity,
+                submitted_price=line.submitted_price,
+                trusted_catalogue_price=line.trusted_catalogue_price,
+            )
+            for line_id, line in zip(line_ids, data.lines, strict=True)
+        )
+        return Order(
+            id=self.id,
+            customer_reference=data.customer_reference,
+            po_number=data.po_number,
+            order_date=data.order_date,
+            requested_delivery_date=data.requested_delivery_date,
+            currency=data.currency,
+            lines=lines,
+            source_documents=self.source_documents,
+            state=self.state,
+            failure_origin=self.failure_origin,
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
             raise DomainValidationError("id must be a UUID")

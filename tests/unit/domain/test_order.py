@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError, fields
+from dataclasses import FrozenInstanceError, fields, replace
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -243,6 +243,106 @@ def test_promote_validated_data_requires_extracted_state(state: OrderState) -> N
         order.promote_validated_data(make_validated_data(), (UUID(int=101), UUID(int=102)))
     assert error.value.current_state is state
     assert error.value.operation == "promote_validated_data"
+
+
+def test_promote_reviewed_data_replaces_trusted_snapshot_without_transitioning() -> None:
+    original = replace(make_extracted_order(), state=OrderState.NEEDS_REVIEW)
+    data = make_validated_data()
+    line_ids = (UUID(int=201), UUID(int=202))
+
+    promoted = original.promote_reviewed_data(data, line_ids)
+
+    assert promoted is not original
+    assert promoted.id == original.id
+    assert promoted.state is OrderState.NEEDS_REVIEW
+    assert promoted.failure_origin is None
+    assert promoted.source_documents == original.source_documents
+    assert promoted.customer_reference == data.customer_reference
+    assert promoted.po_number == data.po_number
+    assert promoted.order_date == data.order_date
+    assert promoted.requested_delivery_date == data.requested_delivery_date
+    assert promoted.currency == data.currency
+    assert promoted.lines == (
+        OrderLine(
+            id=line_ids[0],
+            sku="TRUSTED-001",
+            description="Trusted widget",
+            quantity=Decimal("3"),
+            submitted_price=Decimal("11.25"),
+            trusted_catalogue_price=Decimal("12.00"),
+        ),
+        OrderLine(
+            id=line_ids[1],
+            sku="TRUSTED-002",
+            description=None,
+            quantity=Decimal("1.5"),
+            submitted_price=Decimal("4"),
+            trusted_catalogue_price=Decimal("4.50"),
+        ),
+    )
+    assert original.customer_reference == "EXTRACTED-CUSTOMER"
+    assert original.lines == (make_line(),)
+
+
+@pytest.mark.parametrize(
+    "state", [state for state in OrderState if state is not OrderState.NEEDS_REVIEW]
+)
+def test_promote_reviewed_data_requires_needs_review_state(state: OrderState) -> None:
+    order = Order(
+        id=ORDER_ID,
+        state=state,
+        failure_origin=(
+            OrderState.PROCESSING
+            if state in (OrderState.FAILED_RETRYABLE, OrderState.FAILED_FINAL)
+            else None
+        ),
+    )
+
+    with pytest.raises(InvalidStateTransitionError) as error:
+        order.promote_reviewed_data(make_validated_data(), (UUID(int=201), UUID(int=202)))
+    assert error.value.current_state is state
+    assert error.value.operation == "promote_reviewed_data"
+
+
+@pytest.mark.parametrize(
+    "line_ids", [(UUID(int=201),), (UUID(int=201), UUID(int=202), UUID(int=203))]
+)
+def test_promote_reviewed_data_requires_exact_line_id_count(
+    line_ids: tuple[UUID, ...],
+) -> None:
+    order = replace(make_extracted_order(), state=OrderState.NEEDS_REVIEW)
+
+    with pytest.raises(DomainValidationError):
+        order.promote_reviewed_data(make_validated_data(), line_ids)
+
+
+def test_promote_reviewed_data_requires_immutable_uuid_ids() -> None:
+    order = replace(make_extracted_order(), state=OrderState.NEEDS_REVIEW)
+    data = make_validated_data()
+
+    with pytest.raises(DomainValidationError):
+        order.promote_reviewed_data(data, [UUID(int=201), UUID(int=202)])  # type: ignore[arg-type]
+    with pytest.raises(DomainValidationError):
+        order.promote_reviewed_data(
+            data,
+            (UUID(int=201), "not-a-uuid"),  # type: ignore[arg-type]
+        )
+
+
+def test_promote_reviewed_data_accepts_only_validated_order_data() -> None:
+    order = replace(make_extracted_order(), state=OrderState.NEEDS_REVIEW)
+
+    with pytest.raises(DomainValidationError):
+        order.promote_reviewed_data(object(), (UUID(int=201), UUID(int=202)))  # type: ignore[arg-type]
+
+
+def test_promote_reviewed_data_revalidates_phase_one_line_invariants() -> None:
+    order = replace(make_extracted_order(), state=OrderState.NEEDS_REVIEW)
+    data = make_validated_data()
+    object.__setattr__(data.lines[0], "quantity", Decimal("0"))
+
+    with pytest.raises(DomainValidationError, match="quantity must be greater than zero"):
+        order.promote_reviewed_data(data, (UUID(int=201), UUID(int=202)))
 
 
 @pytest.mark.parametrize(

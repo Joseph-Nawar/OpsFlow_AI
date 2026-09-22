@@ -233,6 +233,11 @@ class ExtractionSnapshotModel(Base):
             "source_document_id",
             name="uq_extraction_snapshots_order_source",
         ),
+        UniqueConstraint(
+            "id",
+            "order_id",
+            name="uq_extraction_snapshots_id_order_id",
+        ),
         ForeignKeyConstraint(["order_id"], ["orders.id"], ondelete="CASCADE"),
         ForeignKeyConstraint(
             ["source_document_id", "order_id"],
@@ -260,4 +265,53 @@ class ExtractionSnapshotModel(Base):
     source_sha256: Mapped[str] = mapped_column(Text, nullable=False)
     source_document_type: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ReviewRevisionModel(Base):
+    """Append-only canonical human-review draft revision."""
+
+    __tablename__ = "review_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "order_id",
+            "revision_number",
+            name="uq_review_revisions_order_revision",
+        ),
+        ForeignKeyConstraint(
+            ["order_id"], ["orders.id"], name="fk_review_revisions_order", ondelete="CASCADE"
+        ),
+        ForeignKeyConstraint(
+            ["extraction_snapshot_id", "order_id"],
+            ["extraction_snapshots.id", "extraction_snapshots.order_id"],
+            name="fk_review_revisions_snapshot_order",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "revision_number > 0",
+            name="ck_review_revisions_revision_positive",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(payload) = 'object'",
+            name="ck_review_revisions_payload_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(changes) = 'array'",
+            name="ck_review_revisions_changes_array",
+        ),
+        CheckConstraint(
+            "length(btrim(actor)) > 0 AND length(actor) <= 128",
+            name="ck_review_revisions_actor",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    order_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    extraction_snapshot_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=False
+    )
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    changes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    actor: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

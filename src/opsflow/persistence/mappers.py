@@ -19,12 +19,20 @@ from opsflow.domain import (
     ValidationSeverity,
 )
 from opsflow.extraction.models import Evidence, ExtractedLine, ExtractionDraft
+from opsflow.review import ReviewRevision
+from opsflow.review.serialization import (
+    review_changes_from_payload,
+    review_changes_to_payload,
+    review_draft_from_payload,
+    review_draft_to_payload,
+)
 
 from .models import (
     AuditEventModel,
     ExtractionSnapshotModel,
     OrderLineModel,
     OrderModel,
+    ReviewRevisionModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
@@ -440,6 +448,45 @@ def extraction_snapshot_from_model(
         raise DomainValidationError(
             "persisted extraction snapshot violates its contract"
         ) from error
+
+
+def review_revision_to_model(revision: ReviewRevision) -> ReviewRevisionModel:
+    """Map a structurally valid immutable review revision to its JSONB row."""
+
+    if not isinstance(revision, ReviewRevision):
+        raise DomainValidationError("revision must be a ReviewRevision")
+    return ReviewRevisionModel(
+        id=revision.id,
+        order_id=revision.order_id,
+        extraction_snapshot_id=revision.extraction_snapshot_id,
+        revision_number=revision.revision_number,
+        payload=review_draft_to_payload(revision.payload),
+        changes=review_changes_to_payload(revision.changes),
+        actor=revision.actor,
+        created_at=revision.created_at,
+    )
+
+
+def review_revision_from_model(row: ReviewRevisionModel) -> ReviewRevision:
+    """Strictly deserialize canonical JSONB into an immutable revision."""
+
+    if not isinstance(row, ReviewRevisionModel):
+        raise DomainValidationError("row must be a ReviewRevisionModel")
+    payload = review_draft_from_payload(row.payload)
+    changes = review_changes_from_payload(row.changes)
+    try:
+        return ReviewRevision(
+            id=row.id,
+            order_id=row.order_id,
+            extraction_snapshot_id=row.extraction_snapshot_id,
+            revision_number=row.revision_number,
+            payload=payload,
+            changes=changes,
+            actor=row.actor,
+            created_at=row.created_at,
+        )
+    except (TypeError, ValueError) as error:
+        raise DomainValidationError("persisted review revision violates its contract") from error
 
 
 def _line_from_model(row: OrderLineModel, expected_order_id: UUID) -> OrderLine:
