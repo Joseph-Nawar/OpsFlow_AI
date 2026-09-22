@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 
-import type { OperatorSession, ReviewQueuePage } from "../api/review";
+import type { OperatorSession, ReviewDetail, ReviewQueuePage } from "../api/review";
 import ReviewRouter from "./Router";
 
 const reviewApiMock = vi.hoisted(() => ({
@@ -28,12 +28,40 @@ const emptyQueue: ReviewQueuePage = {
   total: 0,
 };
 
+const routeDetail: ReviewDetail = {
+  etag: '"review-state-v1-order-123"',
+  order: {
+    id: "order-123",
+    state: "NEEDS_REVIEW",
+    failureOrigin: null,
+    createdAt: "2026-09-19T08:30:00Z",
+    customerReference: null,
+    poNumber: null,
+    orderDate: null,
+    requestedDeliveryDate: null,
+    currency: null,
+    lines: [],
+  },
+  sourceDocuments: [],
+  sourceSnapshot: null,
+  originalExtraction: null,
+  effectiveDraft: null,
+  revisions: [],
+  latestRevision: null,
+  validationIssues: [],
+  operator: { actor: "reviewer-demo", role: "REVIEWER" },
+  actions: { canEdit: true, canApprove: false, canReject: true, canRetry: false },
+};
+
 beforeEach(() => {
   reviewApiMock.createReviewApiClient.mockReset();
   reviewApiMock.listOrders.mockReset();
   reviewApiMock.listOrders.mockResolvedValue(emptyQueue);
   reviewApiMock.createReviewApiClient.mockReturnValue({
     listOrders: reviewApiMock.listOrders,
+    getDetail: vi.fn(async () => routeDetail),
+    getReferenceData: vi.fn(async () => ({ label: "Current trusted reference data", customerCandidates: [], productsByLine: [] })),
+    getAudit: vi.fn(async () => []),
   });
 });
 
@@ -49,15 +77,14 @@ describe("review route shell", () => {
     expect(screen.queryByRole("heading", { name: "Review case" })).not.toBeInTheDocument();
   });
 
-  it("renders the detail shell with the route order id", () => {
+  it("renders the detail route with the route order id", async () => {
     render(
       <MemoryRouter initialEntries={["/review/order-123"]}>
         <ReviewRouter session={verifiedSession} />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("heading", { name: "Review case" })).toBeInTheDocument();
-    expect(screen.getByText("order-123")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Review case order-123" })).toBeInTheDocument();
   });
 
   it("does not introduce additional review routes", () => {
