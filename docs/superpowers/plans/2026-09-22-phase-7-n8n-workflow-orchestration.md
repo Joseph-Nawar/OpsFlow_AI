@@ -65,6 +65,7 @@ React review application only for its existing Retry interaction,
 - Phase 7 adds no Gmail, Slack, Odoo, HubSpot, ERP, CRM, or external side effect.
 - Phase 7 adds no Redis, queue mode, Kubernetes, cloud deployment, or separate n8n database unless a fresh runtime check proves a direct requirement; the approved design expects none.
 - n8n contains no direct Gemini call, AI Agent node, business-rule Code node, approval logic, validation logic, or trusted-data decision.
+- n8n transport retry is bounded to connection/node transport errors and HTTP `503` only after the exact pinned-runtime capability is proven; it never blindly retries HTTP `500`, `401`, `409`, `422`, or a persisted `FAILED_RETRYABLE` 2xx business response.
 - Exported workflow JSON and local documentation contain no usable credentials, private execution data, customer data, or raw document.
 - Live Gemini is never required by CI; M7B/M7C tests use `FakeProvider` and synthetic trusted-data fixtures.
 - Mandatory Phase 7 development cost remains effectively `$0` through local PostgreSQL, local n8n Community Edition, Docker, synthetic fixtures, and existing CI.
@@ -78,7 +79,7 @@ React review application only for its existing Retry interaction,
 2. **Retry-generation concurrency:** one reviewer-authorized restore is consumed by exactly one matching redelivery, while concurrent resumers stand down. Tasks 5 and 9 own PostgreSQL-backed `PROCESSING`/`EXTRACTED` generation tests; Task 13 owns the cross-boundary demo evidence.
 3. **Provider/database boundary and abandoned claims:** no provider runs under an open mutation transaction, and a post-claim crash is visible and duplicate-safe rather than falsely reclaimed. Tasks 6–8 own boundary/classification tests; Task 9 owns persistence-outage and abandoned-claim integration tests; Task 14 owns local smoke evidence.
 4. **Failure classification:** business validation issues remain `NEEDS_REVIEW`, typed provider/reference failures become retryable at the correct origin, and malformed or invalid contracts become `FAILED_FINAL`. Tasks 6 and 7 own the typed-provider and persistence matrix; Task 9 owns HTTP status mapping.
-5. **n8n trust and export safety:** the workflow forwards binary plus stable identity, routes only on backend state, contains no usable secret or private execution data, and performs no business logic. Tasks 11–12 own JSON contract tests; Tasks 13–14 own bounded retry, secret scan, clean-clone, and runtime evidence.
+5. **n8n trust and export safety:** the workflow forwards binary plus stable identity, routes only on backend state, contains no usable secret or private execution data, performs no business logic, and proves selective retry capability against the exact pinned runtime. Task 11 owns genuine RED/GREEN JSON contract tests; Task 12 owns runtime option evidence; Tasks 13–14 own bounded retry, seed tooling, secret scan, clean-clone, and runtime evidence.
 
 ## Repository Findings and File Map
 
@@ -128,7 +129,9 @@ so Phase 7 reuses them without adding a frontend component.
 - Create `workflows/n8n/README.md` with credential relinking, Webhook URL, synthetic fixture, recovery redelivery, and clean-clone instructions.
 - Create `tests/unit/workflows/test_n8n_contract.py` using standard-library JSON inspection and no live SaaS dependency.
 - Create `tests/integration/test_phase7_transport.py` for local cross-boundary transport scenarios that do not require a public webhook.
-- Modify only the workflow documentation/export and test locations required by runtime verification; do not add browser automation or a new frontend package.
+- Create `scripts/phase7_seed_retryable_demo.py` as local-only synthetic demo tooling, never imported by the API.
+- Create `tests/integration/test_phase7_demo_seed.py` for the deterministic processing/extracted seed seam.
+- Modify `workflows/n8n/README.md` with verified runtime, retry, and recovery evidence; do not add browser automation or a new frontend package.
 
 ### Explicitly not in the file map
 
@@ -142,15 +145,21 @@ status file, or pre-written Phase 7 audit file is part of this plan.
 Execute Tasks 1–14 strictly in numerical order, one task at a time. Each task
 ends with its focused RED/GREEN or verification cycle, relevant regression
 checks, diff inspection, and one coherent commit. No task begins until the
-preceding task's commit is present and its named interfaces are stable.
+preceding gate and commit are present and its named interfaces are stable.
+
+The plan gate is explicit: this implementation-plan candidate must receive an
+independent PASS first. Only then may a separate docs-only M7A closeout commit
+mark `M7A COMPLETE` and `M7B NOT STARTED`. That closeout must itself be
+independently verified before Task 1 begins. No Tasks 1–3 execution occurs
+before that closeout.
 
 Milestone gates:
 
-1. Tasks 1–3 produce M7B. Push the exact candidate, require CI and independent review, then create a separate status-only M7A closeout only after this plan is independently accepted; M7B implementation starts only after M7A is separately marked complete.
-2. Tasks 4–9 produce M7C. Require exact-head CI, independent review, and a separate status-only M7C closeout before M7D begins.
-3. Tasks 10–12 produce M7D. Require fresh n8n verification, exact-head CI, independent review, and real runtime evidence before the separate M7D status closeout.
-4. Tasks 13–14 produce M7E. Require exact-head CI, independent review, and the full synthetic recovery/demo evidence before the separate M7E status closeout.
-5. M7F is a later read-only audit boundary. It creates `docs/audits/phase-7-audit.md` only after M7E passes and marks Phase 7 complete only in a separate closeout commit.
+1. **M7B — Tasks 1–3:** execute only after the independently verified M7A closeout; push the exact candidate, run exact-head CI, obtain independent review, and if PASS create a separate status-only M7B closeout before M7C begins.
+2. **M7C — Tasks 4–9:** produce the backend pipeline candidate, run exact-head CI, obtain independent review, and if PASS create a separate M7C closeout before M7D begins.
+3. **M7D — Tasks 10–12:** produce the pinned runtime/workflow candidate, run exact-head CI plus real runtime/import evidence, obtain independent review, and if PASS create a separate M7D closeout before M7E begins.
+4. **M7E — Tasks 13–14:** produce the hardening/demo candidate, run exact-head CI plus cross-boundary evidence, obtain independent review, and if PASS create a separate M7E closeout before M7F begins.
+5. **M7F:** perform the later fresh read-only audit, remediate only findings that require focused changes, and create the audit artifact/status closeout only after the audit PASS.
 
 An implementation worker stops and reports when code contradicts the approved
 design, a new product-level decision appears, scope would expand, or the fresh
@@ -267,32 +276,41 @@ class OrchestrationIntakeResponse(BaseModel):
     state: OrderState
     failure_origin: OrderState | None
     idempotent_replay: bool
+
+async def read_bounded_upload(upload: UploadFile, max_input_bytes: int) -> bytes: ...
 ```
 
 `OrchestrationIntakeCommand` carries bytes only for the current request. The
-transport helper must reject a missing/blank basename, a basename longer than
-255 characters after both `/` and `\\` path components are discarded, a
-missing/blank uploaded MIME declaration, `FORM`, a blank or over-256-character
-`message_id`, a blank/over-128-character idempotency key, and content larger
+transport helper must call `read_bounded_upload(...)`, which requests at most
+`max_input_bytes + 1` bytes from `UploadFile.read(size)` and rejects as soon as
+the returned buffer exceeds `max_input_bytes`; it never performs an unbounded
+read followed by a size check. The helper must reject a missing/blank basename,
+a basename longer than 255 characters after both `/` and `\\` path components
+are discarded, a missing/blank uploaded MIME declaration, `FORM`, a blank or
+over-256-character `message_id`, a blank/over-128-character idempotency key,
+and content larger
 than `DEFAULT_DOCUMENT_LIMITS.max_input_bytes`. It preserves valid message-ID
 and filename characters rather than silently changing source identity. The
 backend application later normalizes MIME and computes SHA-256.
 
-Before editing dependencies, verify the selected FastAPI `UploadFile`/`File`/
-`Form` implementation imports `python-multipart`. The current `pyproject.toml`
-does not list it; a verification result requiring multipart adds only
-`python-multipart>=0.0.20,<1` and regenerates `uv.lock` with normal `uv`
-commands. A result showing that the selected implementation does not require
-multipart leaves both files unchanged and is recorded in the implementation
-diff.
+Before editing dependencies, inspect the installed FastAPI `UploadFile`/`File`/
+`Form` route implementation and its multipart requirement, inspect the direct
+dependencies in `pyproject.toml`, and inspect `uv tree` plus `uv.lock` for
+transitive ownership. The selected route uses FastAPI multipart parsing; when
+that implementation directly relies on `python-multipart`, OpsFlow declares
+the direct dependency `python-multipart>=0.0.20,<1` even if the package is
+already importable transitively. When the implementation does not directly
+rely on it, both project files remain unchanged. No unrelated dependency is
+added.
 
 **Steps:**
 
-- [ ] Write RED unit tests for immutable command/result records, exact response fields with `extra="forbid"`, file basename normalization, MIME presence, `FORM` rejection, message-ID/idempotency bounds, and the max-byte boundary using a fake `UploadFile`.
+- [ ] Write RED unit tests for immutable command/result records, exact response fields with `extra="forbid"`, file basename normalization, MIME presence, `FORM` rejection, message-ID/idempotency bounds, bounded-read size `max_input_bytes + 1`, and the max-byte boundary using a fake `UploadFile`.
 - [ ] Run `uv run pytest tests/unit/orchestration/test_contracts.py tests/unit/orchestration/test_transport.py -q --no-cov`; expected RED identifies the absent contracts, response model, and transport helpers.
-- [ ] Verify multipart support with `uv run python -c 'import multipart; print(multipart.__version__)'` and FastAPI’s installed `UploadFile` path. An absent import updates only `pyproject.toml` and `uv.lock` with `uv add 'python-multipart>=0.0.20,<1'`, followed by `uv sync --frozen`; an available import leaves both files unchanged.
-- [ ] Implement the dataclasses, protocol, Pydantic response model, and bounded upload helper without database access, provider calls, raw-file persistence, or HTTP status decisions.
+- [ ] Inspect FastAPI’s installed `File`/`Form`/`UploadFile` implementation and route dependency with `uv run python -c 'import inspect; from fastapi import File, Form, UploadFile; from fastapi.dependencies.utils import ensure_multipart_is_installed; print(inspect.getsource(File)); print(inspect.getsource(Form)); print(inspect.getsource(ensure_multipart_is_installed)); print(inspect.signature(UploadFile.read))'`; inspect `pyproject.toml`, run `uv tree --package python-multipart`, and inspect matching `uv.lock` entries. Add the direct dependency with `uv add 'python-multipart>=0.0.20,<1'` only when the FastAPI implementation directly requires it, then run `uv sync --frozen`.
+- [ ] Implement the dataclasses, protocol, Pydantic response model, and bounded upload helper without database access, provider calls, raw-file persistence, or HTTP status decisions. The helper reads at most `DEFAULT_DOCUMENT_LIMITS.max_input_bytes + 1`, accepts exactly-max content, rejects max-plus-one content, and retains only the accepted current-request bytes.
 - [ ] Add tests proving response serialization contains exactly `order_id`, `state`, `failure_origin`, and `idempotent_replay`, and proving malformed transport input fails before any application handler can be called.
+- [ ] Add explicit transport/API tests for exactly `DEFAULT_DOCUMENT_LIMITS.max_input_bytes` bytes accepted, max-plus-one bytes rejected safely, and the handler not called after oversized rejection.
 - [ ] Run `uv run pytest tests/unit/orchestration/test_contracts.py tests/unit/orchestration/test_transport.py tests/unit/api/test_schemas.py -q --no-cov` and `uv run ruff format --check src/opsflow/orchestration src/opsflow/api/orchestration_schemas.py tests/unit/orchestration`.
 - [ ] Inspect dependency diff for unrelated packages and commit:
 
@@ -759,7 +777,7 @@ git commit -m "feat: wire Phase 7 intake pipeline"
 **Interfaces:**
 
 - Consumes: the M7A pin `n8nio/n8n:2.39.10`, current Docker Compose API service name `api`, PostgreSQL health dependency, and the exact n8n version documentation/release channel checked immediately before runtime work.
-- Produces: one `n8n` Community Edition service reachable from a browser at `http://localhost:5678`, able to reach the API at `http://api:8000`, with one named data volume and local ignored encryption/configuration secrets.
+- Produces: one `n8n` Community Edition service reachable from a browser at `http://localhost:5678`, able to reach the API at `http://api:8000`, with one named data volume and local ignored encryption/configuration secrets. The API service explicitly receives `OPSFLOW_ORCHESTRATION_TOKEN: ${OPSFLOW_ORCHESTRATION_TOKEN:-}` and `OPSFLOW_REVIEW_DEV_OPERATORS: ${OPSFLOW_REVIEW_DEV_OPERATORS:-}` alongside its database URL.
 
 Before editing `docker-compose.yml`, inspect the authoritative n8n Releases
 page and version-specific configuration documentation, record the stable
@@ -773,17 +791,22 @@ The Compose service must not depend on the API for startup, must not add Redis,
 queue workers, a separate n8n PostgreSQL database, Kubernetes, or cloud
 configuration, and must keep the API’s existing PostgreSQL dependency intact.
 Use only environment names verified for the exact n8n version. The repository
-`.env.example` gets empty entries or clearly non-usable local configuration
-markers; the actual encryption key and OpsFlow Bearer token are created only
-in ignored local configuration or the n8n credential store.
+`.env.example` gets empty entries for `OPSFLOW_ORCHESTRATION_TOKEN`,
+`OPSFLOW_REVIEW_DEV_OPERATORS`, and the local n8n encryption configuration;
+the actual values exist only in ignored `.env` or the n8n credential store.
+No actual token, reviewer operator JSON, or encryption key is written to
+`docker-compose.yml`, `.env.example`, or workflow JSON.
 
 **Steps:**
 
 - [ ] Write a runtime checklist with the exact release URL, version documentation URL, selected image tag, and verified configuration names before editing Compose.
 - [ ] Run `docker manifest inspect n8nio/n8n:2.39.10` or the equivalent exact-tag image inspection; an unavailable registry is recorded as an environment blocker and never becomes a reason to retag as `latest`.
 - [ ] Add the one n8n service, one named volume, port `5678:5678`, and only the verified local environment values. Do not add an API `depends_on` edge.
-- [ ] Add empty/non-usable local entries to `.env.example` without a bearer token, Gemini key, or usable encryption key.
-- [ ] Run `docker compose config` and assert the rendered service uses the exact pin, no Redis/worker service exists, the n8n volume is named, and the API service remains reachable by service name.
+- [ ] Add empty/non-usable `OPSFLOW_ORCHESTRATION_TOKEN=`, `OPSFLOW_REVIEW_DEV_OPERATORS=`, and the version-verified `N8N_ENCRYPTION_KEY=` entry to `.env.example` without a bearer token, reviewer JSON, Gemini key, or usable encryption key; map the actual n8n setting from ignored `.env` only.
+- [ ] Add the API environment mappings exactly as `OPSFLOW_ORCHESTRATION_TOKEN: ${OPSFLOW_ORCHESTRATION_TOKEN:-}` and `OPSFLOW_REVIEW_DEV_OPERATORS: ${OPSFLOW_REVIEW_DEV_OPERATORS:-}`; keep the existing database mapping and do not place literal values in Compose.
+- [ ] Run `docker compose --env-file .env.example config --format json` and assert the rendered service uses the exact pin, no Redis/worker service exists, the n8n volume is named, the API service remains reachable by service name, and the two API auth settings render empty rather than as committed secrets.
+- [ ] With ignored local `.env` values set, start the API and verify a blank/missing orchestration token receives `401`; then verify the nonblank token reaches the API container without printing it and the configured `OPSFLOW_REVIEW_DEV_OPERATORS` value reaches the API container without printing it.
+- [ ] Assert the local review credential can authenticate to the existing review endpoint using the container-propagated reviewer configuration; the recovery demo depends on this mapping.
 - [ ] Run the existing backend checks without starting n8n: `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src/opsflow`, and `uv build`.
 - [ ] Inspect the Compose diff and commit:
 
@@ -799,6 +822,7 @@ git commit -m "feat: add pinned local n8n runtime"
 - Create: `fixtures/phase7/synthetic-order.txt`
 - Create: `workflows/n8n/opsflow-sandbox-intake.json`
 - Create: `workflows/n8n/README.md`
+- Create: `tests/unit/workflows/test_n8n_contract.py`
 - Test/verify: the pinned local n8n UI or version-specific import/export command
 
 **Interfaces:**
@@ -833,54 +857,70 @@ imports the sanitized export, and never edits the bearer token into JSON.
 
 **Steps:**
 
+- [ ] Write `tests/unit/workflows/test_n8n_contract.py` first. Its named assertions load `workflows/n8n/opsflow-sandbox-intake.json` and check the required node types, POST URL, multipart fields, event-ID header forwarding, credential reference, state branches, absence of AI/business nodes, absence of execution history/private data, and absence of secret-looking values.
+- [ ] Run `uv run pytest tests/unit/workflows/test_n8n_contract.py -q --no-cov` while the export is absent; expected RED is a file-not-found or named contract assertion, and no unsafe workflow is committed.
 - [ ] Start the exact runtime with `docker compose up -d postgres api n8n` and open the n8n editor at `http://localhost:5678`; do not proceed with a different image tag.
 - [ ] Add the fixed sanitized text fixture at `fixtures/phase7/synthetic-order.txt`; keep it free of customer data, credentials, and provider-specific response content.
 - [ ] Create the local OpsFlow Bearer credential in n8n using the ignored `OPSFLOW_ORCHESTRATION_TOKEN` value, and record the UI relinking steps in `workflows/n8n/README.md` without recording the value.
-- [ ] Create the Webhook, HTTP Request, Switch, and Respond to Webhook nodes in the actual n8n version; configure the binary multipart field and stable header forwarding through the UI.
+- [ ] Create the Webhook, HTTP Request, Switch, and Respond to Webhook nodes in the actual n8n version; configure the binary multipart field and stable header forwarding through the UI. Do not configure retry behavior in this task.
 - [ ] Run one synthetic known-good document through the active workflow and inspect the API request in local logs without copying its token or raw content into the export.
 - [ ] Export the workflow, sanitize it, and write the clean-clone import and stable Webhook path instructions. Include the exact synthetic document type, filename, MIME, event ID reuse rule, and the browser Retry plus subsequent same-document resubmission flow.
-- [ ] Run `jq empty workflows/n8n/opsflow-sandbox-intake.json` and inspect the full JSON for node names, types, credential references, URLs, and absence of execution history/private data.
-- [ ] Commit only the workflow export and README:
+- [ ] Run `uv run pytest tests/unit/workflows/test_n8n_contract.py -q --no-cov`, `uv run ruff check tests/unit/workflows/test_n8n_contract.py`, `uv run ruff format --check tests/unit/workflows/test_n8n_contract.py`, `jq empty workflows/n8n/opsflow-sandbox-intake.json`, and the full JSON secret/private-data inspection; expected GREEN proves the export satisfies the generated-node contract.
+- [ ] Commit the fixture, workflow export, contract tests, and README as one coherent M7D workflow task:
 
 ```bash
-git add fixtures/phase7/synthetic-order.txt workflows/n8n/opsflow-sandbox-intake.json workflows/n8n/README.md
-git commit -m "feat: add n8n sandbox intake workflow"
+git add fixtures/phase7/synthetic-order.txt workflows/n8n/opsflow-sandbox-intake.json workflows/n8n/README.md tests/unit/workflows/test_n8n_contract.py
+git commit -m "feat: add n8n sandbox intake workflow and contract tests"
 ```
 
-### Task 12: Add version-independent workflow contract tests and M7D verification
+### Task 12: Verify the pinned n8n runtime, import, and selective-retry capability
 
 **Files:**
 
-- Create: `tests/unit/workflows/test_n8n_contract.py`
-- Modify: `workflows/n8n/README.md` only to correct facts found by the contract check
+- Modify: `workflows/n8n/README.md` with exact pinned-runtime evidence and clean-clone import instructions
+- Test/verify: `docker-compose.yml`, the pinned n8n editor/runtime, local credential store, and the committed workflow export
 
 **Interfaces:**
 
-- Consumes: the committed JSON generated by the actual pinned n8n runtime; standard-library `json`/`pathlib`; no n8n Cloud, public Webhook, or live provider.
-- Produces: deterministic contract tests for the sanitized export.
+- Consumes: the committed JSON and contract suite from Task 11, the exact `n8nio/n8n:2.39.10` runtime, and local ignored credentials; no n8n Cloud, public Webhook, or live provider.
+- Produces: README evidence that the pinned runtime imports and executes the sanitized workflow and a frozen retry-capability decision for Task 13.
 
-The tests must assert valid JSON, expected workflow name, Webhook, HTTP Request,
-Switch, and Respond to Webhook nodes, `POST`, exact internal API URL
-`http://api:8000/v1/orchestration/intakes`, binary multipart forwarding,
-`document_type`, optional `message_id`, `Idempotency-Key` derived from incoming
-event ID, a credential reference with no usable token, state-only routing, all
-required state/default branches, no AI Agent, no Gemini node, no prohibited
-business Code node, no execution history, no private document data, and no
-secret-looking strings. The assertions must inspect the generated node JSON
-shape instead of constructing expected JSON from memory.
+Task 12 must inspect the exact pinned n8n version's HTTP Request node and
+node-error options before any workflow retry setting is changed. Capture in
+`workflows/n8n/README.md` the n8n version, HTTP Request node version, the exact
+option names/values for full-response status output, never-error/error-output
+behavior, retry controls, and standard-node connections available for handling
+connection errors and HTTP statuses. The evidence must distinguish normal 2xx
+responses, HTTP `401`, `409`, `422`, HTTP `503`, and connection/node transport
+errors. It must show that persisted `FAILED_RETRYABLE` is a normal 2xx business
+response whose body routes by state, not a transport retry.
+
+The Task 12 decision is one of two explicit outcomes. If native Retry On Fail
+can filter only connection errors and HTTP `503` with a maximum of two retry
+attempts while excluding `401`, `409`, `422`, persisted `FAILED_RETRYABLE`,
+and generic HTTP `500`, record the exact proven settings. Otherwise, record the
+standard-node-only fallback supported by the pinned runtime: full response
+status output or never-error behavior, error-output handling for connection
+failures, Switch/If status checks, Edit Fields for a bounded attempt value, and
+Wait before a second request. The fallback retries only connection errors and
+HTTP `503`; it does not retry generic `500` or any `401`/`409`/`422` response.
+If neither native filtering nor the standard-node-only fallback can satisfy
+this matrix without Code/AI/business logic or a new architecture, stop and
+report a design/runtime contradiction before Task 13. In either supported
+outcome, exhaustion of the two-attempt budget produces a visible unavailable
+response and never claims that lifecycle work recovered.
 
 **Steps:**
 
-- [ ] Write RED tests that load `workflows/n8n/opsflow-sandbox-intake.json` and fail with named assertions for each required node/branch/secret condition when the file is absent or incomplete.
-- [ ] Run `uv run pytest tests/unit/workflows/test_n8n_contract.py -q --no-cov`; expected RED is the absent export or missing node contract.
-- [ ] Implement only the test parser/assertions; do not add a runtime dependency or a Code node to make the test pass.
-- [ ] Run `uv run pytest tests/unit/workflows/test_n8n_contract.py -q --no-cov`, `uv run ruff check tests/unit/workflows/test_n8n_contract.py`, and `uv run ruff format --check tests/unit/workflows/test_n8n_contract.py`.
-- [ ] Run `docker compose config`, `jq empty workflows/n8n/opsflow-sandbox-intake.json`, and `docker compose ps`; record the exact image tag and local service health in the README.
-- [ ] Inspect the export diff and commit:
+- [ ] Run `docker compose --env-file .env.example config`, `docker compose ps`, `jq empty workflows/n8n/opsflow-sandbox-intake.json`, and the Task 11 contract suite; record the exact image tag, node versions, service health, and clean-clone import result in the README.
+- [ ] In the pinned n8n editor, inspect the HTTP Request node's actual Retry On Fail, response, error-output, and full-response controls and record the exact evidence before changing the workflow.
+- [ ] Exercise the approved status matrix with the local API's safe `401`, `409`, and `422` responses, a deterministic `503` application-unavailable response, the M7C integration response for persisted `FAILED_RETRYABLE` as a 2xx business response, and a connection failure; record only bounded status/outcome observations, never credentials or raw content.
+- [ ] Decide and document native filtered retry or the standard-node-only fallback using the exact pinned-version options. A generic blanket Retry On Fail setting is not an acceptable result.
+- [ ] Commit only the verified runtime/import/retry evidence:
 
 ```bash
-git add tests/unit/workflows/test_n8n_contract.py workflows/n8n/README.md
-git commit -m "test: verify n8n workflow contract"
+git add workflows/n8n/README.md
+git commit -m "docs: verify pinned n8n runtime contract"
 ```
 
 ## M7E — Cross-Boundary Reliability & Demo Hardening
@@ -893,33 +933,86 @@ git commit -m "test: verify n8n workflow contract"
 - Modify: `workflows/n8n/README.md`
 - Create: `tests/integration/test_phase7_transport.py`
 - Modify: `tests/unit/workflows/test_n8n_contract.py`
+- Create: `scripts/phase7_seed_retryable_demo.py`
+- Create: `tests/integration/test_phase7_demo_seed.py`
 
 **Interfaces:**
 
-- Consumes: the actual M7D export, the HTTP status contract, the M7C persistence/runtime behavior, and the existing Phase 6 review UI/API.
-- Produces: a bounded cross-boundary behavior with at most two n8n transport retry attempts for connection failures and selected `5xx` responses, no retry for `401`, `409`, `422`, or persisted `FAILED_RETRYABLE`, and visible current-state/default branches.
+- Consumes: the actual M7D export and retry-capability evidence, the HTTP status contract, the M7C persistence/runtime behavior, the committed synthetic fixture, and the existing Phase 6 review UI/API.
+- Produces: a bounded cross-boundary behavior with at most two n8n transport retry attempts for connection failures and HTTP `503` only; no retry for `401`, `409`, `422`, generic HTTP `500`, or persisted `FAILED_RETRYABLE`; a visible unavailable response after budget exhaustion; visible current-state/default branches; and one executable synthetic retryable-case seed helper.
+
+```python
+type DemoRetryOrigin = Literal["processing", "extracted"]
+
+@dataclass(frozen=True, slots=True)
+class DemoSeedResult:
+    order_id: UUID
+    state: OrderState
+    failure_origin: OrderState | None
+
+async def seed_retryable_demo(
+    origin: DemoRetryOrigin,
+    settings: Settings,
+) -> DemoSeedResult: ...
+```
+
+The CLI exposes only `--origin processing` and `--origin extracted`, builds a
+database engine/sessionmaker from the supplied `Settings.database_url` (the
+same local `OPSFLOW_DATABASE_URL` used by the Docker API), and calls the real
+`execute_orchestration_intake(...)` service. The processing
+runtime uses `FakeProvider([ProviderUnavailableError(...)])`. The extracted
+runtime uses the deterministic successful fake extraction and a local
+`BusinessDataProvider` implementation whose sole method raises
+`BusinessDataProviderError()`. No SQL row is manually inserted or edited.
 
 The workflow must preserve the same binary and `X-OpsFlow-Event-Id` on every
-transport retry. A pre-claim `503` may be repeated safely. A post-claim
+transport retry. A pre-claim HTTP `503` may be repeated safely. A post-claim
 ambiguous `503` must not be described as recovered; the next delivery can
 return `PROCESSING` or `EXTRACTED` and must not execute a second provider call.
-The visible `FAILED_RETRYABLE` branch is a review handoff. The browser Retry
-click uses the existing review API and does not carry raw bytes; the caller
-must explicitly resubmit the same document and stable event ID.
+Connection/node transport errors receive the same bounded retry budget. No
+generic HTTP `500` is retried. The visible `FAILED_RETRYABLE` branch is a
+review handoff and is a normal 2xx business response. The browser Retry click
+uses the existing review API and does not carry raw bytes; the caller must
+explicitly resubmit the same document and stable event ID.
+
+`scripts/phase7_seed_retryable_demo.py` is local synthetic demo tooling only;
+it is never imported by the API and never edits persistence rows directly. It
+accepts exactly `--origin processing` or `--origin extracted`, uses the real
+`execute_orchestration_intake(...)` service with deterministic injected
+providers, reads the committed `fixtures/phase7/synthetic-order.txt`, and
+uses these exact redelivery identities:
+
+| Seed origin | Event/idempotency key | Message ID | Document identity |
+| --- | --- | --- | --- |
+| `processing` | `phase7-processing-001` | `phase7-message-processing-001` | `synthetic-order.txt`, `EMAIL_BODY`, `text/plain` |
+| `extracted` | `phase7-extracted-001` | `phase7-message-extracted-001` | `synthetic-order.txt`, `EMAIL_BODY`, `text/plain` |
+
+The processing seed injects a typed temporary extraction-provider failure and
+must finish `FAILED_RETRYABLE` with `failure_origin=PROCESSING`. The extracted
+seed injects a successful deterministic extraction followed by a typed
+retryable trusted-business-data failure and must finish
+`FAILED_RETRYABLE` with `failure_origin=EXTRACTED`. The helper uses no network,
+live Gemini, or credentials; it prints only the bounded synthetic origin,
+order ID, state, and failure origin. The subsequent n8n request uses the same
+fixture bytes, filename, type, MIME, message ID, and event ID for that origin.
 
 **Steps:**
 
-- [ ] Write RED transport tests for connection/selected-5xx bounded retry, no retry on auth/validation/conflict/business failure, stable event ID/binary preservation, current-state handling for `202`, and safe default handling for an unknown state.
-- [ ] Run `uv run pytest tests/integration/test_phase7_transport.py tests/unit/workflows/test_n8n_contract.py -q --no-cov`; expected RED identifies missing retry/default assertions or an over-broad retry policy.
-- [ ] Configure the actual HTTP Request retry settings in the pinned n8n export and update only the visible response text/branch configuration required by the approved contract.
+- [ ] Write RED transport tests for connection/HTTP-503 bounded retry, no retry on `401`, `409`, `422`, generic `500`, or persisted `FAILED_RETRYABLE`, stable event ID/binary preservation, current-state handling for `202`, and safe default handling for an unknown state.
+- [ ] Run `uv run pytest tests/integration/test_phase7_transport.py tests/integration/test_phase7_demo_seed.py tests/unit/workflows/test_n8n_contract.py -q --no-cov`; expected RED identifies missing retry/default assertions, an over-broad retry policy, or an absent deterministic seed seam.
+- [ ] Write `scripts/phase7_seed_retryable_demo.py` with an argparse CLI accepting exactly `--origin processing` and `--origin extracted`; compose the real application service with a `FakeProvider` temporary extraction failure for processing and a deterministic successful extraction plus retryable trusted-data provider failure for extracted.
+- [ ] Add `tests/integration/test_phase7_demo_seed.py` proving both CLI/application seams create the intended persisted `FAILED_RETRYABLE` origin, audit sequence, source identity, and no bypassed lifecycle transition.
+- [ ] Run `uv run pytest tests/integration/test_phase7_demo_seed.py -q --no-cov`; expected GREEN requires the real service to create both retryable states without direct SQL row editing or network access.
+- [ ] Before changing the workflow retry configuration, run both seed commands, capture their 2xx `FAILED_RETRYABLE` responses and persisted origins, and record that the workflow must route those responses without transport retry.
+- [ ] Apply the exact Task 12 retry decision to the pinned n8n export: use native status-filtered retry only when the recorded runtime evidence proves it retries connection errors and HTTP `503` only; otherwise use the recorded standard-node-only full-response/error-output, Switch/If, Edit Fields, and Wait fallback. Do not enable blanket Retry On Fail.
 - [ ] Add integration assertions that a persisted retryable failure is returned as a business response and does not cause an unbounded transport loop.
 - [ ] Add a recovery-path test that performs `FAILED_RETRYABLE(failure_origin=PROCESSING) -> reviewer Retry -> PROCESSING`, resubmits identical bytes/key, and proves one `ORDER_PROCESSING_RESUMED`; repeat for `EXTRACTED` and prove parse/extraction reconstruction before Phase 5.
 - [ ] Add a duplicate recovery test proving the browser command alone is insufficient and a second same-document redelivery is required; a concurrent second redelivery sees the consumed marker.
-- [ ] Run `uv run pytest tests/integration/test_phase7_transport.py tests/integration/test_phase7_pipeline.py tests/integration/test_phase7_concurrency.py -q --no-cov`, then rerun `uv run pytest tests/unit/workflows/test_n8n_contract.py -q --no-cov`.
-- [ ] Inspect workflow retry settings for a maximum of two attempts, no lifecycle Retry call, and no new scheduler/polling loop; commit:
+- [ ] Run `uv run pytest tests/integration/test_phase7_transport.py tests/integration/test_phase7_demo_seed.py tests/integration/test_phase7_pipeline.py tests/integration/test_phase7_concurrency.py -q --no-cov`, then rerun `uv run pytest tests/unit/workflows/test_n8n_contract.py -q --no-cov`.
+- [ ] Inspect the workflow contract for a maximum of two attempts, exact HTTP-503-only status filtering or the proven standard-node fallback, no generic-500 retry, no lifecycle Retry call, and no scheduler/polling loop; commit:
 
 ```bash
-git add workflows/n8n/opsflow-sandbox-intake.json workflows/n8n/README.md tests/integration/test_phase7_transport.py tests/unit/workflows/test_n8n_contract.py
+git add workflows/n8n/opsflow-sandbox-intake.json workflows/n8n/README.md tests/integration/test_phase7_transport.py tests/unit/workflows/test_n8n_contract.py scripts/phase7_seed_retryable_demo.py tests/integration/test_phase7_demo_seed.py
 git commit -m "test: harden Phase 7 transport recovery"
 ```
 
@@ -959,23 +1052,95 @@ claims durable recovery. The final-state and retryable-state API integration
 tests provide the deterministic failure matrix; the workflow run verifies that
 their server states are displayed without selecting lifecycle destinations.
 
-For the explicit recovery demonstration, use the PostgreSQL-backed synthetic
-fixture from `tests/integration/test_phase7_pipeline.py` to create the
-persisted retryable case with `FakeProvider`, open the existing review UI at
-`http://localhost:5173`, authenticate with the configured reviewer credential,
-click the existing Retry action, and then invoke the same Webhook request with
-the exact original fixture bytes and `phase7-synthetic-001` event ID. Capture
-that the first valid resubmission emits exactly one resume event and the second
-concurrent resubmission returns the current state without a second provider
-call. Do not add a failure switch, scheduler, mailbox integration, lease, or
-heartbeat merely to make this demonstration possible.
+The recovery demonstration uses the executable M7E seed helper, never a pytest
+function as an implicit data-creation step. Start the existing Vite frontend
+in a separate terminal because Compose has no frontend service:
+
+```bash
+npm --prefix web run dev -- --host 127.0.0.1
+```
+
+The existing Vite proxy sends `/v1` requests to `http://127.0.0.1:8000`. With
+the ignored local reviewer credential assigned to `PHASE7_REVIEW_TOKEN`, verify
+the proxy without printing the token:
+
+```bash
+curl -fsS -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer ${PHASE7_REVIEW_TOKEN}" \
+  http://127.0.0.1:5173/v1/review/orders
+```
+
+Run each seed against the same local database used by the Docker API:
+
+```bash
+processing_seed="$(uv run python scripts/phase7_seed_retryable_demo.py --origin processing)"
+printf '%s\n' "$processing_seed"
+PROCESSING_ORDER_ID="$(printf '%s' "$processing_seed" | jq -r '.order_id')"
+
+extracted_seed="$(uv run python scripts/phase7_seed_retryable_demo.py --origin extracted)"
+printf '%s\n' "$extracted_seed"
+EXTRACTED_ORDER_ID="$(printf '%s' "$extracted_seed" | jq -r '.order_id')"
+```
+
+For `PROCESSING`, open the review UI, authenticate with the configured reviewer
+credential, click Retry for `PROCESSING_ORDER_ID`, and confirm through the
+review UI or its proxied detail request that the state is `PROCESSING`. Then
+use the parallel redelivery pattern below with the processing identity.
+
+For `EXTRACTED`, repeat the UI Retry action for `EXTRACTED_ORDER_ID`, confirm
+the restored state is `EXTRACTED`, then use the same parallel redelivery pattern
+with `phase7-extracted-001` and `phase7-message-extracted-001`. The first valid
+redelivery set must produce exactly one `ORDER_PROCESSING_RESUMED` or
+`ORDER_EXTRACTION_RESUMED` event and the final routed state. A parallel
+redelivery uses two identical background requests and a wait, not a prose-only
+concurrency claim. The first owner consumes the generation; the other request
+observes the consumed marker or the already-current result and performs no
+second resume.
+
+```bash
+curl -sS -X POST http://localhost:5678/webhook/opsflow-sandbox-intake \
+  -H 'X-OpsFlow-Event-Id: phase7-processing-001' \
+  -F 'document=@fixtures/phase7/synthetic-order.txt;type=text/plain' \
+  -F 'document_type=EMAIL_BODY' \
+  -F 'message_id=phase7-message-processing-001' > /tmp/phase7-replay-a.json &
+first_pid=$!
+curl -sS -X POST http://localhost:5678/webhook/opsflow-sandbox-intake \
+  -H 'X-OpsFlow-Event-Id: phase7-processing-001' \
+  -F 'document=@fixtures/phase7/synthetic-order.txt;type=text/plain' \
+  -F 'document_type=EMAIL_BODY' \
+  -F 'message_id=phase7-message-processing-001' > /tmp/phase7-replay-b.json &
+second_pid=$!
+wait "$first_pid" "$second_pid"
+```
+
+Inspect only persisted state, audit counts, and snapshot counts; do not require
+a manual provider-call counter that the running application does not expose:
+
+```bash
+curl -fsS "http://127.0.0.1:8000/v1/orders/${PROCESSING_ORDER_ID}" \
+  | jq '{state, failure_origin}'
+curl -fsS "http://127.0.0.1:8000/v1/orders/${PROCESSING_ORDER_ID}/audit" \
+  | jq '[.items[] | select(.event_type == "ORDER_PROCESSING_RESUMED")] | length'
+docker compose exec -T postgres psql -U opsflow -d opsflow -Atc \
+  "SELECT count(*) FROM extraction_snapshots WHERE order_id = '${PROCESSING_ORDER_ID}'"
+```
+
+Repeat the same state, audit, and snapshot inspection for `EXTRACTED`, selecting
+`ORDER_EXTRACTION_RESUMED`. The Phase 5 validation path must reconstruct parsing
+and extraction before creating the successful immutable snapshot. Automated
+PostgreSQL concurrency tests, not manual logging, prove exactly-one provider
+execution. The automated abandoned-claim integration evidence records that an
+ordinary claim or consumed resume claim can remain visible without reclaim; the
+local demo does not add a lease, heartbeat, recovery switch, scheduler,
+mailbox integration, or raw storage to make that evidence possible.
 
 **Steps:**
 
-- [ ] Run the local command sequence against a clean local database and confirm the API, PostgreSQL, n8n, and existing review UI are reachable.
+- [ ] Run the local command sequence against a clean local database, start the separate Vite frontend command, and confirm the API, PostgreSQL, n8n, Vite UI, and `/v1` proxy are reachable.
 - [ ] Execute the normal, duplicate, malformed, conflicting, and unavailable-API scenarios; record response statuses and sanitized state results.
-- [ ] Execute the reviewer Retry plus exact same-document/event-ID redelivery for both processing-origin and extracted-origin fixtures; inspect audit history and provider request counts.
-- [ ] Verify an ordinary abandoned `PROCESSING` claim and an abandoned consumed resume claim remain visible and duplicate-safe, with no automatic reclaim.
+- [ ] Run both exact seed commands, complete reviewer Retry in the existing UI, redeliver the exact same document/event identity, and inspect persisted state, resume-event counts, and extraction-snapshot counts.
+- [ ] Run the reproducible two-background-request pattern for each restored origin; assert one resume event and one current-state response after the locked generation is consumed.
+- [ ] Record the automated PostgreSQL abandoned-claim evidence as the source for the limitation; do not claim a manual provider count or automatic reclaim.
 - [ ] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src/opsflow`, `uv build`, `npm --prefix web test -- --run`, `npm --prefix web run lint`, and `npm --prefix web run build`.
 - [ ] Run the repository’s Gitleaks command from `.github/workflows/ci.yml`, the workflow JSON contract test, `docker compose config`, and a clean-clone import rehearsal using only ignored local secrets.
 - [ ] Inspect the complete diff, the sanitized export, the README commands, and the working tree; commit:
@@ -1026,11 +1191,16 @@ failure writes, and retry-generation consumption. Unit tests use
 `FakeProvider`, scripted synthetic trusted data, and deterministic document
 bytes. No test calls live Gemini, n8n Cloud, Gmail, Slack, Odoo, or HubSpot.
 
-The workflow contract suite runs from committed JSON without starting n8n. The
-manual M7D/M7E evidence starts the pinned local Docker service and uses the
-internal API hostname `http://api:8000` from n8n and `localhost` only from the
-host. No public Webhook, external SaaS account, browser automation framework,
-or full end-to-end CI dependency is added.
+The workflow contract suite runs from committed JSON without starting n8n and
+has its genuine RED state before the export is created in Task 11. Task 12
+records exact pinned-runtime retry-option evidence; Task 13 owns only HTTP
+`503`/connection retry behavior, never generic `500`. The manual M7D/M7E
+evidence starts the pinned local Docker service, starts the Vite frontend in a
+separate terminal, and uses the internal API hostname `http://api:8000` from
+n8n and `localhost` only from the host. No public Webhook, external SaaS
+account, browser automation framework, or full end-to-end CI dependency is
+added. The recovery demo uses the local seed script and persisted state/audit/
+snapshot inspection; it does not require a manual provider-call counter.
 
 ## Failure-Matrix Ownership
 
@@ -1043,6 +1213,7 @@ or full end-to-end CI dependency is added.
 | Extracted final | Invalid trusted provider contract | Tasks 7–9 and `test_phase7_failure_matrix.py` |
 | Business result | Unknown SKU, price issue, other Phase 5 issue → `NEEDS_REVIEW`; clean order → `READY_FOR_APPROVAL` | Tasks 8–9 and `test_phase7_pipeline.py` |
 | Persistence ambiguity | Failure before claim, after claim, after resume claim, and no false durable `FAILED_*` claim | Tasks 7–9, 13, and 14 |
+| Transport retry selectivity | Connection error and HTTP `503` retry only; HTTP `500`, `401`, `409`, `422`, and persisted `FAILED_RETRYABLE` 2xx do not retry | Tasks 12–13: `test_phase7_transport.py`, workflow contract suite |
 
 ## Self-Review of This Plan
 
@@ -1056,7 +1227,7 @@ or full end-to-end CI dependency is added.
 - Failure classification, failure-origin persistence, business-result separation, and `503` ambiguity → Tasks 7–9 and 13.
 - Raw-byte/no-snapshot retry reconstruction, no `SYNCING` resume, no leases, and abandoned claims → Tasks 5, 8, 9, 13, and 14.
 - n8n pin, Compose topology, workflow export, credential handling, branch safety, and version verification → Tasks 10–12.
-- Synthetic recovery UX, bounded transport retry, clean-clone verification, and local evidence → Tasks 13–14.
+- Synthetic recovery UX, deterministic processing/extracted seed tooling, bounded transport retry, clean-clone verification, Vite startup, and persisted state/audit/snapshot evidence → Tasks 13–14.
 - M7F independent audit and separate closeout/status boundary → M7F section.
 
 ### Type and interface consistency
@@ -1077,10 +1248,22 @@ that requirement before changing the lockfile. Every provider and trusted-data
 test uses deterministic doubles; every workflow secret remains outside source
 control.
 
+### Independent-review refinement audit
+
+- The plan gate is now before Task 1: independent plan PASS, separate docs-only M7A closeout marking `M7A COMPLETE`/`M7B NOT STARTED`, independent closeout verification, then Task 1.
+- Task 2 declares `python-multipart` directly when FastAPI’s selected `File`/`Form`/`UploadFile` implementation directly requires it, inspects dependency ownership, and reads at most `max_input_bytes + 1` bytes with exact-max/max-plus-one tests.
+- Task 10 freezes explicit API Compose mappings for `OPSFLOW_ORCHESTRATION_TOKEN` and `OPSFLOW_REVIEW_DEV_OPERATORS`, empty `.env.example` values, blank-token failure, nonblank container propagation, reviewer propagation, and no committed usable secret.
+- Task 12 captures the exact pinned n8n HTTP Request/node-error capability before Task 13 workflow edits. Task 13 retries only connection errors and HTTP `503`, or stops on a proven capability contradiction; it never enables indiscriminate Retry On Fail.
+- Task 11 creates the workflow contract suite before the export and records genuine RED followed by GREEN in one coherent workflow/test/README commit.
+- Task 14 starts Vite separately, verifies its `/v1` proxy, runs the exact M7E seed helper for both origins, performs same-identity recovery and reproducible parallel redelivery, and inspects persisted state/audit/snapshot counts without requiring a provider-call counter.
+- Tasks 10–14, the file map, failure matrix, CI strategy, and stop point use the same fourteen-task numbering and M7B/M7C/M7D/M7E/M7F ownership.
+- The required pre-commit scans cover unfinished markers, vague wording, secrets, links, and diff whitespace; no runtime artifact or status change belongs to this refinement.
+
 ## Implementation Stop Point
 
-This document stops after the M7E candidate is pushed. It does not authorize
-Task 1 execution, M7B start, M7F audit creation, milestone status changes, or a
-PR. After this plan independently passes, a separate docs-only M7A closeout
-may mark M7A complete and M7B not started; implementation then proceeds only
-through the stated task and review gates.
+This document stops at the implementation-plan candidate/refinement. It does
+not authorize Task 1 execution, M7B start, M7F audit creation, milestone status
+changes, or a PR. After this plan independently passes, a separate docs-only
+M7A closeout may mark `M7A COMPLETE` and `M7B NOT STARTED`; only after that
+closeout is independently verified may implementation proceed through the
+stated task and review gates.
