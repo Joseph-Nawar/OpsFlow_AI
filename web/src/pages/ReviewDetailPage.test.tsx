@@ -142,7 +142,9 @@ describe("ReviewDetailPage", () => {
     expect(screen.getByText("Action flags are informational; the server remains authoritative.")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Current trusted reference data" })).toBeInTheDocument();
     expect(await screen.findByText("ORDER_REJECTED")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /approve|reject|retry/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve order" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry order" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject order" })).toBeInTheDocument();
   });
 
   it("renders a bounded detail error and retries without exposing raw errors", async () => {
@@ -251,6 +253,76 @@ describe("ReviewDetailPage", () => {
     expect(screen.getByText("Deterministic revalidation passed; the order is ready for approval.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Correct untrusted review draft" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save & revalidate" })).not.toBeInTheDocument();
+  });
+
+  it("replaces the old action surface with the authoritative command result", async () => {
+    const readyDetail: ReviewDetail = {
+      ...detail,
+      order: { ...detail.order, state: "READY_FOR_APPROVAL" },
+      effectiveDraft: null,
+      validationIssues: [],
+      actions: { canEdit: false, canApprove: true, canReject: true, canRetry: false },
+    };
+    const approve = vi.fn(async () => ({
+      orderId: "order-001",
+      state: "APPROVED" as const,
+      failureOrigin: null,
+      etag: '"review-state-v1-approved"',
+    }));
+    const api = apiDouble({ getDetail: vi.fn(async () => readyDetail), approve });
+    const user = userEvent.setup();
+
+    renderDetail(api);
+
+    await user.click(await screen.findByRole("button", { name: "Approve order" }));
+
+    expect(approve).toHaveBeenCalledWith("order-001", readyDetail.etag);
+    expect(await screen.findByRole("heading", { name: "Review command completed" })).toBeInTheDocument();
+    expect(screen.getByText("Server state").parentElement).toHaveTextContent("APPROVED");
+    expect(screen.queryByRole("button", { name: "Approve order" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject order" })).not.toBeInTheDocument();
+    expect(screen.queryByText("TRUSTED persisted order")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Back to review queue" })).not.toHaveLength(0);
+  });
+
+  it("reloads a stale command once and adopts fresh detail actions without replay", async () => {
+    const readyDetail: ReviewDetail = {
+      ...detail,
+      order: { ...detail.order, state: "READY_FOR_APPROVAL" },
+      effectiveDraft: null,
+      validationIssues: [],
+      actions: { canEdit: false, canApprove: true, canReject: true, canRetry: false },
+    };
+    const freshDetail: ReviewDetail = {
+      ...readyDetail,
+      etag: '"review-state-v1-fresh"',
+      operator: { actor: "elevated-demo", role: "ELEVATED_APPROVER" },
+      actions: { canEdit: false, canApprove: false, canReject: true, canRetry: false },
+    };
+    const approve = vi.fn(async () => {
+      throw new ReviewApiError(412, "PRECONDITION_FAILED", "Refresh the review case.");
+    });
+    const getDetail = vi.fn()
+      .mockResolvedValueOnce(readyDetail)
+      .mockResolvedValueOnce(freshDetail);
+    const api = apiDouble({ getDetail, approve });
+    const user = userEvent.setup();
+
+    renderDetail(api);
+
+    const approveButton = await screen.findByRole("button", { name: "Approve order" });
+    await user.click(approveButton);
+    expect(await screen.findByRole("alert")).toHaveTextContent("This review case changed and must be reloaded.");
+    expect(approve).toHaveBeenCalledTimes(1);
+    expect(approveButton).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Reload review case" }));
+
+    expect(getDetail).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("Operator: elevated-demo (ELEVATED_APPROVER)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve order" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject order" })).toBeInTheDocument();
+    expect(approve).toHaveBeenCalledTimes(1);
   });
 
   it("shows stale-case reload and adopts the fresh server draft without replaying the save", async () => {

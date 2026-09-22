@@ -1,14 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 
-import type { CanonicalJsonValue, ReviewApiClient, ReviewDetail } from "../api/review";
+import type {
+  CanonicalJsonValue,
+  ReviewApiClient,
+  ReviewCommandResult,
+  ReviewDetail,
+} from "../api/review";
 import ReviewEvidencePanel from "../components/review/ReviewEvidencePanel";
 import ReviewDraftForm from "../components/review/ReviewDraftForm";
 import ReviewHistoryPanel from "../components/review/ReviewHistoryPanel";
+import ReviewActions from "../components/review/ReviewActions";
 import ReviewReferencePanel from "../components/review/ReviewReferencePanel";
 
 interface ReviewDetailPageProps {
-  api: Pick<ReviewApiClient, "getDetail" | "getReferenceData" | "getAudit" | "saveDraft">;
+  api: Pick<
+    ReviewApiClient,
+    "getDetail" | "getReferenceData" | "getAudit" | "saveDraft" | "approve" | "reject" | "retry"
+  >;
 }
 
 function formatCanonicalValue(value: CanonicalJsonValue): string {
@@ -153,6 +162,21 @@ function OperatorSummary({ detail }: { detail: ReviewDetail }) {
   );
 }
 
+function CommandResultSection({ result }: { result: ReviewCommandResult }) {
+  return (
+    <section aria-labelledby="command-result-heading" className="review-panel review-command-result" role="status">
+      <h1 id="command-result-heading">Review command completed</h1>
+      <p>The server accepted this review action.</p>
+      <dl className="review-data-list">
+        <div><dt>Server state</dt><dd>{result.state}</dd></div>
+        <div><dt>Failure origin</dt><dd>{result.failureOrigin ?? "None"}</dd></div>
+        <div><dt>Fresh review validator</dt><dd>Received</dd></div>
+      </dl>
+      <Link className="review-back-link" to="/review">Back to review queue</Link>
+    </section>
+  );
+}
+
 function ReviewDetailPage({ api }: ReviewDetailPageProps) {
   const { orderId } = useParams();
   const [detail, setDetail] = useState<ReviewDetail | null>(null);
@@ -160,6 +184,7 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [revalidationMessage, setRevalidationMessage] = useState<string | null>(null);
+  const [commandResult, setCommandResult] = useState<ReviewCommandResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +193,7 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
       setLoading(true);
       setError(false);
       setRevalidationMessage(null);
+      setCommandResult(null);
       if (orderId === undefined) {
         setDetail(null);
         setError(true);
@@ -204,6 +230,7 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
       setDetail(result);
       setError(false);
       setRevalidationMessage(null);
+      setCommandResult(null);
       return true;
     } catch {
       setError(true);
@@ -221,7 +248,10 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
           <button onClick={() => setReloadKey((current) => current + 1)} type="button">Retry review case</button>
         </section>
       ) : null}
-      {!loading && detail !== null && orderId !== undefined ? (
+      {!loading && detail !== null && orderId !== undefined && commandResult !== null ? (
+        <CommandResultSection result={commandResult} />
+      ) : null}
+      {!loading && detail !== null && orderId !== undefined && commandResult === null ? (
         <>
           <header className="review-detail-header">
             <p className="eyebrow">OpsFlow AI · Human review</p>
@@ -238,25 +268,33 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
             sourceSnapshot={detail.sourceSnapshot}
           />
           <DraftSection draft={detail.effectiveDraft} />
-          {detail.actions.canEdit && detail.effectiveDraft !== null ? (
-            <ReviewDraftForm
+          <Fragment key={detail.etag}>
+            {detail.actions.canEdit && detail.effectiveDraft !== null ? (
+              <ReviewDraftForm
+                api={api}
+                draft={detail.effectiveDraft}
+                etag={detail.etag}
+                onReload={reloadFromForm}
+                onSaved={(savedDetail) => {
+                  setDetail(savedDetail);
+                  setError(false);
+                  setRevalidationMessage(
+                    savedDetail.order.state === "NEEDS_REVIEW"
+                      ? "Save & revalidate completed, but blocking deterministic issues remain."
+                      : "Deterministic revalidation passed; the order is ready for approval.",
+                  );
+                }}
+                orderId={orderId}
+              />
+            ) : null}
+            <ReviewActions
               api={api}
-              draft={detail.effectiveDraft}
-              etag={detail.etag}
-              key={detail.etag}
+              detail={detail}
+              onCommandCompleted={setCommandResult}
               onReload={reloadFromForm}
-              onSaved={(savedDetail) => {
-                setDetail(savedDetail);
-                setError(false);
-                setRevalidationMessage(
-                  savedDetail.order.state === "NEEDS_REVIEW"
-                    ? "Save & revalidate completed, but blocking deterministic issues remain."
-                    : "Deterministic revalidation passed; the order is ready for approval.",
-                );
-              }}
               orderId={orderId}
             />
-          ) : null}
+          </Fragment>
           <TrustedOrderSection detail={detail} />
           <ValidationIssuesSection detail={detail} />
           <ReviewReferencePanel api={api} orderId={orderId} />
