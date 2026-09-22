@@ -105,6 +105,14 @@ External mutations must be controllable and testable. Later implementation phase
 
 Trusted business data—customers, products, catalogue prices, inventory, and existing references—must be supplied by deterministic adapters. An AI extraction is an untrusted draft until it passes schema validation and deterministic business validation. Human review is the explicit path for uncertainty, invalid data, and policy exceptions.
 
-## Out of scope for the current foundation
+## Current implementation and next boundary
 
-M0A created documentation only. M0B added the minimal FastAPI `/health` liveness foundation. M0C adds only the PostgreSQL/SQLAlchemy/Alembic/Docker infrastructure and `/ready` dependency-readiness boundary. M0D adds only the minimal React/TypeScript/Vite/ESLint frontend development foundation. The Phase 6 review application, LLM, n8n, order, integration, authentication, and later-milestone source code remain out of scope. The full phased scope is maintained in [the project roadmap](../roadmap/project-roadmap.md).
+Phases 0–6 are implemented and independently audited, including the order
+aggregate and state machine, PostgreSQL persistence and idempotent order
+creation, canonical document processing, structured extraction, deterministic
+validation, and the Phase 6 human-review application. Phase 7 is now
+`IN PROGRESS`; M7A is designing the authenticated n8n orchestration boundary
+and has not added n8n runtime behavior. The intended-flow diagram above remains
+a phased target, not a claim that future Gmail, Slack, ERP, CRM, or n8n runtime
+components already exist. The full phased scope and status are maintained in
+the [project roadmap](../roadmap/project-roadmap.md).

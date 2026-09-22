@@ -2,7 +2,16 @@
 
 ## Status of this guide
 
-This repository contains the M0A documentation baseline, the M0B minimal Python/FastAPI backend, the M0C PostgreSQL/SQLAlchemy/Alembic/Docker foundation, the M0D minimal React/TypeScript/Vite frontend foundation, the M0E developer-workflow/CI foundation, and the M0F independent Phase 0 audit. M1A added the authoritative Phase 1 domain contract and implementation plan; M1B–M1E added and verified the supporting domain records, immutable Order aggregate, state-machine and retry/reopen behavior, and scenario hardening. The independent M1F audit and final Phase 1 closeout are complete, so Phase 1 is complete. The [Phase 0 audit record](../audits/phase-0-audit.md) and [Phase 1 audit record](../audits/phase-1-audit.md) preserve the closeout evidence. Commands below are explicitly separated into verified M0B–M0E checks and still-planned later-milestone workflows.
+Phases 0–6 are complete and independently audited. The repository contains the
+M0 foundation and CI, the Phase 1 domain/state contract, Phase 2 PostgreSQL
+persistence and idempotent core API, Phase 3 document processing, Phase 4
+structured extraction, Phase 5 deterministic validation, and Phase 6 review
+contracts, persistence, commands, and React application. Phase 7 is now
+`IN PROGRESS`; M7A is the documentation-only n8n orchestration design
+milestone. The [Phase 0 audit record](../audits/phase-0-audit.md) through the
+[Phase 6 audit record](../audits/phase-6-audit.md) preserve closeout evidence.
+Commands below distinguish historical verified checks from current or
+still-planned later-milestone workflows.
 
 ## Working principles
 
@@ -39,9 +48,9 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
-Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `web/` now exists for M0D; other areas remain absent until an applicable milestone requires them.
+Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, and the Phase 2–6 capabilities now exist. `workflows/n8n/` remains intentionally absent until M7D; other future areas remain absent until an applicable milestone requires them.
 
-## Verified M0B/M0C backend commands
+## Historical verified M0B/M0C backend commands
 
 The following commands were run successfully during M0B/M0C against the committed project configuration:
 
@@ -91,7 +100,7 @@ This focused suite is infrastructure-independent. Complete GitHub Backend CI
 continues to run the PostgreSQL-backed Phase 2 integration tests alongside the
 document-processing tests.
 
-## Verified M0D frontend commands
+## Historical verified M0D frontend commands
 
 The following commands were run successfully during M0D from `web/` with Node.js 24.21.0 and npm 11.19.0:
 
@@ -106,7 +115,7 @@ npm run dev -- --host 127.0.0.1
 
 The development server served the frontend at `http://127.0.0.1:5173/` with HTTP 200. The served page contains the OpsFlow AI foundation content. No browser binary or browser automation tool was available for a visual inspection, so no browser framework was added.
 
-## Verified M0E commands
+## Historical verified M0E commands
 
 With PostgreSQL available, the following Make targets were run successfully from the repository root:
 

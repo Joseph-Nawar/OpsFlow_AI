@@ -10,7 +10,7 @@
 
 This document is the version-controlled product and engineering source of truth. It converts the approved master roadmap into durable repository guidance without changing its intended meaning.
 
-The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `COMPLETE` with M1A–M1F complete; **Phase 2 — Persistence & Core API** is `COMPLETE` with M2A–M2F complete; **Phase 3 — Document Ingestion** is `COMPLETE` with M3A–M3F complete; **Phase 4 — Structured AI Extraction** is `COMPLETE` with M4A–M4F complete; **Phase 5 — Deterministic Validation** is `COMPLETE` with M5A–M5F complete; **Phase 6 — Human Review Application** is `COMPLETE` with M6A–M6F `COMPLETE`; Phases 7–12 remain `NOT STARTED`. Independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md), [the Phase 1 audit](../audits/phase-1-audit.md), [the Phase 2 audit](../audits/phase-2-audit.md), [the Phase 3 audit](../audits/phase-3-audit.md), [the Phase 4 audit](../audits/phase-4-audit.md), [the Phase 5 audit](../audits/phase-5-audit.md), and [the Phase 6 audit](../audits/phase-6-audit.md), the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md), the Phase 2 design and implementation plan are recorded in [the Phase 2 Persistence & Core API design](../superpowers/specs/2026-09-14-phase-2-persistence-api-design.md) and [the Phase 2 implementation plan](../superpowers/plans/2026-09-14-phase-2-persistence-api.md), the authoritative M3A design is recorded in [the Phase 3 Document Ingestion & Canonical Parsing design](../superpowers/specs/2026-09-14-phase-3-document-ingestion-design.md), the authoritative M4A design is recorded in [the Phase 4 Structured AI Extraction design](../superpowers/specs/2026-09-17-phase-4-structured-ai-extraction-design.md), the authoritative Phase 5 design is recorded in [the Phase 5 Deterministic Validation design](../superpowers/specs/2026-09-17-phase-5-deterministic-validation-design.md), with its execution sequence in [the Phase 5 implementation plan](../superpowers/plans/2026-09-17-phase-5-deterministic-validation.md), and the authoritative M6A design and approved implementation plan are recorded in [the Phase 6 Human Review Application design](../superpowers/specs/2026-09-19-phase-6-human-review-application-design.md) and [the Phase 6 implementation plan](../superpowers/plans/2026-09-19-phase-6-human-review-application.md).
+The current repository milestones are **M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit**, all `COMPLETE`. **Phase 0 — Product & Engineering Foundation** is `COMPLETE`; **Phase 1 — Domain Model & State Machine** is `COMPLETE` with M1A–M1F complete; **Phase 2 — Persistence & Core API** is `COMPLETE` with M2A–M2F complete; **Phase 3 — Document Ingestion** is `COMPLETE` with M3A–M3F complete; **Phase 4 — Structured AI Extraction** is `COMPLETE` with M4A–M4F complete; **Phase 5 — Deterministic Validation** is `COMPLETE` with M5A–M5F complete; **Phase 6 — Human Review Application** is `COMPLETE` with M6A–M6F `COMPLETE`; **Phase 7 — n8n Workflow Orchestration** is `IN PROGRESS` with **M7A — Orchestration Contract & Design** `IN PROGRESS` and M7B–M7F `NOT STARTED`; Phases 8–12 remain `NOT STARTED`. Independent closeout evidence is recorded in [the Phase 0 audit](../audits/phase-0-audit.md), [the Phase 1 audit](../audits/phase-1-audit.md), [the Phase 2 audit](../audits/phase-2-audit.md), [the Phase 3 audit](../audits/phase-3-audit.md), [the Phase 4 audit](../audits/phase-4-audit.md), [the Phase 5 audit](../audits/phase-5-audit.md), and [the Phase 6 audit](../audits/phase-6-audit.md), the Phase 1 contract is recorded in [the domain model specification](../architecture/domain-model.md), the Phase 2 design and implementation plan are recorded in [the Phase 2 Persistence & Core API design](../superpowers/specs/2026-09-14-phase-2-persistence-api-design.md) and [the Phase 2 implementation plan](../superpowers/plans/2026-09-14-phase-2-persistence-api.md), the authoritative M3A design is recorded in [the Phase 3 Document Ingestion & Canonical Parsing design](../superpowers/specs/2026-09-14-phase-3-document-ingestion-design.md), the authoritative M4A design is recorded in [the Phase 4 Structured AI Extraction design](../superpowers/specs/2026-09-17-phase-4-structured-ai-extraction-design.md), the authoritative Phase 5 design is recorded in [the Phase 5 Deterministic Validation design](../superpowers/specs/2026-09-17-phase-5-deterministic-validation-design.md), with its execution sequence in [the Phase 5 implementation plan](../superpowers/plans/2026-09-17-phase-5-deterministic-validation.md), the authoritative M6A design and approved implementation plan are recorded in [the Phase 6 Human Review Application design](../superpowers/specs/2026-09-19-phase-6-human-review-application-design.md) and [the Phase 6 implementation plan](../superpowers/plans/2026-09-19-phase-6-human-review-application.md), and the M7A design candidate is [the Phase 7 n8n Workflow Orchestration design](../superpowers/specs/2026-09-22-phase-7-n8n-workflow-orchestration-design.md).
 
 ## 1. Project goal
 
@@ -104,7 +104,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | 4 | Structured AI Extraction | Unstructured documents to typed order drafts | COMPLETE |
 | 5 | Deterministic Validation | Trusted business-rule engine | COMPLETE |
 | 6 | Human Review Application | Usable review and approval interface | COMPLETE |
-| 7 | n8n Workflow Orchestration | Real automation workflow | NOT STARTED |
+| 7 | n8n Workflow Orchestration | Real automation workflow | IN PROGRESS |
 | 8 | Email & Notification Integrations | Gmail and Slack integration | NOT STARTED |
 | 9 | ERP & CRM Integrations | Odoo + HubSpot business-system sync | NOT STARTED |
 | 10 | Reliability, Security & Hardening | Production-style failure handling | NOT STARTED |
@@ -188,6 +188,17 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M6E — React Review Application & Cross-Boundary Hardening | COMPLETE |
 | M6F — Independent Phase 6 Audit & Closeout | COMPLETE |
 
+### Phase 7 execution milestones
+
+| Milestone | Status |
+| --- | --- |
+| M7A — Orchestration Contract & Design | IN PROGRESS |
+| M7B — Orchestration Service Authentication & HTTP Contract | NOT STARTED |
+| M7C — Idempotent Intake Pipeline | NOT STARTED |
+| M7D — n8n Runtime & Version-Controlled Sandbox Workflow | NOT STARTED |
+| M7E — Cross-Boundary Reliability & Demo Hardening | NOT STARTED |
+| M7F — Independent Phase 7 Audit & Closeout | NOT STARTED |
+
 ## 8. Detailed phases
 
 ### Phase 0 — Product & Engineering Foundation
@@ -260,11 +271,11 @@ Prioritize clarity, speed, obvious exception reasons, transparent AI output, and
 
 ### Phase 7 — n8n Workflow Orchestration
 
-**Objective:** Introduce the workflow layer relevant to freelance automation work.
+**Objective:** Introduce a thin, authenticated n8n workflow boundary while preserving Python as the business authority.
 
-The sandbox workflow triggers intake, creates the order, processes the document, extracts, validates, and branches on result. n8n handles triggers, OpsFlow calls, SaaS connections, notifications, simple routing, and suitable retries; the business-rule engine remains in Python. Export workflows as version-controlled JSON under `workflows/n8n/`. n8n-to-OpsFlow communication uses real local/service authentication while secrets stay outside version control.
+The M7A design candidate defines `POST /v1/orchestration/intakes` as a single-document multipart sandbox command. The backend derives source identity, composes the existing Phase 2–5 pipeline, owns idempotency and lifecycle state, and returns a narrow authoritative result. n8n handles the Webhook, multipart transport, bounded transport retries, and a Switch on returned `OrderState`; it does not parse documents, call Gemini, validate business data, approve orders, or mutate trusted state. M7D will later export a sanitized workflow under `workflows/n8n/`, with service credentials outside version control.
 
-Test success, backend unavailability, duplicate triggers, malformed payloads, retries, and review/approval branching. Exit: a sandbox order travels through n8n and the backend reliably.
+Test success, backend unavailability, duplicate triggers, malformed payloads, bounded transport retries, persisted retryable/final failures, and review/approval branching. Exit: a sandbox order travels through n8n and the backend reliably, with M7F independent audit evidence.
 
 ### Phase 8 — Email & Notification Integrations
 
