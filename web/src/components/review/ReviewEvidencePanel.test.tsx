@@ -63,7 +63,7 @@ describe("ReviewEvidencePanel", () => {
     expect(screen.getByText("page 1, line 4")).toBeInTheDocument();
     expect(screen.getAllByText("PO-204")).toHaveLength(2);
     expect(screen.getByText(/Evidence does not prove a later human edit/)).toBeInTheDocument();
-    expect(screen.getByText("Raw source files are not persisted or viewable in Phase 6.")).toBeInTheDocument();
+    expect(screen.getByText("Raw source file contents are not exposed by this review surface.")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
 
     const metadata = screen.getByRole("list", { name: "Source metadata" });

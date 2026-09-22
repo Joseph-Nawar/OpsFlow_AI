@@ -21,7 +21,7 @@ function ReviewEvidencePanel({
       <p className="review-panel-note">
         This is the immutable AI interpretation and its provenance. Evidence does not prove a later human edit.
       </p>
-      <p className="review-panel-note">Raw source files are not persisted or viewable in Phase 6.</p>
+      <p className="review-panel-note">Raw source file contents are not exposed by this review surface.</p>
 
       <section aria-labelledby="source-documents-heading">
         <h3 id="source-documents-heading">Source documents</h3>
