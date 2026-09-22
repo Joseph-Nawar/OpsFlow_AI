@@ -102,7 +102,7 @@ function ReviewDraftForm({ api, draft, etag, onReload, onSaved, orderId }: Revie
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting || reloading) {
+    if (submitting || reloading || stale) {
       return;
     }
 
@@ -146,7 +146,7 @@ function ReviewDraftForm({ api, draft, etag, onReload, onSaved, orderId }: Revie
         </div>
       ) : null}
       <form aria-busy={submitting || reloading} onSubmit={(event) => void handleSubmit(event)}>
-        <fieldset disabled={submitting || reloading}>
+        <fieldset disabled={submitting || reloading || stale}>
           <legend>Editable order values</legend>
           <div className="review-form-grid">
             <label htmlFor="review-customer-name">Customer name</label>
@@ -247,7 +247,7 @@ function ReviewDraftForm({ api, draft, etag, onReload, onSaved, orderId }: Revie
           </fieldset>
         </fieldset>
 
-        <button disabled={submitting || reloading} type="submit">
+        <button disabled={submitting || reloading || stale} type="submit">
           {submitting ? "Saving & revalidating…" : "Save & revalidate"}
         </button>
       </form>

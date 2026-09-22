@@ -159,6 +159,12 @@ describe("ReviewDraftForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("This review case changed and must be reloaded.");
     expect(saveDraft).toHaveBeenCalledTimes(1);
     expect(onReload).not.toHaveBeenCalled();
+    const submit = screen.getByRole("button", { name: "Save & revalidate" });
+    expect(submit).toBeDisabled();
+    expect(screen.getByLabelText("Customer reference")).toBeDisabled();
+
+    await user.click(submit);
+    expect(saveDraft).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole("button", { name: "Reload review case" }));
 
