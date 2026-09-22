@@ -187,12 +187,15 @@ does not silently revise the design.
 ```python
 ORCHESTRATION_ACTOR: Final[str] = "orchestration:n8n"
 
+
 class OrchestrationUnauthenticatedError(Exception): ...
+
 
 def resolve_orchestration_token(
     token: str,
     configured: SecretStr | None,
 ) -> str: ...
+
 
 def get_orchestration_actor(
     request: Request,
@@ -245,6 +248,7 @@ class IntakeExecution(Enum):
     COMPLETED = "COMPLETED"
     STANDING_DOWN = "STANDING_DOWN"
 
+
 @dataclass(frozen=True, slots=True)
 class OrchestrationIntakeCommand:
     content: bytes
@@ -254,6 +258,7 @@ class OrchestrationIntakeCommand:
     message_id: str | None
     idempotency_key: str
 
+
 @dataclass(frozen=True, slots=True)
 class OrchestrationIntakeResult:
     order_id: UUID
@@ -261,6 +266,7 @@ class OrchestrationIntakeResult:
     failure_origin: OrderState | None
     idempotent_replay: bool
     execution: IntakeExecution
+
 
 class OrchestrationIntakeHandler(Protocol):
     async def __call__(
@@ -271,11 +277,13 @@ class OrchestrationIntakeHandler(Protocol):
         recorded_at: datetime,
     ) -> OrchestrationIntakeResult: ...
 
+
 class OrchestrationIntakeResponse(BaseModel):
     order_id: UUID
     state: OrderState
     failure_origin: OrderState | None
     idempotent_replay: bool
+
 
 async def read_bounded_upload(upload: UploadFile, max_input_bytes: int) -> bytes: ...
 ```
@@ -394,10 +402,12 @@ class CreateOrderDisposition(Enum):
     CREATED_BY_THIS_COMMAND = "CREATED_BY_THIS_COMMAND"
     REPLAYED_EXISTING = "REPLAYED_EXISTING"
 
+
 @dataclass(frozen=True, slots=True)
 class CreateOrderResult:
     persisted: PersistedOrder
     disposition: CreateOrderDisposition
+
 
 async def create_order_with_disposition(
     session: AsyncSession,
@@ -450,6 +460,7 @@ class IntakeClaimKind(Enum):
     RESUME_EXTRACTED = "RESUME_EXTRACTED"
     STAND_DOWN = "STAND_DOWN"
 
+
 @dataclass(frozen=True, slots=True)
 class OrchestrationSourceIdentity:
     document_type: SourceDocumentType
@@ -458,11 +469,13 @@ class OrchestrationSourceIdentity:
     sha256: str
     message_id: str | None
 
+
 @dataclass(frozen=True, slots=True)
 class IntakeClaim:
     kind: IntakeClaimKind
     persisted: PersistedOrder
     source_document_id: UUID
+
 
 async def claim_intake_execution(
     session: AsyncSession,
@@ -539,6 +552,7 @@ class OrchestrationRuntime:
     policy: ValidationPolicy
     date_provider: ReviewDateProvider
 
+
 def build_orchestration_runtime(
     settings: Settings,
     *,
@@ -598,6 +612,7 @@ class FailureDisposition(Enum):
     RETRYABLE = "RETRYABLE"
     FINAL = "FINAL"
 
+
 @dataclass(frozen=True, slots=True)
 class FailureClassification:
     disposition: FailureDisposition
@@ -606,9 +621,12 @@ class FailureClassification:
     event_type: str
     description: str
 
+
 def classify_processing_failure(error: BaseException) -> FailureClassification: ...
 
+
 def classify_extracted_failure(error: BaseException) -> FailureClassification: ...
+
 
 async def persist_orchestration_failure(
     session: AsyncSession,
@@ -944,11 +962,13 @@ git commit -m "docs: verify pinned n8n runtime contract"
 ```python
 type DemoRetryOrigin = Literal["processing", "extracted"]
 
+
 @dataclass(frozen=True, slots=True)
 class DemoSeedResult:
     order_id: UUID
     state: OrderState
     failure_origin: OrderState | None
+
 
 async def seed_retryable_demo(
     origin: DemoRetryOrigin,
