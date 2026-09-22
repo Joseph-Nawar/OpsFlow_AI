@@ -485,6 +485,103 @@ h1 {
   padding-left: 1.25rem;
 }
 
+.review-form-grid {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.8fr) minmax(0, 1.6fr);
+  gap: 0.7rem 1rem;
+  align-items: center;
+}
+
+.review-form-grid label,
+.review-editable-line label {
+  font-weight: 650;
+}
+
+.review-form-grid input,
+.review-editable-line input {
+  min-height: 2.5rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #aeb8c8;
+  border-radius: 0.45rem;
+  color: inherit;
+  font: inherit;
+}
+
+.review-form-grid input:focus-visible,
+.review-editable-line input:focus-visible,
+.review-draft-form-panel button:focus-visible {
+  outline: 3px solid #789bf0;
+  outline-offset: 2px;
+}
+
+.review-lines-fieldset {
+  display: grid;
+  gap: 0.85rem;
+  margin: 1.5rem 0 0;
+  padding: 1rem;
+  border: 1px solid #d9dfeb;
+  border-radius: 0.55rem;
+}
+
+.review-editable-lines {
+  display: grid;
+  gap: 1rem;
+}
+
+.review-editable-line {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.7fr) minmax(0, 1.3fr);
+  gap: 0.65rem 1rem;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid #e1e6ef;
+  border-radius: 0.55rem;
+  background: #fafbfc;
+}
+
+.review-line-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 0.5rem;
+}
+
+.review-draft-form-panel form > button,
+.review-lines-fieldset > button,
+.review-line-actions button {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid #9eabc0;
+  border-radius: 0.45rem;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.review-draft-form-panel form > button {
+  margin-top: 1rem;
+  border-color: #244b9b;
+  background: #244b9b;
+  color: #fff;
+}
+
+.review-draft-form-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.review-form-success {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid #acd8bf;
+  border-radius: 0.55rem;
+  background: #eefaf3;
+  color: #1b6b42;
+}
+
 @media (max-width: 480px) {
   .session-bar {
     align-items: flex-start;
@@ -509,5 +606,14 @@ h1 {
   .review-table {
     display: block;
     overflow-x: auto;
+  }
+
+  .review-form-grid,
+  .review-editable-line {
+    grid-template-columns: 1fr;
+  }
+
+  .review-line-actions {
+    grid-column: auto;
   }
 }

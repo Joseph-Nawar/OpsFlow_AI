@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 
 import type { CanonicalJsonValue, ReviewApiClient, ReviewDetail } from "../api/review";
 import ReviewEvidencePanel from "../components/review/ReviewEvidencePanel";
+import ReviewDraftForm from "../components/review/ReviewDraftForm";
 import ReviewHistoryPanel from "../components/review/ReviewHistoryPanel";
 import ReviewReferencePanel from "../components/review/ReviewReferencePanel";
 
 interface ReviewDetailPageProps {
-  api: Pick<ReviewApiClient, "getDetail" | "getReferenceData" | "getAudit">;
+  api: Pick<ReviewApiClient, "getDetail" | "getReferenceData" | "getAudit" | "saveDraft">;
 }
 
 function formatCanonicalValue(value: CanonicalJsonValue): string {
@@ -158,6 +159,7 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [revalidationMessage, setRevalidationMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,6 +167,7 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
     async function loadDetail() {
       setLoading(true);
       setError(false);
+      setRevalidationMessage(null);
       if (orderId === undefined) {
         setDetail(null);
         setError(true);
@@ -192,6 +195,22 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
     };
   }, [api, orderId, reloadKey]);
 
+  const reloadFromForm = useCallback(async () => {
+    if (orderId === undefined) {
+      return false;
+    }
+    try {
+      const result = await api.getDetail(orderId);
+      setDetail(result);
+      setError(false);
+      setRevalidationMessage(null);
+      return true;
+    } catch {
+      setError(true);
+      return false;
+    }
+  }, [api, orderId]);
+
   return (
     <main className="review-detail">
       <Link className="review-back-link" to="/review">Back to review queue</Link>
@@ -202,13 +221,16 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
           <button onClick={() => setReloadKey((current) => current + 1)} type="button">Retry review case</button>
         </section>
       ) : null}
-      {!loading && !error && detail !== null && orderId !== undefined ? (
+      {!loading && detail !== null && orderId !== undefined ? (
         <>
           <header className="review-detail-header">
             <p className="eyebrow">OpsFlow AI · Human review</p>
             <h1>Review case {orderId}</h1>
             <p className="review-state-label">State: {detail.order.state}</p>
           </header>
+          {revalidationMessage !== null ? (
+            <p className="review-form-success" role="status">{revalidationMessage}</p>
+          ) : null}
           <OperatorSummary detail={detail} />
           <ReviewEvidencePanel
             originalExtraction={detail.originalExtraction}
@@ -216,6 +238,25 @@ function ReviewDetailPage({ api }: ReviewDetailPageProps) {
             sourceSnapshot={detail.sourceSnapshot}
           />
           <DraftSection draft={detail.effectiveDraft} />
+          {detail.actions.canEdit && detail.effectiveDraft !== null ? (
+            <ReviewDraftForm
+              api={api}
+              draft={detail.effectiveDraft}
+              etag={detail.etag}
+              key={detail.etag}
+              onReload={reloadFromForm}
+              onSaved={(savedDetail) => {
+                setDetail(savedDetail);
+                setError(false);
+                setRevalidationMessage(
+                  savedDetail.order.state === "NEEDS_REVIEW"
+                    ? "Save & revalidate completed, but blocking deterministic issues remain."
+                    : "Deterministic revalidation passed; the order is ready for approval.",
+                );
+              }}
+              orderId={orderId}
+            />
+          ) : null}
           <TrustedOrderSection detail={detail} />
           <ValidationIssuesSection detail={detail} />
           <ReviewReferencePanel api={api} orderId={orderId} />
