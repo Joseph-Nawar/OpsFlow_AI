@@ -27,7 +27,7 @@ function App() {
           Sign out
         </button>
       </header>
-      <ReviewRouter />
+      <ReviewRouter session={session} />
     </BrowserRouter>
   );
 }

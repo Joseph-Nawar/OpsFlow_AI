@@ -1,14 +1,9 @@
+import { useMemo } from "react";
 import { Route, Routes, useParams } from "react-router";
 
-function ReviewQueueShell() {
-  return (
-    <main className="foundation">
-      <p className="eyebrow">OpsFlow AI · Human review</p>
-      <h1>Review queue</h1>
-      <p>Review application foundation.</p>
-    </main>
-  );
-}
+import type { OperatorSession } from "../api/review";
+import { createReviewApiClient } from "../api/review";
+import ReviewQueuePage from "../pages/ReviewQueuePage";
 
 function ReviewCaseShell() {
   const { orderId } = useParams();
@@ -21,10 +16,16 @@ function ReviewCaseShell() {
   );
 }
 
-function ReviewRouter() {
+interface ReviewRouterProps {
+  session: OperatorSession;
+}
+
+function ReviewRouter({ session }: ReviewRouterProps) {
+  const apiClient = useMemo(() => createReviewApiClient(session), [session]);
+
   return (
     <Routes>
-      <Route element={<ReviewQueueShell />} path="/review" />
+      <Route element={<ReviewQueuePage api={apiClient} />} path="/review" />
       <Route element={<ReviewCaseShell />} path="/review/:orderId" />
     </Routes>
   );
