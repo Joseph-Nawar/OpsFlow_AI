@@ -237,29 +237,43 @@ Fields are:
 | `order_id` | Authoritative persisted order identity |
 | `state` | Current authoritative `OrderState` |
 | `failure_origin` | Current domain failure origin, only non-null for a failure state |
-| `idempotent_replay` | Whether the idempotency record existed before this command began |
+| `idempotent_replay` | `true` when this command returned an already-created Phase 2 idempotent order rather than creating the order/idempotency record itself; this includes losing a concurrent unique-key insertion race |
 
 The response contains no client-computed route, permission, approval decision,
 validation issue set, extraction evidence, token, or retry destination. n8n
 branches only on `state`.
 
+`idempotent_replay` is a result of the create authority, not an unsafe
+pre-read. M7C must introduce the smallest wrapper or helper around the
+existing `create_order(...)` operation needed to distinguish
+`CREATED_BY_THIS_COMMAND` from `REPLAYED_EXISTING`. The wrapper must preserve
+the Phase 2 fingerprint, unique-key constraint, atomic creation transaction,
+and unique-key race resolver.
+
 ### 4.4 HTTP semantics
 
 | Situation | Status | Semantics |
 | --- | ---: | --- |
-| New key creates and this request owns processing through a persisted result | `201` | One order was created; the body reports `NEEDS_REVIEW`, `READY_FOR_APPROVAL`, `FAILED_RETRYABLE`, or `FAILED_FINAL` |
-| Existing key, same fingerprint, terminal/current result already available | `200` | Replay of the persisted order; no processing or business execution repeats |
-| Existing key, same fingerprint, another request has claimed `PROCESSING` | `202` | A concurrent duplicate observed the authoritative in-progress state; it does not call extraction |
+| This command created the order and reached its current durable routed or failure result | `201` | `CREATED_BY_THIS_COMMAND`; the body reports `NEEDS_REVIEW`, `READY_FOR_APPROVAL`, `FAILED_RETRYABLE`, or `FAILED_FINAL` |
+| An existing same-fingerprint order/result is returned without new execution, or a valid human-authorized retry resume completes and returns its current result | `200` | `REPLAYED_EXISTING`; a successful resumed retry deliberately uses `200` because no new order was created, and its body has `idempotent_replay: true` |
+| An existing same-fingerprint order is currently owned by another ordinary execution or claimed retry generation in `PROCESSING` or `EXTRACTED` | `202` | The duplicate stands down and performs no provider work; `202` does not promise that an abandoned claim will later recover |
 | Same key with a different fingerprint | `409` | `IDEMPOTENCY_CONFLICT`; no current-request business mutation is accepted |
 | Missing/invalid service credential | `401` | `ORCHESTRATION_UNAUTHENTICATED` with a bounded message and `WWW-Authenticate: Bearer` |
 | Invalid multipart shape or invalid command field before order creation | `422` | Safe transport-contract error; no order is created |
-| Persistence or application availability failure before a durable outcome | `503` | `ORCHESTRATION_UNAVAILABLE`; n8n may apply its bounded transport retry policy |
+| Infrastructure is unavailable without this request proving a new durable lifecycle result | `503` | `ORCHESTRATION_UNAVAILABLE`; n8n may apply bounded transport retry, but the response does not say whether a prior claim committed |
 
 The `200` replay body may expose any already-persisted state, including a
 failure or a safe in-progress-adjacent state left by an interrupted execution.
 That is an observation, not a command to choose a destination. A persisted
 `FAILED_RETRYABLE` result is a business response, not an HTTP transport error;
 it must not trigger an unbounded n8n loop.
+
+If a `503` occurs before the short `RECEIVED -> PROCESSING` claim commits, a
+bounded same-key transport retry may safely repeat the request. If it occurs
+after that claim or after a retry-generation claim commits, the same-key
+redelivery remains duplicate-safe but may return `202 PROCESSING` or
+`202 EXTRACTED` rather than recover the work. HTTP transport retry is never a
+claim that lifecycle work will resume.
 
 Error responses never include source content, provider payloads, SQL, stack
 traces, credentials, or the idempotency key.
@@ -335,38 +349,97 @@ the key, document type, filename, MIME, and optional message ID are relevant
 canonical request metadata. The idempotency key itself is the lookup key and is
 not added into its own fingerprint.
 
+The future M7C intake service must consume the `CREATED_BY_THIS_COMMAND` or
+`REPLAYED_EXISTING` result from the wrapper described above. It must not issue
+an unsafe pre-read to infer whether the order existed. The Phase 2 unique-key
+insert and its committed-row race resolver remain the only source of that
+distinction.
+
 ### 6.2 Claim and recheck protocol
 
-The smallest compatible concurrency protocol is:
+The protocol distinguishes an ordinary initial claim from a human-authorized
+retry claim. The audit generation is ordered by the existing audit index's
+`(occurred_at ASC, id ASC)` order. For one order, a retry generation is the
+latest `ORDER_RETRY_RESTORED` event that has no later
+`ORDER_PROCESSING_RESUMED` or `ORDER_EXTRACTION_RESUMED` event. The resume
+event is the durable consumed marker; no retry counter or separate attempt
+table is introduced.
 
-1. Create or replay the Phase 2 `RECEIVED` order through its existing short
-   transaction.
+For every request, the service performs this sequence:
+
+1. Create or replay the Phase 2 order through its existing short transaction.
+   The same stable key and canonical fingerprint are required. A different
+   binary, filename, MIME, type, or message ID is a `409` and cannot reach a
+   resume claim.
 2. Open a separate short transaction and lock only the order row with the
    existing `get_order_for_update(...)` pattern.
-3. If the locked state is `RECEIVED`, apply the legal
-   `RECEIVED -> PROCESSING` transition, write the processing-start audit event,
-   and commit immediately.
-4. If the locked state is already `PROCESSING`, return the current state to
-   this duplicate and perform no provider call.
-5. If the locked state is a completed/business-routed state or a persisted
-   failure, return its current state and perform no provider call.
-6. Run all parsing, extraction, and trusted-provider work after the claim
-   transaction has committed.
+3. Under that lock, recheck the persisted source-document record against the
+   supplied document's backend-derived SHA-256 and type. The persisted source
+   document identity is the source-document record selected from this order;
+   the canonical fingerprint additionally binds its name, MIME, and message
+   ID. Any mismatch stands down with conflict and does not consume a retry
+   generation.
+4. If the locked state is `RECEIVED`, apply the legal
+   `RECEIVED -> PROCESSING` transition, write `ORDER_PROCESSING_STARTED`, and
+   commit immediately. This is an ordinary initial claim, whether the request
+   created the order or is safely retrying a pre-claim transport failure.
+5. If the locked state is `PROCESSING` and the latest relevant claim is the
+   ordinary `ORDER_PROCESSING_STARTED` generation, with no unconsumed human
+   retry restore, return `202 PROCESSING`. This is an active/ordinary claim:
+   the duplicate performs no parsing, extraction, or provider call.
+6. If the locked state is `PROCESSING` and the latest relevant generation is
+   an unconsumed `ORDER_RETRY_RESTORED`, write
+   `ORDER_PROCESSING_RESUMED`, commit, and make this request the sole owner of
+   that restored processing execution.
+7. If the locked state is `EXTRACTED` and the latest relevant generation is
+   an unconsumed `ORDER_RETRY_RESTORED`, write `ORDER_EXTRACTION_RESUMED` and
+   commit. The order remains `EXTRACTED` because the existing state machine
+   has no `EXTRACTED -> PROCESSING` transition; the event protects this one
+   recovery execution before it calls parsing or extraction.
+8. If a matching retry restore already has a later resume event, or if the
+   current state is `EXTRACTED` from an ordinary execution, return the current
+   `202` in-progress state and perform no provider work. A restored
+   `SYNCING` order is also returned without Phase 7 resume handling.
+9. If the state is a completed or business-routed result, or a persisted
+   failure that has not been human-restored, return its current result without
+   provider work.
+10. Run all parsing, extraction, trusted-provider, and validation work only
+    after the claim transaction has committed.
 
-The row lock is never held while parsing or waiting for Gemini, a provider, or
-any network operation. Exactly one concurrent duplicate can claim
-`RECEIVED`; the others observe `PROCESSING` after the first claim commits.
+The first valid resumer therefore writes its narrow resume event under the
+short order lock and commits before any provider call. A concurrent second
+redelivery sees that event as the consumed marker and stands down. The lock is
+never held while parsing or waiting for Gemini, a provider, or any network
+operation.
+
+`ORDER_RETRY_RESTORED` is written only by the existing reviewer-authorized
+Phase 6 `Order.retry()` command. n8n cannot create it and cannot call
+`Order.retry()` itself. The Phase 7 resume contract begins only after that
+human command and only for a redelivery carrying the same original source
+bytes.
+
+For a restored `PROCESSING` generation, the resumer reruns Phase 3 and Phase 4
+from the supplied bytes, persists the legal `PROCESSING -> EXTRACTED`
+transition, and calls Phase 5 `validate_order(...)`. For a restored
+`EXTRACTED` generation, it reruns Phase 3 and Phase 4 from the supplied bytes
+while the order remains `EXTRACTED`, verifies the reconstructed draft's source
+identity, and calls the existing `validate_order(...)`. This does not claim an
+in-memory `ExtractionDraft` was persisted: a successful Phase 5 snapshot may
+not exist because the trusted-data/provider failure can occur before Phase 5's
+final snapshot transaction commits.
 
 The required invariants are:
 
-- same key plus same request returns the same order identity;
+- same key, same canonical fingerprint, and same source identity return the
+  same order identity;
+- ordinary `PROCESSING` redelivery never issues a second provider call;
+- only one valid redelivery can consume one human retry generation;
+- retry restoration for `PROCESSING` or `EXTRACTED` never bypasses reviewer
+  authorization;
 - no duplicate source order, extraction snapshot, trusted promotion, or
-  business execution is created by replay;
-- same key plus a different binary, filename, type, MIME, or message ID is a
-  bounded `409 IDEMPOTENCY_CONFLICT`;
-- a concurrent duplicate never issues a second AI extraction call;
-- the unique Phase 2 idempotency key remains the database concurrency
-  authority.
+  business execution is created by an ordinary replay;
+- the unique Phase 2 idempotency key and the locked audit-generation check
+  remain the concurrency authorities.
 
 ## 7. Backend pipeline composition
 
@@ -377,12 +450,12 @@ it does not reimplement their semantics:
 | ---: | --- | --- |
 | 1 | Read the one uploaded binary, derive filename/MIME/SHA, and build the server-owned source envelope | No business transaction; deterministic local work |
 | 2 | Call Phase 2 `create_order(...)` or resolve its replay | Short existing creation transaction |
-| 3 | Claim `RECEIVED -> PROCESSING` | Separate short locked transaction; commit before any provider call |
-| 4 | Call Phase 3 `process_document(...)` | Outside a database transaction |
+| 3 | Claim ordinary intake or one human-restored resume generation | Separate short locked transaction; commit the ordinary or narrow resume event before any provider call |
+| 4 | Call Phase 3 `process_document(...)` for the original, processing-restored, or extracted-restored execution | Outside a database transaction; the exact redelivered bytes are required |
 | 5 | Call Phase 4 `OrderExtractor.extract(...)` | Outside a database transaction; provider errors are classified by the orchestration service |
-| 6 | Persist `PROCESSING -> EXTRACTED` | Short locked transaction; no snapshot or Phase 5 route event is duplicated |
-| 7 | Call existing Phase 5 `validate_order(...)` | Trusted provider and pure engine execute outside the final write transaction; existing service owns its final lock/recheck/write boundary |
-| 8 | Return the persisted `NEEDS_REVIEW` or `READY_FOR_APPROVAL` state | Response is derived from the committed order |
+| 6 | Persist `PROCESSING -> EXTRACTED` only for an execution that owns `PROCESSING` | Short locked transaction; an extracted-restored execution remains `EXTRACTED` and writes no second lifecycle transition here |
+| 7 | Call existing Phase 5 `validate_order(...)` | Trusted provider and pure engine execute outside the final write transaction; existing service owns its final lock/recheck/write boundary and creates the first successful immutable snapshot |
+| 8 | Return the committed current state | Response is derived from the committed order; a successful human-authorized resume uses `200` |
 
 `validate_order(...)` remains the validation authority. It persists the
 immutable extraction snapshot, validation issues, trusted promotion when
@@ -390,6 +463,13 @@ appropriate, legal `VALIDATED` transition, final route, and its existing
 Phase 5 audit events. The orchestration service does not create a second
 snapshot or second `ORDER_VALIDATED`, `ORDER_NEEDS_REVIEW`, or
 `ORDER_READY_FOR_APPROVAL` event.
+
+An `EXTRACTED`-origin recovery deliberately reconstructs an untrusted
+`ExtractionDraft` in memory and then invokes the existing Phase 5 service. It
+does not add draft persistence or a second snapshot path. If the prior
+trusted-data/provider failure occurred before Phase 5's final transaction,
+there is no successful snapshot to reuse; the normal Phase 5 final transaction
+records the reconstructed draft only after validation succeeds.
 
 The existing Phase 1 `OrderState` set remains unchanged. Phase 7 does not add
 `ORCHESTRATING`, `WAITING_FOR_N8N`, `AI_PROCESSING`, `WORKFLOW_FAILED`, or any
@@ -402,6 +482,8 @@ New orchestration-owned events are narrow and non-sensitive:
 | Event type | When | Actor | Fixed description |
 | --- | --- | --- | --- |
 | `ORDER_PROCESSING_STARTED` | The short claim commits `RECEIVED -> PROCESSING` | `orchestration:n8n` | `Orchestration intake claimed the order for processing.` |
+| `ORDER_PROCESSING_RESUMED` | A locked, unconsumed human retry generation restores a `PROCESSING` execution and commits before parsing/provider work | `orchestration:n8n` | `Human-authorized processing retry redelivery claimed for execution.` |
+| `ORDER_EXTRACTION_RESUMED` | A locked, unconsumed human retry generation restores an `EXTRACTED` execution and commits before parsing/provider work | `orchestration:n8n` | `Human-authorized extraction retry redelivery claimed for execution.` |
 | `ORDER_EXTRACTION_COMPLETED` | Document processing and extraction complete and `PROCESSING -> EXTRACTED` commits | `orchestration:n8n` | `Document processing and structured extraction completed; validation is pending.` |
 | `ORDER_PROCESSING_FAILED` | A processing-origin operational failure is persisted | `orchestration:n8n` | `Orchestration processing stopped with a persisted operational failure.` |
 | `ORDER_VALIDATION_FAILED` | An extracted-origin operational failure is persisted | `orchestration:n8n` | `Deterministic validation could not complete; a persisted operational failure was recorded.` |
@@ -416,6 +498,8 @@ column remains the domain source of truth.
 The pipeline is not one SQL transaction. In particular:
 
 - document parsing does not require a database transaction;
+- an ordinary claim or human-retry resume claim commits before parsing or
+  provider work, and its order lock is never held across that work;
 - Gemini or another extraction provider is called only after any mutation
   transaction has committed;
 - trusted business-data lookup remains outside the final Phase 5 write
@@ -464,6 +548,13 @@ availability distinction needed for a retryable result must be made at that
 provider boundary before the orchestration service maps failures. Unknown or
 untyped provider errors fail closed as `FAILED_FINAL`.
 
+For a `FAILED_RETRYABLE` processing-origin result, the reviewer must first
+authorize `Order.retry()` and restore `PROCESSING`; a subsequent matching
+same-document redelivery may consume one `ORDER_RETRY_RESTORED` generation and
+rerun Phases 3–5. For an extracted-origin result, the same sequence restores
+`EXTRACTED` and reconstructs the in-memory draft before calling Phase 5 again.
+Neither route is a machine-selected failure destination.
+
 ## 10. Raw-document durability and retry boundary
 
 Phase 3 and the current persistence model store source metadata and identity,
@@ -472,26 +563,56 @@ S3, MinIO, a blob volume, or a new raw-document table.
 
 The precise Phase 7 posture is:
 
-- raw bytes exist only for the current intake execution;
-- safe HTTP redelivery may resend the same binary under the same stable
-  idempotency key;
+- raw bytes exist only for the current intake execution; no raw-document
+  storage or durable `ExtractionDraft` is added;
+- a retry redelivery must supply the identical original binary, stable event
+  ID, document identity, SHA-256, and type;
 - `FAILED_RETRYABLE` remains a real persisted lifecycle state;
 - n8n and the caller may not choose or rewrite `failure_origin`;
-- `Order.retry()` remains authoritative for clearing a retryable failure to
-  its recorded origin;
-- a persisted `FAILED_RETRYABLE` response is routed visibly to the review/
-  recovery branch, not fed into an automatic infinite intake loop;
-- Phase 7 does not claim that an arbitrary delayed/manual retry can resume the
-  exact pipeline once request bytes or an in-memory extraction draft are gone;
-- Phase 6's human retry command still records the operator request and restores
-  the domain's recorded origin, but M7A does not add a durable resume command
-  or pretend that the current raw-metadata model can supply one;
-- production-style delayed resume, durable source retention, leases/stale
-  processing recovery, and broader recovery hardening remain later reliability
-  work, primarily Phase 10.
+- `Order.retry()` remains authoritative for clearing a retryable failure to its
+  recorded origin, and n8n must never call it;
+- the two owned recovery forms are
+  `FAILED_RETRYABLE(failure_origin=PROCESSING) -> PROCESSING` and
+  `FAILED_RETRYABLE(failure_origin=EXTRACTED) -> EXTRACTED`, both produced by
+  the reviewer-authorized Phase 6 command before any Phase 7 redelivery;
+- a persisted `FAILED_RETRYABLE` response is routed visibly to the
+  retryable/review branch, not fed into an automatic infinite intake loop;
+- the sandbox recovery flow is exactly:
+  `provider/reference failure -> FAILED_RETRYABLE -> visible n8n
+  retryable/review branch -> reviewer requests Retry in the existing review
+  UI -> backend restores PROCESSING or EXTRACTED -> sandbox caller
+  redelivers the same original document and stable event ID -> the locked
+  intake consumes the unconsumed retry-restored generation -> exactly one
+  resume execution`;
+- the browser Retry click alone does not contain the raw bytes. The subsequent
+  same-document redelivery is required. No polling and no long-running n8n
+  workflow is required; a future Gmail or automation integration may provide
+  the redelivery mechanism, while M7A uses explicit synthetic resubmission;
+- an `EXTRACTED` retry is allowed to rerun Phase 3 parsing and Phase 4
+  extraction because no successful Phase 5 validation snapshot may have been
+  committed. The prior in-memory draft is not treated as durable;
+- a restored `SYNCING` case is outside Phase 7 because Phase 7 implements no
+  external synchronization;
+- Phase 7 does not automatically reclaim an ordinary initial `PROCESSING`
+  claim. If `RECEIVED -> PROCESSING` committed and the process, server, or
+  database failed before a result or failure could commit, a same-key
+  redelivery observes `PROCESSING`, returns it visibly, and does not start a
+  second provider execution. That order may remain abandoned;
+- the same no-lease limitation applies if a human-retry resume claim commits
+  and its executor dies before a result or failure commits: the generation is
+  consumed, and a later redelivery stands down rather than executing it twice;
+- there is no lease, heartbeat, or attempt table that can prove the first
+  executor is dead. Stale-claim leasing, heartbeat, and automatic recovery
+  belong to Phase 10;
+- pre-claim transport failure is safely repeatable with bounded n8n transport
+  retry. A post-claim ambiguous failure remains duplicate-safe but may return
+  `PROCESSING` or `EXTRACTED`; transport retry does not falsely claim that it
+  recovered the work.
 
-This explicit limitation is preferable to creating an unowned storage system or
-silently rerunning AI with different input.
+This bounded recovery is intentionally limited to a reviewer-authorized
+`PROCESSING` or `EXTRACTED` restore followed by explicit same-document
+redelivery. It does not create an unowned storage system or silently rerun AI
+with different input.
 
 ## 11. n8n sandbox trigger contract
 
@@ -507,6 +628,15 @@ The Phase 7 trigger is synthetic and independent of Gmail:
 - n8n does not generate a new UUID on retry;
 - no Gmail polling, message search, attachment policy, mailbox credential, or
   email behavior is implemented in Phase 7.
+
+The sandbox recovery interaction is explicit synthetic resubmission, not a
+polling loop: the original provider or reference-data failure is returned on a
+visible retryable/review branch; a reviewer clicks Retry in the existing review
+UI; the backend restores `PROCESSING` or `EXTRACTED`; and the sandbox caller
+then submits the same original document with the same stable event ID. The
+browser action cannot carry the original raw bytes by itself, so the second
+submission is required. The intake consumes the restored generation exactly
+once or returns the already-current state to a concurrent duplicate.
 
 ## 12. n8n workflow topology and routing
 
@@ -537,10 +667,16 @@ branches are:
 
 - `NEEDS_REVIEW` → safe review-needed response;
 - `READY_FOR_APPROVAL` → safe human-approval-needed response;
-- `FAILED_RETRYABLE` → safe retryable-failure/review response;
+- `FAILED_RETRYABLE` → visible retryable-failure/review response; n8n does not
+  call `Order.retry()` or choose a failure origin;
 - `FAILED_FINAL` → safe final-failure response;
 - `PROCESSING` and any other existing/in-progress/default state → safe
   current-state response without selecting a lifecycle destination.
+
+The `FAILED_RETRYABLE` branch is a visible handoff to the existing human
+review flow. n8n transport retries are separate from lifecycle retry and do not
+wait for, poll for, or manufacture a reviewer authorization. A later explicit
+same-document webhook submission is the only Phase 7 sandbox resume trigger.
 
 The Switch contains no business-rule expressions. There is no Code node unless
 a concrete n8n transport limitation is proven during M7D. JavaScript is not
@@ -563,8 +699,8 @@ n8nio/n8n:2.39.10
 ```
 
 The design never uses `latest`. `2.40.5` is pre-release on the design date;
-M7D may change the pin only after re-verifying a newer stable release and
-recording the decision.
+M7D must re-verify the stable release immediately before runtime work and may
+change the pin only after recording that decision.
 
 The intended local runtime is deliberately portfolio-sized:
 
@@ -625,6 +761,30 @@ replay; same-key conflict; no duplicate snapshot/promotion/audit on replay;
 concurrent duplicate claim behavior; provider calls outside transactions;
 rejection of client-supplied trusted authority; and legal-only lifecycle
 transitions.
+
+The future retry/resume suite must explicitly prove:
+
+- duplicate delivery during ordinary `PROCESSING` does not call the provider
+  twice;
+- reviewer retry restores `PROCESSING`, and matching same-document redelivery
+  resumes exactly once;
+- two concurrent redeliveries after one human retry restore result in one
+  resume claim and one provider execution;
+- reviewer retry restores `EXTRACTED`, and same-document redelivery reruns
+  parsing and extraction before revalidating through existing Phase 5
+  `validate_order(...)`;
+- mismatched binary, source SHA, document type, message ID, MIME, filename, or
+  canonical fingerprint cannot consume a retry generation;
+- one retry generation cannot be consumed twice, including after a committed
+  resume event;
+- n8n cannot directly invoke lifecycle retry or select `failure_origin`;
+- a restored `SYNCING` order is outside Phase 7 resume handling;
+- an abandoned ordinary `PROCESSING` claim remains duplicate-safe and visibly
+  unrecovered rather than being automatically reclaimed;
+- a post-claim persistence outage is not falsely described as recovered by
+  bounded transport retry;
+- `idempotent_replay` is false for the command that creates the order and true
+  when a concurrent request loses the Phase 2 unique-key insertion race.
 
 PostgreSQL integration must prove the existing Phase 2 uniqueness authority,
 short claim transaction, no lock held during provider work, and atomic final
@@ -747,13 +907,35 @@ change:
 - **Phase 5:** calls `validate_order(...)` rather than duplicating trusted data,
   validation, snapshot, promotion, or route logic; business issues remain
   `NEEDS_REVIEW`.
-- **Phase 6:** does not reuse human credentials, does not let n8n approve,
-  and does not claim that the current raw-metadata model supports arbitrary
-  delayed resume.
+- **Phase 6:** does not reuse human credentials, does not let n8n approve or
+  invoke `Order.retry()`, and preserves the reviewer-only retry command. The
+  forward-looking Phase 6 statement that later orchestration resumes the
+  appropriate work is resolved here only for `PROCESSING` and `EXTRACTED`
+  origins after a reviewer restore and explicit redelivery of the same source
+  bytes; `SYNCING` remains outside Phase 7.
+- **Retry generations:** ordinary initial `PROCESSING` claims are distinct
+  from `ORDER_RETRY_RESTORED` generations. A locked resume event consumes one
+  human-authorized generation exactly once, without holding a transaction
+  during parsing or provider work.
+- **Phase 5 timing:** an extracted-origin retry reconstructs an untrusted
+  `ExtractionDraft` because the successful immutable snapshot may not exist
+  until Phase 5's final transaction commits. No prior in-memory draft is
+  treated as durable.
+- **Recovery limit:** an ordinary claim that is abandoned after
+  `RECEIVED -> PROCESSING` remains duplicate-safe but unrecovered in Phase 7;
+  lease/heartbeat recovery belongs to Phase 10.
+- **HTTP and idempotency:** `201`, `200`, `202`, `409`, and `503` distinguish
+  creation, existing/resumed result, owned in-progress work, fingerprint
+  conflict, and ambiguous infrastructure availability. `idempotent_replay`
+  comes from the create authority's created-versus-replayed result, including
+  a lost unique-key race, not from a pre-read.
 - **Phase 7 scope:** makes no M7A production, test, package, migration,
   Compose, workflow, credential, or infrastructure change.
 
-There are no unresolved design gaps in this candidate. Where the
+The refined design deliberately records the abandoned-claim limitation and the
+absence of durable raw bytes rather than implying automatic recovery. Where the
 current implementation does not yet provide an end-to-end entry point, this
-document states the future boundary and defers its implementation to the
-named M7B–M7E milestone rather than implying that it already exists.
+document states the future boundary and defers its implementation to the named
+M7B–M7E milestone rather than implying that it already exists. M7A remains
+`IN PROGRESS`; this consistency review does not approve an implementation plan
+or mark the milestone complete.
