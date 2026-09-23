@@ -691,16 +691,23 @@ mutates ERP, CRM, email, Slack, or any other external system.
 
 ## 13. n8n runtime and Compose boundary
 
-Phase 7 selects self-hosted n8n Community Edition with one instance. As of
-2026-09-22, the stable version selected for implementation is:
+Phase 7 selects self-hosted n8n Community Edition with one instance. The
+original M7A design choice on 2026-09-22 was:
 
 ```text
 n8nio/n8n:2.39.10
 ```
 
-The design never uses `latest`. `2.40.5` is pre-release on the design date;
-M7D must re-verify the stable release immediately before runtime work and may
-change the pin only after recording that decision.
+Before M7D runtime work on 2026-09-23, the official stable channel targeted
+`release/2.40.5` with `prerelease=false`. Independent pin resolution selected
+the exact implementation pin:
+
+```text
+n8nio/n8n:2.40.5
+```
+
+The design never uses `latest`. Future Phase 7 runtime work must consume this
+exact pin unless another explicit independent pin resolution occurs.
 
 The intended local runtime is deliberately portfolio-sized:
 

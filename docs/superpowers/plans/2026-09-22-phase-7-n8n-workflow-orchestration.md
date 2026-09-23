@@ -794,16 +794,22 @@ git commit -m "feat: wire Phase 7 intake pipeline"
 
 **Interfaces:**
 
-- Consumes: the M7A pin `n8nio/n8n:2.39.10`, current Docker Compose API service name `api`, PostgreSQL health dependency, and the exact n8n version documentation/release channel checked immediately before runtime work.
+- Consumes: the resolved M7D pin `n8nio/n8n:2.40.5`, current Docker Compose API service name `api`, PostgreSQL health dependency, and the exact n8n version documentation/release channel checked immediately before runtime work.
 - Produces: one `n8n` Community Edition service reachable from a browser at `http://localhost:5678`, able to reach the API at `http://api:8000`, with one named data volume and local ignored encryption/configuration secrets. The API service explicitly receives `OPSFLOW_ORCHESTRATION_TOKEN: ${OPSFLOW_ORCHESTRATION_TOKEN:-}` and `OPSFLOW_REVIEW_DEV_OPERATORS: ${OPSFLOW_REVIEW_DEV_OPERATORS:-}` alongside its database URL.
+
+**2026-09-23 pin resolution:** The original M7A pin was `2.39.10`. Fresh
+official stable-channel verification found `stable` targeting
+`release/2.40.5` with `prerelease=false`, so independent resolution selected
+`2.40.5`. Future work must consume the exact `n8nio/n8n:2.40.5` pin unless
+another explicit independent pin resolution occurs.
 
 Before editing `docker-compose.yml`, inspect the authoritative n8n Releases
 page and version-specific configuration documentation, record the stable
-channel result in the runtime README task, and confirm that `2.39.10` remains
+channel result in the runtime README task, and confirm that `2.40.5` remains
 stable. Do not infer stability from an inconsistent `releases/latest` REST
-field. If the authoritative channel does not label `2.39.10` stable, stop and
-report a design-pin conflict for independent resolution; do not silently
-replace the approved pin. Never use `latest`.
+field. If the authoritative channel does not label `2.40.5` stable, stop and
+report a pin-resolution conflict; do not silently choose another version.
+Never use `latest`.
 
 The Compose service must not depend on the API for startup, must not add Redis,
 queue workers, a separate n8n PostgreSQL database, Kubernetes, or cloud
@@ -818,7 +824,7 @@ No actual token, reviewer operator JSON, or encryption key is written to
 **Steps:**
 
 - [ ] Write a runtime checklist with the exact release URL, version documentation URL, selected image tag, and verified configuration names before editing Compose.
-- [ ] Run `docker manifest inspect n8nio/n8n:2.39.10` or the equivalent exact-tag image inspection; an unavailable registry is recorded as an environment blocker and never becomes a reason to retag as `latest`.
+- [ ] Run `docker manifest inspect n8nio/n8n:2.40.5` or the equivalent exact-tag image inspection; an unavailable registry is recorded as an environment blocker and never becomes a reason to retag as `latest`.
 - [ ] Add the one n8n service, one named volume, port `5678:5678`, and only the verified local environment values. Do not add an API `depends_on` edge.
 - [ ] Add empty/non-usable `OPSFLOW_ORCHESTRATION_TOKEN=`, `OPSFLOW_REVIEW_DEV_OPERATORS=`, and the version-verified `N8N_ENCRYPTION_KEY=` entry to `.env.example` without a bearer token, reviewer JSON, Gemini key, or usable encryption key; map the actual n8n setting from ignored `.env` only.
 - [ ] Add the API environment mappings exactly as `OPSFLOW_ORCHESTRATION_TOKEN: ${OPSFLOW_ORCHESTRATION_TOKEN:-}` and `OPSFLOW_REVIEW_DEV_OPERATORS: ${OPSFLOW_REVIEW_DEV_OPERATORS:-}`; keep the existing database mapping and do not place literal values in Compose.
@@ -900,7 +906,7 @@ git commit -m "feat: add n8n sandbox intake workflow and contract tests"
 
 **Interfaces:**
 
-- Consumes: the committed JSON and contract suite from Task 11, the exact `n8nio/n8n:2.39.10` runtime, and local ignored credentials; no n8n Cloud, public Webhook, or live provider.
+- Consumes: the committed JSON and contract suite from Task 11, the exact `n8nio/n8n:2.40.5` runtime, and local ignored credentials; no n8n Cloud, public Webhook, or live provider.
 - Produces: README evidence that the pinned runtime imports and executes the sanitized workflow and a frozen retry-capability decision for Task 13.
 
 Task 12 must inspect the exact pinned n8n version's HTTP Request node and
