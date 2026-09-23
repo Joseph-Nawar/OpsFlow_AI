@@ -8,9 +8,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from opsflow.api.orchestration import router as orchestration_router
 from opsflow.api.orders import router as orders_router
 from opsflow.api.review import router as review_router
-from opsflow.application.errors import ForbiddenError, UnauthenticatedError
+from opsflow.application.errors import (
+    ForbiddenError,
+    OrchestrationUnauthenticatedError,
+    UnauthenticatedError,
+)
 from opsflow.database import create_engine, create_sessionmaker, database_is_available
 from opsflow.review.composition import build_demo_review_runtime
 from opsflow.settings import Settings, get_settings
@@ -37,8 +42,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.database_sessionmaker = create_sessionmaker(engine)
     app.state.review_runtime = build_demo_review_runtime()
     app.state.review_dev_operators = resolved_settings.review_dev_operators
+    app.state.orchestration_token = resolved_settings.orchestration_token
+    app.state.orchestration_intake_handler = None
     app.include_router(orders_router)
     app.include_router(review_router)
+    app.include_router(orchestration_router)
 
     @app.exception_handler(UnauthenticatedError)
     async def unauthenticated_error_handler(
@@ -52,6 +60,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "detail": {
                     "code": "UNAUTHENTICATED",
                     "message": "Development operator authentication is required.",
+                }
+            },
+        )
+
+    @app.exception_handler(OrchestrationUnauthenticatedError)
+    async def orchestration_unauthenticated_error_handler(
+        request: Request, error: OrchestrationUnauthenticatedError
+    ) -> JSONResponse:
+        del request, error
+        return JSONResponse(
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+            content={
+                "detail": {
+                    "code": "ORCHESTRATION_UNAUTHENTICATED",
+                    "message": "Orchestration service authentication is required.",
                 }
             },
         )
