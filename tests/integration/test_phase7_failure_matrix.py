@@ -209,6 +209,72 @@ async def _assert_extracted_final_failure() -> None:
         await engine.dispose()
 
 
+def test_extracted_reconstruction_provider_failure_is_retryable() -> None:
+    asyncio.run(_assert_extracted_reconstruction_provider_failure())
+
+
+async def _assert_extracted_reconstruction_provider_failure() -> None:
+    order, _ = _order(OrderState.EXTRACTED)
+    engine = _engine()
+    try:
+        await _commit_order(engine, order)
+        classification = classify_extracted_failure(
+            ProviderUnavailableError("synthetic-provider-unavailable")
+        )
+        async with AsyncSession(engine) as session:
+            persisted = await persist_orchestration_failure(
+                session,
+                order_id=order.id,
+                classification=classification,
+                actor="orchestration:n8n",
+                recorded_at=RECORDED_AT,
+            )
+            assert session.in_transaction() is False
+
+        assert persisted.order.state is OrderState.FAILED_RETRYABLE
+        assert persisted.order.failure_origin is OrderState.EXTRACTED
+        async with AsyncSession(engine) as session:
+            audits = await get_audit_events(session, order.id)
+        assert len(audits) == 1
+        assert audits[0].event_type == "ORDER_VALIDATION_FAILED"
+        assert audits[0].description == EXTRACTED_DESCRIPTION
+    finally:
+        await engine.dispose()
+
+
+def test_extracted_reconstruction_document_failure_is_final() -> None:
+    asyncio.run(_assert_extracted_reconstruction_document_failure())
+
+
+async def _assert_extracted_reconstruction_document_failure() -> None:
+    order, _ = _order(OrderState.EXTRACTED)
+    engine = _engine()
+    try:
+        await _commit_order(engine, order)
+        classification = classify_extracted_failure(
+            DocumentParseError("synthetic-document-parse-failure")
+        )
+        async with AsyncSession(engine) as session:
+            persisted = await persist_orchestration_failure(
+                session,
+                order_id=order.id,
+                classification=classification,
+                actor="orchestration:n8n",
+                recorded_at=RECORDED_AT,
+            )
+            assert session.in_transaction() is False
+
+        assert persisted.order.state is OrderState.FAILED_FINAL
+        assert persisted.order.failure_origin is OrderState.EXTRACTED
+        async with AsyncSession(engine) as session:
+            audits = await get_audit_events(session, order.id)
+        assert len(audits) == 1
+        assert audits[0].event_type == "ORDER_VALIDATION_FAILED"
+        assert audits[0].description == EXTRACTED_DESCRIPTION
+    finally:
+        await engine.dispose()
+
+
 @pytest.mark.parametrize(
     ("current_state", "classification"),
     [

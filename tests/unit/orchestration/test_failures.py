@@ -133,8 +133,17 @@ def test_processing_failure_matrix_is_type_based(
 @pytest.mark.parametrize(
     ("error_type", "disposition", "target"),
     [
+        (ProviderTimeoutError, FailureDisposition.RETRYABLE, OrderState.FAILED_RETRYABLE),
+        (ProviderUnavailableError, FailureDisposition.RETRYABLE, OrderState.FAILED_RETRYABLE),
         (BusinessDataProviderError, FailureDisposition.RETRYABLE, OrderState.FAILED_RETRYABLE),
         (ValidationFactsChangedError, FailureDisposition.RETRYABLE, OrderState.FAILED_RETRYABLE),
+        (ExtractionResponseError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
+        (ProviderError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
+        (DocumentValidationError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
+        (DocumentLimitError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
+        (DocumentParseError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
+        (UnsupportedDocumentTypeError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
+        (DocumentProcessingError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
         (InvalidTrustedDataError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
         (RuntimeError, FailureDisposition.FINAL, OrderState.FAILED_FINAL),
     ],

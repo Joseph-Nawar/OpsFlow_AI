@@ -87,9 +87,20 @@ def classify_processing_failure(error: BaseException) -> FailureClassification:
 def classify_extracted_failure(error: BaseException) -> FailureClassification:
     """Map one extracted-stage exception by type to a fixed safe classification."""
 
-    if isinstance(error, (BusinessDataProviderError, ValidationFactsChangedError)):
+    if isinstance(
+        error,
+        (
+            ProviderTimeoutError,
+            ProviderUnavailableError,
+            BusinessDataProviderError,
+            ValidationFactsChangedError,
+        ),
+    ):
         disposition = FailureDisposition.RETRYABLE
-    elif isinstance(error, InvalidTrustedDataError):
+    elif isinstance(
+        error,
+        (ExtractionResponseError, ProviderError, DocumentProcessingError, InvalidTrustedDataError),
+    ):
         disposition = FailureDisposition.FINAL
     else:
         disposition = FailureDisposition.FINAL
