@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsflow.application.errors import IdempotencyConflictError, SourceIdentityMismatchError
+from opsflow.application.orchestration import OrchestrationUnavailableError
 from opsflow.domain import OrderState, SourceDocumentType
 from opsflow.main import create_app
 from opsflow.orchestration.contracts import (
@@ -87,11 +88,24 @@ def test_openapi_exposes_exactly_the_phase7_intake_boundary() -> None:
     assert "execution" not in response_schema["properties"]
 
 
-def test_app_initializes_the_orchestration_handler_as_absent() -> None:
+def test_app_initializes_the_orchestration_runtime_and_handler() -> None:
     app = create_app(Settings(orchestration_token=ORCHESTRATION_TOKEN))
 
     assert app.state.orchestration_token is not None
-    assert app.state.orchestration_intake_handler is None
+    assert app.state.orchestration_runtime is not None
+    assert callable(app.state.orchestration_intake_handler)
+    assert (
+        app.state.orchestration_runtime.business_data_provider is app.state.review_runtime.provider
+    )
+    assert app.state.orchestration_runtime.policy is app.state.review_runtime.policy
+    assert app.state.orchestration_runtime.date_provider is app.state.review_runtime.date_provider
+
+
+def test_valid_request_with_explicitly_absent_handler_keeps_defensive_503() -> None:
+    response = asyncio.run(_post(remove_handler=True))
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "ORCHESTRATION_UNAVAILABLE"
 
 
 @pytest.mark.parametrize(
@@ -147,7 +161,7 @@ def test_oversized_document_returns_422_without_calling_the_handler() -> None:
 
 
 def test_valid_request_without_handler_returns_safe_503() -> None:
-    response = asyncio.run(_post())
+    response = asyncio.run(_post(remove_handler=True))
 
     assert response.status_code == 503
     assert response.json() == {
@@ -311,6 +325,18 @@ def test_source_identity_conflict_maps_to_safe_409() -> None:
     assert secret not in response.text
 
 
+def test_handler_unavailable_error_maps_to_bounded_503() -> None:
+    response = asyncio.run(_post_with_handler(RaisingHandler(OrchestrationUnavailableError())))
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "ORCHESTRATION_UNAVAILABLE",
+            "message": "Orchestration intake is currently unavailable.",
+        }
+    }
+
+
 def test_malformed_input_short_circuits_before_the_handler() -> None:
     stub = RecordingHandler(_result())
     response = asyncio.run(
@@ -359,8 +385,11 @@ async def _post(
     files: dict[str, tuple[str, bytes, str]] | None = None,
     idempotency_key: str = "api-test-key",
     content_secret: str | None = None,
+    remove_handler: bool = False,
 ) -> httpx.Response:
     app = create_app(Settings(orchestration_token=ORCHESTRATION_TOKEN))
+    if remove_handler:
+        app.state.orchestration_intake_handler = None
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:

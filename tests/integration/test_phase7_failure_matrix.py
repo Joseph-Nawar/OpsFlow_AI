@@ -4,10 +4,13 @@ import asyncio
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
+import opsflow.main as main_module
 import opsflow.orchestration.failures as failures_module
 from opsflow.application.errors import (
     BusinessDataProviderError,
@@ -28,6 +31,16 @@ from opsflow.orchestration.failures import (
     classify_extracted_failure,
     classify_processing_failure,
     persist_orchestration_failure,
+)
+from opsflow.persistence.models import (
+    AuditEventModel,
+    ExtractionSnapshotModel,
+    OrderCreationIdempotencyModel,
+    OrderLineModel,
+    OrderModel,
+    ReviewRevisionModel,
+    SourceDocumentModel,
+    ValidationIssueModel,
 )
 from opsflow.persistence.repositories import (
     get_audit_events,
@@ -404,3 +417,77 @@ async def _assert_original_state_and_no_audit(
     assert persisted.order.state is state
     assert persisted.order.failure_origin is None
     assert audits == ()
+
+
+def test_real_http_processing_provider_unavailability_persists_retryable_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(_assert_http_processing_provider_failure(monkeypatch))
+
+
+async def _assert_http_processing_provider_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    class UnavailableProvider:
+        async def generate_structured(self, request: object) -> object:
+            del request
+            raise ProviderUnavailableError("synthetic-provider-outage")
+
+    original_builder = main_module.build_orchestration_runtime
+
+    def build_runtime(settings: Settings, *, review_runtime=None):
+        return original_builder(
+            settings,
+            review_runtime=review_runtime,
+            extraction_provider_factory=lambda: UnavailableProvider(),
+        )
+
+    monkeypatch.setattr(main_module, "build_orchestration_runtime", build_runtime)
+    key = f"task7-http-failure-{uuid4()}"
+    app = main_module.create_app(Settings(orchestration_token="synthetic-task7-token"))
+    engine = create_async_engine(Settings().database_url)
+    try:
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client,
+        ):
+            response = await client.post(
+                "/v1/orchestration/intakes",
+                data={"document_type": "EMAIL_BODY", "message_id": "task7-http"},
+                files={"document": ("task7.txt", b"synthetic task7 document", "text/plain")},
+                headers={
+                    "Authorization": "Bearer synthetic-task7-token",
+                    "Idempotency-Key": key,
+                },
+            )
+        assert response.status_code == 201
+        assert response.json()["state"] == "FAILED_RETRYABLE"
+        assert response.json()["failure_origin"] == "PROCESSING"
+        async with AsyncSession(engine) as session:
+            order_id = await session.scalar(
+                select(OrderCreationIdempotencyModel.order_id).where(
+                    OrderCreationIdempotencyModel.idempotency_key == key
+                )
+            )
+            assert order_id is not None
+            events = await get_audit_events(session, order_id)
+        assert [event.event_type for event in events].count("ORDER_PROCESSING_FAILED") == 1
+    finally:
+        if "order_id" in locals() and order_id is not None:
+            await _delete_http_order(engine, order_id)
+        await engine.dispose()
+
+
+async def _delete_http_order(engine: AsyncEngine, order_id: UUID) -> None:
+    async with engine.begin() as connection:
+        for model in (
+            ReviewRevisionModel,
+            ExtractionSnapshotModel,
+            ValidationIssueModel,
+            AuditEventModel,
+            OrderLineModel,
+            SourceDocumentModel,
+            OrderCreationIdempotencyModel,
+        ):
+            await connection.execute(delete(model).where(model.order_id == order_id))
+        await connection.execute(delete(OrderModel).where(OrderModel.id == order_id))

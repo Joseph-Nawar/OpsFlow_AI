@@ -24,6 +24,7 @@ from opsflow.application.errors import (
     SourceIdentityMismatchError,
     SourceOwnershipError,
 )
+from opsflow.application.orchestration import OrchestrationUnavailableError
 from opsflow.documents.errors import (
     DocumentLimitError,
     DocumentValidationError,
@@ -114,6 +115,10 @@ async def create_orchestration_intake_endpoint(
 
     try:
         result = await handler(session, command, actor, datetime.now(UTC))
+    except OrchestrationUnavailableError as error:
+        raise _orchestration_unavailable() from error
+    except DocumentValidationError as error:
+        raise _invalid_intake() from error
     except IdempotencyConflictError as error:
         raise _idempotency_conflict() from error
     except (SourceIdentityMismatchError, SourceOwnershipError) as error:

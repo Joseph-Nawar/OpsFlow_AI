@@ -8,8 +8,9 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from opsflow.application.errors import IdempotencyConflictError, SourceIdentityMismatchError
@@ -22,6 +23,7 @@ from opsflow.application.orders import (
 )
 from opsflow.application.review_commands import retry_order
 from opsflow.domain import AuditEvent, OrderState, SourceDocumentType
+from opsflow.main import create_app
 from opsflow.orchestration.auth import ORCHESTRATION_ACTOR
 from opsflow.orchestration.claims import (
     IntakeClaim,
@@ -391,6 +393,54 @@ async def _assert_restored_syncing() -> None:
     finally:
         await _delete_orders(engine, (persisted.order.id,))
         await engine.dispose()
+
+
+def test_http_terminal_duplicate_reuses_one_persisted_graph() -> None:
+    asyncio.run(_assert_http_terminal_duplicate())
+
+
+async def _assert_http_terminal_duplicate() -> None:
+    key = f"phase7-http-terminal-{uuid4()}"
+    app = create_app(Settings(orchestration_token="synthetic-orchestration-service-credential"))
+    engine = create_async_engine(Settings().database_url)
+    try:
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client,
+        ):
+            headers = {
+                "Authorization": "Bearer synthetic-orchestration-service-credential",
+                "Idempotency-Key": key,
+            }
+            files = {"document": ("terminal.txt", b"same document", "text/plain")}
+            first = await client.post(
+                "/v1/orchestration/intakes",
+                data={"document_type": "EMAIL_BODY", "message_id": "terminal-message"},
+                files=files,
+                headers=headers,
+            )
+            second = await client.post(
+                "/v1/orchestration/intakes",
+                data={"document_type": "EMAIL_BODY", "message_id": "terminal-message"},
+                files=files,
+                headers=headers,
+            )
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert second.json()["idempotent_replay"] is True
+        async with AsyncSession(engine) as session:
+            order_id = await session.scalar(
+                select(OrderCreationIdempotencyModel.order_id).where(
+                    OrderCreationIdempotencyModel.idempotency_key == key
+                )
+            )
+        assert order_id is not None
+        await _delete_orders(engine, (order_id,))
+    finally:
+        await engine.dispose()
+        await app.state.database_engine.dispose()
 
 
 async def _create_order(engine: AsyncEngine) -> tuple[PersistedOrder, CreateOrderInput, str]:

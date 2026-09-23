@@ -1,10 +1,19 @@
 """Authentication boundary tests for the Phase 7 orchestration route."""
 
 import asyncio
+from datetime import datetime
+from uuid import UUID
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from opsflow.domain import OrderState
 from opsflow.main import create_app
+from opsflow.orchestration.contracts import (
+    IntakeExecution,
+    OrchestrationIntakeCommand,
+    OrchestrationIntakeResult,
+)
 from opsflow.review import OperatorRole
 from opsflow.settings import DevelopmentOperatorConfig, Settings
 
@@ -35,16 +44,14 @@ def test_orchestration_route_rejects_an_unknown_service_credential() -> None:
     assert "wrong-orchestration-credential" not in response.text
 
 
-def test_correct_orchestration_credential_reaches_the_safe_unavailable_boundary() -> None:
-    response = asyncio.run(_post_intake(token=ORCHESTRATION_TOKEN))
+def test_correct_orchestration_credential_reaches_the_authenticated_handler() -> None:
+    response, calls = asyncio.run(_post_with_recording_handler())
 
-    assert response.status_code == 503
-    assert response.json() == {
-        "detail": {
-            "code": "ORCHESTRATION_UNAVAILABLE",
-            "message": "Orchestration intake is currently unavailable.",
-        }
-    }
+    assert response.status_code == 201
+    assert response.json()["state"] == "NEEDS_REVIEW"
+    assert response.json()["idempotent_replay"] is False
+    assert len(calls) == 1
+    assert calls[0][2] == "orchestration:n8n"
     assert ORCHESTRATION_TOKEN not in response.text
 
 
@@ -87,8 +94,11 @@ async def _post_intake(
     *,
     token: str | None = None,
     settings: Settings | None = None,
+    handler: "RecordingHandler | None" = None,
 ) -> httpx.Response:
     app = create_app(settings or Settings(orchestration_token=ORCHESTRATION_TOKEN))
+    if handler is not None:
+        app.state.orchestration_intake_handler = handler
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -101,6 +111,37 @@ async def _post_intake(
                 files={"document": ("auth-test.pdf", b"document", "application/pdf")},
                 headers=headers,
             )
+
+
+async def _post_with_recording_handler() -> tuple[
+    httpx.Response,
+    list[tuple[OrchestrationIntakeCommand, datetime, str]],
+]:
+    handler = RecordingHandler()
+    response = await _post_intake(token=ORCHESTRATION_TOKEN, handler=handler)
+    return response, handler.calls
+
+
+class RecordingHandler:
+    def __init__(self) -> None:
+        self.calls: list[tuple[OrchestrationIntakeCommand, datetime, str]] = []
+
+    async def __call__(
+        self,
+        session: AsyncSession,
+        command: OrchestrationIntakeCommand,
+        actor: str,
+        recorded_at: datetime,
+    ) -> OrchestrationIntakeResult:
+        del session
+        self.calls.append((command, recorded_at, actor))
+        return OrchestrationIntakeResult(
+            order_id=UUID("00000000-0000-0000-0000-000000000001"),
+            state=OrderState.NEEDS_REVIEW,
+            failure_origin=None,
+            idempotent_replay=False,
+            execution=IntakeExecution.COMPLETED,
+        )
 
 
 async def _post_review_command_without_credentials() -> httpx.Response:
