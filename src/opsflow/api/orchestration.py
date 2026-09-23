@@ -41,6 +41,15 @@ from opsflow.orchestration.transport import build_intake_command
 from .orchestration_schemas import OrchestrationIntakeResponse
 from .orders import SessionDependency
 
+_PHASE7_COMPLETED_STATES = frozenset(
+    {
+        OrderState.NEEDS_REVIEW,
+        OrderState.READY_FOR_APPROVAL,
+        OrderState.FAILED_RETRYABLE,
+        OrderState.FAILED_FINAL,
+    }
+)
+
 
 class _OrchestrationRoute(APIRoute):
     """Keep malformed orchestration requests in a bounded non-echoing shape."""
@@ -120,14 +129,14 @@ async def create_orchestration_intake_endpoint(
 
 
 def _status_for_result(result: OrchestrationIntakeResult) -> int:
-    if result.idempotent_replay:
-        return 200
-    if result.execution is IntakeExecution.COMPLETED:
-        return 201
     if result.execution is IntakeExecution.STANDING_DOWN:
         if result.state in {OrderState.PROCESSING, OrderState.EXTRACTED}:
             return 202
         return 200
+    if result.execution is IntakeExecution.COMPLETED:
+        if result.state not in _PHASE7_COMPLETED_STATES:
+            raise _orchestration_unavailable()
+        return 200 if result.idempotent_replay else 201
     raise _orchestration_unavailable()
 
 

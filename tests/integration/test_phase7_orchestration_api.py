@@ -192,12 +192,56 @@ def test_valid_request_forwards_exact_command_actor_session_and_timestamp() -> N
 @pytest.mark.parametrize(
     ("result", "expected_status"),
     [
-        (_result(execution=IntakeExecution.COMPLETED), 201),
-        (_result(idempotent_replay=True), 200),
-        (_result(state=OrderState.PROCESSING, execution=IntakeExecution.STANDING_DOWN), 202),
-        (_result(state=OrderState.EXTRACTED, execution=IntakeExecution.STANDING_DOWN), 202),
+        (
+            _result(
+                state=OrderState.NEEDS_REVIEW,
+                idempotent_replay=False,
+                execution=IntakeExecution.COMPLETED,
+            ),
+            201,
+        ),
+        (
+            _result(
+                state=OrderState.NEEDS_REVIEW,
+                idempotent_replay=True,
+                execution=IntakeExecution.COMPLETED,
+            ),
+            200,
+        ),
+        (
+            _result(
+                state=OrderState.PROCESSING,
+                idempotent_replay=True,
+                execution=IntakeExecution.STANDING_DOWN,
+            ),
+            202,
+        ),
+        (
+            _result(
+                state=OrderState.EXTRACTED,
+                idempotent_replay=True,
+                execution=IntakeExecution.STANDING_DOWN,
+            ),
+            202,
+        ),
+        (
+            _result(
+                state=OrderState.PROCESSING,
+                idempotent_replay=False,
+                execution=IntakeExecution.STANDING_DOWN,
+            ),
+            202,
+        ),
         (
             _result(state=OrderState.FAILED_RETRYABLE, execution=IntakeExecution.STANDING_DOWN),
+            200,
+        ),
+        (
+            _result(
+                state=OrderState.FAILED_RETRYABLE,
+                idempotent_replay=True,
+                execution=IntakeExecution.STANDING_DOWN,
+            ),
             200,
         ),
     ],
@@ -215,6 +259,32 @@ def test_result_execution_maps_to_the_approved_http_status(
         "idempotent_replay",
     }
     assert "execution" not in response.json()
+
+
+@pytest.mark.parametrize(
+    "state",
+    [OrderState.RECEIVED, OrderState.PROCESSING, OrderState.EXTRACTED, OrderState.VALIDATED],
+)
+def test_completed_intermediate_result_returns_safe_503(state: OrderState) -> None:
+    response = asyncio.run(
+        _post_with_handler(
+            RecordingHandler(
+                _result(
+                    state=state,
+                    idempotent_replay=True,
+                    execution=IntakeExecution.COMPLETED,
+                )
+            )
+        )
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "ORCHESTRATION_UNAVAILABLE",
+            "message": "Orchestration intake is currently unavailable.",
+        }
+    }
 
 
 def test_idempotency_conflict_maps_to_safe_409() -> None:
