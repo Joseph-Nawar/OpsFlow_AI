@@ -1,0 +1,446 @@
+[
+  {
+    "active": false,
+    "name": "OpsFlow Sandbox Intake",
+    "settings": {},
+    "staticData": null,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "opsflow-sandbox-intake",
+          "responseMode": "responseNode"
+        },
+        "id": "303c7187-f9f6-4194-a68c-e5006e85b184",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          0,
+          0
+        ],
+        "webhookId": "96b112ff-275c-4b94-aa3a-d09b3fe00c0a"
+      },
+      {
+        "parameters": {
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpBearerAuth",
+          "method": "POST",
+          "url": "http://api:8000/v1/orchestration/intakes",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Idempotency-Key",
+                "value": "={{ $json.headers['x-opsflow-event-id'] }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "specifyBody": "keypair",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "document",
+                "inputDataFieldName": "document"
+              },
+              {
+                "parameterType": "formData",
+                "name": "document_type",
+                "value": "={{ $json.body.document_type }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "message_id",
+                "value": "={{ $json.body.message_id }}"
+              }
+            ]
+          },
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "id": "a764508d-a247-4730-8306-869c7d63f3fe",
+        "name": "Submit to OpsFlow API",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          280,
+          0
+        ],
+        "credentials": {
+          "httpBearerAuth": {
+            "name": "OpsFlow Orchestration"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "outputKey": "NEEDS_REVIEW",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.state }}",
+                      "rightValue": "NEEDS_REVIEW",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "outputKey": "READY_FOR_APPROVAL",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.state }}",
+                      "rightValue": "READY_FOR_APPROVAL",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "outputKey": "FAILED_RETRYABLE",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.state }}",
+                      "rightValue": "FAILED_RETRYABLE",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "outputKey": "FAILED_FINAL",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.state }}",
+                      "rightValue": "FAILED_FINAL",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "outputKey": "PROCESSING",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.state }}",
+                      "rightValue": "PROCESSING",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "outputKey": "EXTRACTED",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.state }}",
+                      "rightValue": "EXTRACTED",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Unexpected State"
+          }
+        },
+        "id": "3af78b68-75c9-4a56-8e88-bf6360f4d96d",
+        "name": "Route by Backend State",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          560,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"state\": \"NEEDS_REVIEW\", \"message\": \"Review Required\"}"
+        },
+        "id": "701bc995-b050-424c-a3d7-534940e62331",
+        "name": "NEEDS_REVIEW",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          840,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"state\": \"READY_FOR_APPROVAL\", \"message\": \"Approval Required\"}"
+        },
+        "id": "f127e5d6-d689-4aae-99fa-f34b1831a5a9",
+        "name": "READY_FOR_APPROVAL",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          840,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"state\": \"FAILED_RETRYABLE\", \"message\": \"Retryable Failure\"}"
+        },
+        "id": "f5f39676-eb36-406c-b619-915d47a6072e",
+        "name": "FAILED_RETRYABLE",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          840,
+          360
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"state\": \"FAILED_FINAL\", \"message\": \"Final Failure\"}"
+        },
+        "id": "0ac170e2-762e-4a1b-8e5c-a5bbff717a9c",
+        "name": "FAILED_FINAL",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          840,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"state\": \"PROCESSING\", \"message\": \"Processing / In Progress\"}"
+        },
+        "id": "ed9b065d-648c-4a17-b86a-fbb24bcd1cbc",
+        "name": "PROCESSING",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          840,
+          720
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"state\": \"EXTRACTED\", \"message\": \"Extraction Complete / Validation Pending\"}"
+        },
+        "id": "097eed05-2cd2-4a60-85dc-0c8e808ab7b6",
+        "name": "EXTRACTED",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          840,
+          900
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"state\": \"UNEXPECTED\", \"message\": \"Unexpected State\"}"
+        },
+        "id": "0066bd19-96f2-4689-9f35-4a4978e3ded4",
+        "name": "Unexpected State",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          840,
+          1080
+        ]
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Submit to OpsFlow API",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Submit to OpsFlow API": {
+        "main": [
+          [
+            {
+              "node": "Route by Backend State",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route by Backend State": {
+        "main": [
+          [
+            {
+              "node": "NEEDS_REVIEW",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "READY_FOR_APPROVAL",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "FAILED_RETRYABLE",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "FAILED_FINAL",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "PROCESSING",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "EXTRACTED",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Unexpected State",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "NEEDS_REVIEW": {
+        "main": [
+          []
+        ]
+      },
+      "READY_FOR_APPROVAL": {
+        "main": [
+          []
+        ]
+      },
+      "FAILED_RETRYABLE": {
+        "main": [
+          []
+        ]
+      },
+      "FAILED_FINAL": {
+        "main": [
+          []
+        ]
+      },
+      "PROCESSING": {
+        "main": [
+          []
+        ]
+      },
+      "EXTRACTED": {
+        "main": [
+          []
+        ]
+      },
+      "Unexpected State": {
+        "main": [
+          []
+        ]
+      }
+    },
+    "id": "yrKHqCoClwNDP4Sh",
+    "tags": []
+  }
+]

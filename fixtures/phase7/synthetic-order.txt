@@ -1,0 +1,6 @@
+Customer reference: CUST-001
+PO number: PO-SYNTHETIC
+Currency: USD
+Line: SKU-001
+Quantity: 1
+Submitted price: 10
