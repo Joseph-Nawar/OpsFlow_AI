@@ -15,3 +15,7 @@ class ProviderError(ExtractionError):
 
 class ProviderTimeoutError(ProviderError):
     """The configured provider timeout was reached."""
+
+
+class ProviderUnavailableError(ProviderError):
+    """The provider is temporarily unavailable."""
