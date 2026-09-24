@@ -32,7 +32,7 @@ class OrchestrationIntakeCommand:
 
 @dataclass(frozen=True, slots=True)
 class OrchestrationIntakeResult:
-    """Narrow result returned by the future orchestration application service."""
+    """Narrow result returned by the orchestration intake application service."""
 
     order_id: UUID
     state: OrderState
@@ -42,7 +42,7 @@ class OrchestrationIntakeResult:
 
 
 class OrchestrationIntakeHandler(Protocol):
-    """Application seam owned by the future orchestration implementation."""
+    """Application seam for executing orchestration intake."""
 
     async def __call__(
         self,

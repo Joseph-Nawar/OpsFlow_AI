@@ -1,4 +1,4 @@
-"""Authenticated transport boundary for future orchestration intake."""
+"""Authenticated HTTP boundary for orchestration intake."""
 
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
@@ -94,7 +94,7 @@ async def create_orchestration_intake_endpoint(
     response: Response,
     message_id: Annotated[str | None, Form()] = None,
 ) -> OrchestrationIntakeResponse:
-    """Accept one authenticated document without claiming pipeline execution."""
+    """Accept one authenticated document and delegate to orchestration intake."""
 
     try:
         command = await build_intake_command(
