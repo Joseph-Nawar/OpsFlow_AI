@@ -140,3 +140,55 @@ uv run python scripts/phase7_seed_retryable_demo.py --origin extracted
 retry trigger. A human must use the existing review Retry action and then
 resubmit the same document with the same event ID. Automatic recovery beyond
 this bounded transport fallback is outside Task 13.
+
+## Task 14 local sandbox verification
+
+The complete local rehearsal used n8n `2.40.5`, the existing Compose services,
+and the Vite review surface:
+
+```sh
+docker compose up -d postgres api n8n
+npm --prefix web run dev -- --host 127.0.0.1
+```
+
+The clean-clone sequence is: import this inactive workflow, create or relink
+the local `OpsFlow Orchestration` `httpBearerAuth` credential on all HTTP
+Request nodes, save, publish/activate, and then call
+`POST /webhook/opsflow-sandbox-intake`. Import alone does not register the
+production webhook. The verified runtime was `2.40.5`; the local API, n8n
+root/health endpoint, Compose-network API health check, Vite root, and Vite
+`/v1` proxy were reachable. The configured synthetic reviewer credential
+returned 200 through the review proxy, while a missing credential returned 401.
+
+Using `fixtures/phase7/synthetic-order.txt`, a normal production-webhook
+intake returned `NEEDS_REVIEW` / `Review Required`. An exact duplicate retained
+one order, source, idempotency row, extraction snapshot, processing-start
+event, and extraction-completed event. `FORM` returned the bounded backend 422
+and created no order graph; the current state-routing default presents that
+response as `Unexpected State` without entering a retry branch. Reusing the
+same event ID with different bytes returned the bounded 409 conflict and left
+the original graph unchanged. With the API stopped, the workflow made three
+transport attempts across its two one-second waits and returned bounded 503
+`UNAVAILABLE`; the API was restarted and recovered afterward.
+
+The processing seed produced `FAILED_RETRYABLE` with origin `PROCESSING` and
+the expected receive/start/failure audit sequence. The authenticated human
+review Retry operation restored `PROCESSING` with request/restore markers but
+no resume event or snapshot before redelivery. Two identical redeliveries
+consumed exactly one generation: one `ORDER_PROCESSING_RESUMED`, one
+`ORDER_PROCESSING_STARTED` overall, one extraction snapshot, and the normal
+`NEEDS_REVIEW` route. The extracted seed produced `FAILED_RETRYABLE` with
+origin `EXTRACTED`; the authenticated review UI Retry action restored
+`EXTRACTED` without doing work, and two redeliveries produced exactly one
+`ORDER_EXTRACTION_RESUMED`, retained one `ORDER_EXTRACTION_COMPLETED`, and
+committed one snapshot before the normal business route. The processing and
+extracted retry commands were both exercised through the browser review UI;
+the Vite-proxied review surface was also verified independently.
+
+These checks do not change the Phase 7 reliability boundary: if a claim or
+resume marker commits and a later persistence step becomes unavailable, there
+is no lease, heartbeat, scheduler, or automatic reclaim. Matching redelivery
+may therefore stand down in `PROCESSING` or `EXTRACTED`. Stop the local API,
+n8n, PostgreSQL, and Vite processes after verification; preserve named
+volumes, remove temporary response/environment files, and never commit local
+credentials, runtime state, execution data, or raw documents.
