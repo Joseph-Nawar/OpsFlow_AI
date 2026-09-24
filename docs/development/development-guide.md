@@ -6,12 +6,15 @@ Phases 0–6 are complete and independently audited. The repository contains the
 M0 foundation and CI, the Phase 1 domain/state contract, Phase 2 PostgreSQL
 persistence and idempotent core API, Phase 3 document processing, Phase 4
 structured extraction, Phase 5 deterministic validation, and Phase 6 review
-contracts, persistence, commands, and React application. Phase 7 is now
-`IN PROGRESS`; M7A is the documentation-only n8n orchestration design
-milestone. The [Phase 0 audit record](../audits/phase-0-audit.md) through the
-[Phase 6 audit record](../audits/phase-6-audit.md) preserve closeout evidence.
-Commands below distinguish historical verified checks from current or
-still-planned later-milestone workflows.
+contracts, persistence, commands, and React application. Phase 7 remains
+`IN PROGRESS`; M7A–M7E are implemented, including the authenticated
+orchestration boundary and application pipeline, pinned local n8n
+runtime/workflow, selective transport retry, and sandbox handoff. M7F
+independent audit/closeout remains pending. The [Phase 0 audit
+record](../audits/phase-0-audit.md) through the [Phase 6 audit
+record](../audits/phase-6-audit.md) preserve closeout evidence. Commands below
+distinguish historical verified checks from current or still-planned
+later-milestone workflows.
 
 ## Working principles
 
@@ -48,7 +51,7 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
-Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, and the Phase 2–6 capabilities now exist. `workflows/n8n/` remains intentionally absent until M7D; other future areas remain absent until an applicable milestone requires them.
+Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7 `workflows/n8n/` area now exist. Other future areas remain absent until an applicable milestone requires them.
 
 ## Historical verified M0B/M0C backend commands
 

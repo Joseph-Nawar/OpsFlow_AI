@@ -49,7 +49,7 @@ Email / PDF / XLSX / Form
 
 ## Intended technology baseline
 
-M0B verified Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. M0C verifies SQLAlchemy 2.x async PostgreSQL access through asyncpg, Alembic, PostgreSQL 16, Docker Compose, and the `/ready` readiness boundary. M0D verifies the minimal Node.js 24/npm React, TypeScript, Vite, and ESLint frontend foundation. M0E verifies the Makefile command interface, GitHub Actions quality gates, and Gitleaks scanning. Document handling, AI extraction/provider infrastructure, and the React human-review application are now implemented through Phases 3, 4, and 6. Remaining later-phase baseline work includes n8n orchestration, external business integrations, and production-style observability/security hardening.
+M0B verified Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. M0C verifies SQLAlchemy 2.x async PostgreSQL access through asyncpg, Alembic, PostgreSQL 16, Docker Compose, and the `/ready` readiness boundary. M0D verifies the minimal Node.js 24/npm React, TypeScript, Vite, and ESLint frontend foundation. M0E verifies the Makefile command interface, GitHub Actions quality gates, and Gitleaks scanning. Document handling, AI extraction/provider infrastructure, and the React human-review application are now implemented through Phases 3, 4, and 6. The Phase 7 local n8n orchestration runtime and sandbox workflow are implemented through M7D and M7E. Remaining later-phase baseline work includes external business integrations and production-style observability/security hardening.
 
 ## Documentation map
 
