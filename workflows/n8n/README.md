@@ -108,3 +108,35 @@ unavailable response without claiming lifecycle recovery. The budget is
 **maximum two transport retry attempts after the initial request**. Task 12
 does not modify or enable these retry nodes in the committed workflow; Task 13
 owns that implementation.
+
+## Task 13 transport recovery
+
+The workflow now implements the frozen standard-node fallback with three
+HTTP Request 4.5 attempts and two one-second time-interval Wait 1.1 nodes.
+Each request uses JSON full responses, `Never Error`, and the node-level
+`Continue (using error output)` setting. HTTP status switches retry only an
+exact numeric `503`; connection errors use the separate error output. The
+final exhausted path returns a bounded HTTP 503 `UNAVAILABLE` response.
+
+The original Webhook item is retained through an Edit Fields node and a
+Merge 3.2 Combine-by-Position node with unpaired items excluded. This means
+the retry branch receives the original binary document only when its Wait
+signal arrives, while non-503 responses cannot enter a retry path. All three
+attempts preserve the original filename, MIME, document type, optional
+`message_id`, and exact `X-OpsFlow-Event-Id` to `Idempotency-Key` mapping.
+
+Runtime verification confirmed one send for 2xx, 401, 409, 422, 500, 2xx
+`FAILED_RETRYABLE`, `PROCESSING`, and `EXTRACTED`; three sends for exhausted
+503 and connection failure; and identical source identity across the three
+503 attempts. The retryable demo seed is available for either lifecycle
+origin:
+
+```sh
+uv run python scripts/phase7_seed_retryable_demo.py --origin processing
+uv run python scripts/phase7_seed_retryable_demo.py --origin extracted
+```
+
+`FAILED_RETRYABLE` remains a backend lifecycle response, not a transport
+retry trigger. A human must use the existing review Retry action and then
+resubmit the same document with the same event ID. Automatic recovery beyond
+this bounded transport fallback is outside Task 13.

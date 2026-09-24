@@ -23,6 +23,60 @@
       },
       {
         "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": []
+          },
+          "includeOtherFields": true,
+          "options": {
+            "stripBinary": false
+          }
+        },
+        "id": "f0dbf329-0dd6-4a5c-a0c4-8a8fc9c95e19",
+        "name": "Preserve Original Request",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          160,
+          0
+        ]
+      },
+      {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "includeUnpaired": false
+        }
+      },
+        "id": "4b16a6fb-7a2b-4c56-bb88-5e66d59b6230",
+        "name": "Restore Original After Retry Wait 1",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          560,
+          -420
+        ]
+      },
+      {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "includeUnpaired": false
+        }
+      },
+        "id": "cc1395dc-f5e8-4b2e-92c5-7d7ec3c619c5",
+        "name": "Restore Original After Retry Wait 2",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          1400,
+          -420
+        ]
+      },
+      {
+        "parameters": {
           "authentication": "genericCredentialType",
           "genericAuthType": "httpBearerAuth",
           "method": "POST",
@@ -33,7 +87,7 @@
             "parameters": [
               {
                 "name": "Idempotency-Key",
-                "value": "={{ $json.headers['x-opsflow-event-id'] }}"
+                "value": "={{ $('Webhook').item.json.headers['x-opsflow-event-id'] }}"
               }
             ]
           },
@@ -50,12 +104,12 @@
               {
                 "parameterType": "formData",
                 "name": "document_type",
-                "value": "={{ $json.body.document_type }}"
+                "value": "={{ $('Webhook').item.json.body.document_type }}"
               },
               {
                 "parameterType": "formData",
                 "name": "message_id",
-                "value": "={{ $json.body.message_id }}"
+                "value": "={{ $('Webhook').item.json.body.message_id }}"
               }
             ]
           },
@@ -63,7 +117,8 @@
             "response": {
               "response": {
                 "neverError": true,
-                "responseFormat": "json"
+                "responseFormat": "json",
+                "fullResponse": true
               }
             }
           }
@@ -72,6 +127,7 @@
         "name": "Submit to OpsFlow API",
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
+        "onError": "continueErrorOutput",
         "position": [
           280,
           0
@@ -88,6 +144,305 @@
           "rules": {
             "values": [
               {
+                "outputKey": "HTTP_503",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.statusCode }}",
+                      "rightValue": 503,
+                      "operator": {
+                        "type": "number",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Non-503"
+          }
+        },
+        "id": "b8c2fd31-fd6a-4dc4-a955-a9cf4dd7dc30",
+        "name": "Route Attempt 0 Status",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          560,
+          -240
+        ]
+      },
+      {
+        "parameters": {
+          "resume": "timeInterval",
+          "amount": 1,
+          "unit": "seconds"
+        },
+        "id": "e09b3c43-b7fc-4d7a-a8bd-5e76c994dc5b",
+        "name": "Wait Before Retry 1",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          840,
+          -240
+        ]
+      },
+      {
+        "parameters": {
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpBearerAuth",
+          "method": "POST",
+          "url": "http://api:8000/v1/orchestration/intakes",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Idempotency-Key",
+                "value": "={{ $('Webhook').item.json.headers['x-opsflow-event-id'] }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "specifyBody": "keypair",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "document",
+                "inputDataFieldName": "document"
+              },
+              {
+                "parameterType": "formData",
+                "name": "document_type",
+                "value": "={{ $('Webhook').item.json.body.document_type }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "message_id",
+                "value": "={{ $('Webhook').item.json.body.message_id }}"
+              }
+            ]
+          },
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json",
+                "fullResponse": true
+              }
+            }
+          }
+        },
+        "id": "7ae534e5-640a-48f4-855c-17f7aeb64f2b",
+        "name": "Submit to OpsFlow API Retry 1",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "onError": "continueErrorOutput",
+        "position": [
+          1120,
+          -240
+        ],
+        "credentials": {
+          "httpBearerAuth": {
+            "name": "OpsFlow Orchestration"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "outputKey": "HTTP_503",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.statusCode }}",
+                      "rightValue": 503,
+                      "operator": {
+                        "type": "number",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Non-503"
+          }
+        },
+        "id": "d9d5fb4b-7b76-49e6-a8ed-ef7a6e4c6b2d",
+        "name": "Route Attempt 1 Status",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          1400,
+          -240
+        ]
+      },
+      {
+        "parameters": {
+          "resume": "timeInterval",
+          "amount": 1,
+          "unit": "seconds"
+        },
+        "id": "f7d5a1fd-19c6-4e9f-b4db-8b3eb8c3316f",
+        "name": "Wait Before Retry 2",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          1680,
+          -240
+        ]
+      },
+      {
+        "parameters": {
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpBearerAuth",
+          "method": "POST",
+          "url": "http://api:8000/v1/orchestration/intakes",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Idempotency-Key",
+                "value": "={{ $('Webhook').item.json.headers['x-opsflow-event-id'] }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "specifyBody": "keypair",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "document",
+                "inputDataFieldName": "document"
+              },
+              {
+                "parameterType": "formData",
+                "name": "document_type",
+                "value": "={{ $('Webhook').item.json.body.document_type }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "message_id",
+                "value": "={{ $('Webhook').item.json.body.message_id }}"
+              }
+            ]
+          },
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json",
+                "fullResponse": true
+              }
+            }
+          }
+        },
+        "id": "1f7c35aa-a9cf-43b4-8b26-32e2f0c8dd8b",
+        "name": "Submit to OpsFlow API Retry 2",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "onError": "continueErrorOutput",
+        "position": [
+          1960,
+          -240
+        ],
+        "credentials": {
+          "httpBearerAuth": {
+            "name": "OpsFlow Orchestration"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "outputKey": "HTTP_503",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.statusCode }}",
+                      "rightValue": 503,
+                      "operator": {
+                        "type": "number",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Non-503"
+          }
+        },
+        "id": "f16c776c-026c-4058-9f72-a0f19a1f85e0",
+        "name": "Route Attempt 2 Status",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          2240,
+          -240
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"state\": \"UNAVAILABLE\", \"message\": \"OpsFlow transport is unavailable after bounded retries.\"}",
+          "options": {
+            "responseCode": 503
+          }
+        },
+        "id": "a6c9aaf8-3f4f-4d43-b8e1-f7ce36d2eb34",
+        "name": "Transport Unavailable",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          2520,
+          -240
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
                 "outputKey": "NEEDS_REVIEW",
                 "conditions": {
                   "options": {
@@ -97,7 +452,7 @@
                   },
                   "conditions": [
                     {
-                      "leftValue": "={{ $json.state }}",
+                      "leftValue": "={{ $json.body.state }}",
                       "rightValue": "NEEDS_REVIEW",
                       "operator": {
                         "type": "string",
@@ -118,7 +473,7 @@
                   },
                   "conditions": [
                     {
-                      "leftValue": "={{ $json.state }}",
+                      "leftValue": "={{ $json.body.state }}",
                       "rightValue": "READY_FOR_APPROVAL",
                       "operator": {
                         "type": "string",
@@ -139,7 +494,7 @@
                   },
                   "conditions": [
                     {
-                      "leftValue": "={{ $json.state }}",
+                      "leftValue": "={{ $json.body.state }}",
                       "rightValue": "FAILED_RETRYABLE",
                       "operator": {
                         "type": "string",
@@ -160,7 +515,7 @@
                   },
                   "conditions": [
                     {
-                      "leftValue": "={{ $json.state }}",
+                      "leftValue": "={{ $json.body.state }}",
                       "rightValue": "FAILED_FINAL",
                       "operator": {
                         "type": "string",
@@ -181,7 +536,7 @@
                   },
                   "conditions": [
                     {
-                      "leftValue": "={{ $json.state }}",
+                      "leftValue": "={{ $json.body.state }}",
                       "rightValue": "PROCESSING",
                       "operator": {
                         "type": "string",
@@ -202,7 +557,7 @@
                   },
                   "conditions": [
                     {
-                      "leftValue": "={{ $json.state }}",
+                      "leftValue": "={{ $json.body.state }}",
                       "rightValue": "EXTRACTED",
                       "operator": {
                         "type": "string",
@@ -221,7 +576,7 @@
           }
         },
         "id": "3af78b68-75c9-4a56-8e88-bf6360f4d96d",
-        "name": "Route by Backend State",
+        "name": "Route Backend State",
         "type": "n8n-nodes-base.switch",
         "typeVersion": 3.4,
         "position": [
@@ -333,7 +688,28 @@
         "main": [
           [
             {
+              "node": "Preserve Original Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Preserve Original Request": {
+        "main": [
+          [
+            {
               "node": "Submit to OpsFlow API",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Restore Original After Retry Wait 1",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Restore Original After Retry Wait 2",
               "type": "main",
               "index": 0
             }
@@ -344,14 +720,155 @@
         "main": [
           [
             {
-              "node": "Route by Backend State",
+              "node": "Route Attempt 0 Status",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Wait Before Retry 1",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "Route by Backend State": {
+      "Restore Original After Retry Wait 1": {
+        "main": [
+          [
+            {
+              "node": "Submit to OpsFlow API Retry 1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Attempt 0 Status": {
+        "main": [
+          [
+            {
+              "node": "Wait Before Retry 1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Route Backend State",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait Before Retry 1": {
+        "main": [
+          [
+            {
+              "node": "Restore Original After Retry Wait 1",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Submit to OpsFlow API Retry 1": {
+        "main": [
+          [
+            {
+              "node": "Route Attempt 1 Status",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Wait Before Retry 2",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Restore Original After Retry Wait 2": {
+        "main": [
+          [
+            {
+              "node": "Submit to OpsFlow API Retry 2",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Attempt 1 Status": {
+        "main": [
+          [
+            {
+              "node": "Wait Before Retry 2",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Route Backend State",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait Before Retry 2": {
+        "main": [
+          [
+            {
+              "node": "Restore Original After Retry Wait 2",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Submit to OpsFlow API Retry 2": {
+        "main": [
+          [
+            {
+              "node": "Route Attempt 2 Status",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Transport Unavailable",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Attempt 2 Status": {
+        "main": [
+          [
+            {
+              "node": "Transport Unavailable",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Route Backend State",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Backend State": {
         "main": [
           [
             {
@@ -402,6 +919,11 @@
               "index": 0
             }
           ]
+        ]
+      },
+      "Transport Unavailable": {
+        "main": [
+          []
         ]
       },
       "NEEDS_REVIEW": {
