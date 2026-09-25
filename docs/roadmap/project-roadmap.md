@@ -106,7 +106,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | 4 | Structured AI Extraction | Unstructured documents to typed order drafts | COMPLETE |
 | 5 | Deterministic Validation | Trusted business-rule engine | COMPLETE |
 | 6 | Human Review Application | Usable review and approval interface | COMPLETE |
-| 7 | n8n Workflow Orchestration | Real automation workflow | IN PROGRESS |
+| 7 | n8n Workflow Orchestration | Real automation workflow | COMPLETE |
 | 8 | Email & Notification Integrations | Gmail and Slack integration | NOT STARTED |
 | 9 | ERP & CRM Integrations | Odoo + HubSpot business-system sync | NOT STARTED |
 | 10 | Reliability, Security & Hardening | Production-style failure handling | NOT STARTED |
