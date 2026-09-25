@@ -14,9 +14,12 @@ import opsflow.application.orders as orders_module
 from opsflow.application.errors import IdempotencyConflictError
 from opsflow.application.orders import (
     CreateLineInput,
+    CreateOrderDisposition,
     CreateOrderInput,
+    CreateOrderResult,
     CreateSourceDocumentInput,
     create_order,
+    create_order_with_disposition,
 )
 from opsflow.domain import AuditEvent, SourceDocumentType
 from opsflow.persistence.models import (
@@ -26,7 +29,6 @@ from opsflow.persistence.models import (
     OrderModel,
     SourceDocumentModel,
 )
-from opsflow.persistence.repositories import PersistedOrder
 from opsflow.settings import Settings
 
 
@@ -98,13 +100,17 @@ async def _assert_concurrent_identical_creates(monkeypatch: pytest.MonkeyPatch) 
         before = await _table_counts(engine)
         async with AsyncSession(engine) as first_session, AsyncSession(engine) as second_session:
             first, second = await asyncio.gather(
-                create_order(first_session, request, key),
-                create_order(second_session, request, key),
+                create_order_with_disposition(first_session, request, key),
+                create_order_with_disposition(second_session, request, key),
             )
 
-            assert isinstance(first, PersistedOrder)
-            assert isinstance(second, PersistedOrder)
-            assert first.order.id == second.order.id
+            assert isinstance(first, CreateOrderResult)
+            assert isinstance(second, CreateOrderResult)
+            assert {first.disposition, second.disposition} == {
+                CreateOrderDisposition.CREATED_BY_THIS_COMMAND,
+                CreateOrderDisposition.REPLAYED_EXISTING,
+            }
+            assert first.persisted.order.id == second.persisted.order.id
             assert not first_session.in_transaction()
             assert not second_session.in_transaction()
 
@@ -126,6 +132,25 @@ async def _assert_concurrent_identical_creates(monkeypatch: pytest.MonkeyPatch) 
         )
         assert after["audit_events"] == before["audit_events"] + 1
         assert after["order_creation_idempotency"] == before["order_creation_idempotency"] + 1
+        async with AsyncSession(engine) as verify_session:
+            order_id = first.persisted.order.id
+            assert await _count(
+                verify_session, OrderLineModel, OrderLineModel.order_id == order_id
+            ) == len(request.lines)
+            assert await _count(
+                verify_session,
+                SourceDocumentModel,
+                SourceDocumentModel.order_id == order_id,
+            ) == len(request.source_documents)
+            assert (
+                await _count(
+                    verify_session,
+                    AuditEventModel,
+                    AuditEventModel.order_id == order_id,
+                    AuditEventModel.event_type == "ORDER_RECEIVED",
+                )
+                == 1
+            )
     finally:
         await engine.dispose()
 
@@ -153,16 +178,17 @@ async def _assert_concurrent_conflicting_creates(monkeypatch: pytest.MonkeyPatch
         before = await _table_counts(engine)
         async with AsyncSession(engine) as first_session, AsyncSession(engine) as second_session:
             results = await asyncio.gather(
-                create_order(first_session, winner_request, key),
-                create_order(second_session, conflicting_request, key),
+                create_order_with_disposition(first_session, winner_request, key),
+                create_order_with_disposition(second_session, conflicting_request, key),
                 return_exceptions=True,
             )
 
-            successful = [result for result in results if isinstance(result, PersistedOrder)]
+            successful = [result for result in results if isinstance(result, CreateOrderResult)]
             conflicts = [
                 result for result in results if isinstance(result, IdempotencyConflictError)
             ]
             assert len(successful) == 1
+            assert successful[0].disposition is CreateOrderDisposition.CREATED_BY_THIS_COMMAND
             assert len(conflicts) == 1
             assert conflicts[0].idempotency_key == key
             assert not first_session.in_transaction()
@@ -178,7 +204,7 @@ async def _assert_concurrent_conflicting_creates(monkeypatch: pytest.MonkeyPatch
             await second_session.rollback()
 
         after = await _table_counts(engine)
-        winner = successful[0]
+        winner = successful[0].persisted
         assert after["orders"] == before["orders"] + 1
         assert after["order_lines"] == before["order_lines"] + len(winner.order.lines)
         assert after["source_documents"] == before["source_documents"] + len(
@@ -243,6 +269,6 @@ async def _table_counts(engine: AsyncEngine) -> dict[str, int]:
         }
 
 
-async def _count(session: AsyncSession, model: type[object]) -> int:
-    result = await session.scalar(select(func.count()).select_from(model))
+async def _count(session: AsyncSession, model: type[object], *criteria: object) -> int:
+    result = await session.scalar(select(func.count()).select_from(model).where(*criteria))
     return int(result or 0)

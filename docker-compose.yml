@@ -23,8 +23,20 @@ services:
         condition: service_healthy
     environment:
       OPSFLOW_DATABASE_URL: postgresql+asyncpg://opsflow:opsflow@postgres:5432/opsflow
+      OPSFLOW_ORCHESTRATION_TOKEN: ${OPSFLOW_ORCHESTRATION_TOKEN:-}
+      OPSFLOW_REVIEW_DEV_OPERATORS: ${OPSFLOW_REVIEW_DEV_OPERATORS:-}
     ports:
       - "8000:8000"
 
+  n8n:
+    image: n8nio/n8n:2.40.5
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+    volumes:
+      - n8n-data:/home/node/.n8n
+
 volumes:
   postgres-data:
+  n8n-data:

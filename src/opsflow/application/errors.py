@@ -109,6 +109,13 @@ class UnauthenticatedError(Exception):
         super().__init__("Development operator authentication is required.")
 
 
+class OrchestrationUnauthenticatedError(Exception):
+    """Raised when the request lacks valid orchestration authentication."""
+
+    def __init__(self) -> None:
+        super().__init__("Orchestration service authentication is required.")
+
+
 class ForbiddenError(Exception):
     """Raised when the resolved operator lacks the required Phase 6 capability."""
 

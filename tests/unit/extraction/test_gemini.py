@@ -4,8 +4,13 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from google.genai import errors as genai_errors
 
-from opsflow.extraction.errors import ProviderError, ProviderTimeoutError
+from opsflow.extraction.errors import (
+    ProviderError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+)
 from opsflow.extraction.gemini import GeminiConfig, GeminiProvider
 from opsflow.extraction.provider import StructuredGenerationRequest
 
@@ -205,6 +210,88 @@ def test_provider_maps_current_sdk_wrapped_timeout_to_provider_timeout() -> None
 
     assert str(raised.value) == "Gemini provider request timed out"
     assert "provider timeout" not in str(raised.value)
+
+
+def test_provider_maps_sdk_server_error_to_safe_unavailable_error() -> None:
+    server_error = genai_errors.ServerError(
+        503,
+        {"error": {"message": "provider diagnostic"}},
+    )
+    interactions = _FakeInteractions(error=server_error)
+    provider = GeminiProvider(
+        GeminiConfig("secret-api-key", "gemini-test-model", 10.0),
+        client=_FakeClient(_FakeAsyncClient(interactions)),
+    )
+
+    with pytest.raises(ProviderUnavailableError) as raised:
+        asyncio.run(provider.generate_structured(_request()))
+
+    assert str(raised.value) == "Gemini provider is unavailable"
+    assert "provider diagnostic" not in str(raised.value)
+
+
+def test_server_error_wrapping_timeout_keeps_timeout_precedence() -> None:
+    server_error = genai_errors.ServerError(
+        503,
+        {"error": {"message": "provider diagnostic"}},
+    )
+    server_error.__cause__ = TimeoutError("transport timeout")
+    interactions = _FakeInteractions(error=server_error)
+    provider = GeminiProvider(
+        GeminiConfig("secret-api-key", "gemini-test-model", 10.0),
+        client=_FakeClient(_FakeAsyncClient(interactions)),
+    )
+
+    with pytest.raises(ProviderTimeoutError) as raised:
+        asyncio.run(provider.generate_structured(_request()))
+
+    assert str(raised.value) == "Gemini provider request timed out"
+    assert "provider diagnostic" not in str(raised.value)
+
+
+def test_provider_maps_sdk_client_error_to_generic_provider_error() -> None:
+    client_error = genai_errors.ClientError(
+        400,
+        {"error": {"message": "contract diagnostic"}},
+    )
+    interactions = _FakeInteractions(error=client_error)
+    provider = GeminiProvider(
+        GeminiConfig("secret-api-key", "gemini-test-model", 10.0),
+        client=_FakeClient(_FakeAsyncClient(interactions)),
+    )
+
+    with pytest.raises(ProviderError) as raised:
+        asyncio.run(provider.generate_structured(_request()))
+
+    assert type(raised.value) is ProviderError
+    assert str(raised.value) == "Gemini provider request failed"
+    assert "contract diagnostic" not in str(raised.value)
+
+
+def test_owned_client_closes_both_sides_on_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opsflow.extraction import gemini as gemini_module
+
+    interactions = _FakeInteractions(
+        error=genai_errors.ServerError(503, {"error": {"message": "diagnostic"}})
+    )
+    async_client = _FakeAsyncClient(interactions)
+    created: list[_FakeClient] = []
+
+    def fake_client(**kwargs: object) -> _FakeClient:
+        client = _FakeClient(async_client, kwargs["http_options"])
+        created.append(client)
+        return client
+
+    monkeypatch.setattr(gemini_module.genai, "Client", fake_client)
+    provider = GeminiProvider(GeminiConfig("explicit-secret", "gemini-test-model", 10.0))
+
+    with pytest.raises(ProviderUnavailableError):
+        asyncio.run(provider.generate_structured(_request()))
+
+    assert async_client.closed is True
+    assert created[0].closed is True
 
 
 def test_owned_client_receives_explicit_key_and_zero_retry_configuration(

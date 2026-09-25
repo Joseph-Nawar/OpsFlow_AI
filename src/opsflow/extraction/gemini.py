@@ -9,8 +9,13 @@ from typing import Any, cast
 import httpx
 from google import genai
 from google.genai import types
+from google.genai.errors import ServerError
 
-from opsflow.extraction.errors import ProviderError, ProviderTimeoutError
+from opsflow.extraction.errors import (
+    ProviderError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+)
 from opsflow.extraction.provider import (
     LLMProvider,
     StructuredGenerationRequest,
@@ -116,6 +121,10 @@ class GeminiProvider(LLMProvider):
             raise
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise ProviderTimeoutError("Gemini provider request timed out") from exc
+        except ServerError as exc:
+            if _is_timeout_error(exc):
+                raise ProviderTimeoutError("Gemini provider request timed out") from exc
+            raise ProviderUnavailableError("Gemini provider is unavailable") from exc
         except Exception as exc:
             if _is_timeout_error(exc):
                 raise ProviderTimeoutError("Gemini provider request timed out") from exc

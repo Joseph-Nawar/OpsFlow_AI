@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from enum import Enum
 from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
@@ -89,6 +90,21 @@ class CreateOrderInput:
             raise DomainValidationError(
                 "source_documents must be a tuple of CreateSourceDocumentInput"
             )
+
+
+class CreateOrderDisposition(Enum):
+    """Identify whether this command inserted or replayed an order."""
+
+    CREATED_BY_THIS_COMMAND = "CREATED_BY_THIS_COMMAND"
+    REPLAYED_EXISTING = "REPLAYED_EXISTING"
+
+
+@dataclass(frozen=True, slots=True)
+class CreateOrderResult:
+    """The persisted order plus its authoritative creation disposition."""
+
+    persisted: PersistedOrder
+    disposition: CreateOrderDisposition
 
 
 def canonical_order_request(request: CreateOrderInput) -> bytes:
@@ -185,6 +201,18 @@ async def create_order(
 ) -> PersistedOrder:
     """Create or replay one atomically persisted RECEIVED order."""
 
+    result = await create_order_with_disposition(session, request, idempotency_key, now=now)
+    return result.persisted
+
+
+async def create_order_with_disposition(
+    session: AsyncSession,
+    request: CreateOrderInput,
+    idempotency_key: str,
+    now: datetime | None = None,
+) -> CreateOrderResult:
+    """Create or replay one order and report the authoritative disposition."""
+
     fingerprint = fingerprint_order_request(request)
     order = _order_from_create_input(request)
     effective_now = _effective_utc_now(now)
@@ -211,9 +239,15 @@ async def create_order(
     except IntegrityError as error:
         if not _is_idempotency_key_conflict(error):
             raise
-        return await _resolve_idempotency_race(session, idempotency_key, fingerprint)
+        return CreateOrderResult(
+            persisted=await _resolve_idempotency_race(session, idempotency_key, fingerprint),
+            disposition=CreateOrderDisposition.REPLAYED_EXISTING,
+        )
 
-    return PersistedOrder(order=order, created_at=effective_now, validation_issues=())
+    return CreateOrderResult(
+        persisted=PersistedOrder(order=order, created_at=effective_now, validation_issues=()),
+        disposition=CreateOrderDisposition.CREATED_BY_THIS_COMMAND,
+    )
 
 
 def _order_from_create_input(request: CreateOrderInput) -> Order:

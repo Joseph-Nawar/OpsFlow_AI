@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     """Runtime settings with safe local-development defaults."""
 
     database_url: str = "postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow"
+    orchestration_token: SecretStr | None = None
     gemini_api_key: str | None = None
     gemini_model: str | None = None
     gemini_timeout_seconds: float | None = None
