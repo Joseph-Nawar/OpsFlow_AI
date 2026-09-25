@@ -1,5 +1,6 @@
 """Explicit conversion between Phase 1 records and persistence models."""
 
+import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -19,6 +20,13 @@ from opsflow.domain import (
     ValidationSeverity,
 )
 from opsflow.extraction.models import Evidence, ExtractedLine, ExtractionDraft
+from opsflow.notifications.contracts import (
+    NotificationChannel,
+    NotificationDelivery,
+    NotificationFailureCode,
+    NotificationKind,
+    NotificationStatus,
+)
 from opsflow.review import ReviewRevision
 from opsflow.review.serialization import (
     review_changes_from_payload,
@@ -30,6 +38,7 @@ from opsflow.review.serialization import (
 from .models import (
     AuditEventModel,
     ExtractionSnapshotModel,
+    NotificationDeliveryModel,
     OrderLineModel,
     OrderModel,
     ReviewRevisionModel,
@@ -231,6 +240,80 @@ def audit_event_from_model(row: AuditEventModel) -> AuditEvent:
         )
     except (TypeError, ValueError) as error:
         raise DomainValidationError("persisted audit event violates Phase 1") from error
+
+
+def notification_delivery_to_model(
+    delivery: NotificationDelivery,
+) -> NotificationDeliveryModel:
+    """Map one validated delivery contract to a detached JSONB persistence row."""
+
+    if not isinstance(delivery, NotificationDelivery):
+        raise DomainValidationError("delivery must be a NotificationDelivery")
+    try:
+        payload = json.loads(
+            json.dumps(delivery.payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        )
+    except (TypeError, ValueError) as error:
+        raise DomainValidationError("notification payload is not valid JSON") from error
+    return NotificationDeliveryModel(
+        id=delivery.id,
+        order_id=delivery.order_id,
+        trigger_audit_event_id=delivery.trigger_audit_event_id,
+        channel=delivery.channel.value,
+        kind=delivery.kind.value,
+        payload=payload,
+        status=delivery.status.value,
+        attempt_count=delivery.attempt_count,
+        claim_token=delivery.claim_token,
+        claim_expires_at=delivery.claim_expires_at,
+        next_attempt_at=delivery.next_attempt_at,
+        provider_reference=delivery.provider_reference,
+        last_failure_code=(
+            delivery.last_failure_code.value if delivery.last_failure_code is not None else None
+        ),
+        created_at=delivery.created_at,
+        updated_at=delivery.updated_at,
+    )
+
+
+def notification_delivery_from_model(
+    row: NotificationDeliveryModel,
+) -> NotificationDelivery:
+    """Reconstruct an immutable delivery contract from a validated ORM row."""
+
+    if not isinstance(row, NotificationDeliveryModel):
+        raise DomainValidationError("row must be a NotificationDeliveryModel")
+    try:
+        payload = json.loads(
+            json.dumps(row.payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        )
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        return NotificationDelivery(
+            id=row.id,
+            order_id=row.order_id,
+            trigger_audit_event_id=row.trigger_audit_event_id,
+            channel=NotificationChannel(row.channel),
+            kind=NotificationKind(row.kind),
+            payload=payload,
+            status=NotificationStatus(row.status),
+            attempt_count=row.attempt_count,
+            claim_token=row.claim_token,
+            claim_expires_at=row.claim_expires_at,
+            next_attempt_at=row.next_attempt_at,
+            provider_reference=row.provider_reference,
+            last_failure_code=(
+                NotificationFailureCode(row.last_failure_code)
+                if row.last_failure_code is not None
+                else None
+            ),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+    except (TypeError, ValueError) as error:
+        raise DomainValidationError(
+            "persisted notification delivery violates its contract"
+        ) from error
 
 
 def source_document_from_model(

@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from opsflow.api.notifications import router as notifications_router
 from opsflow.api.orchestration import router as orchestration_router
 from opsflow.api.orders import router as orders_router
 from opsflow.api.review import router as review_router
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(orders_router)
     app.include_router(review_router)
     app.include_router(orchestration_router)
+    app.include_router(notifications_router)
 
     @app.exception_handler(UnauthenticatedError)
     async def unauthenticated_error_handler(

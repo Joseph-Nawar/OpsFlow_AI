@@ -3,8 +3,18 @@
 import json
 from functools import lru_cache
 from typing import Annotated
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, SecretStr, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    SecretStr,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from opsflow.review import OperatorRole
@@ -51,7 +61,24 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str | None = None
     gemini_timeout_seconds: float | None = None
+    review_base_url: str = "http://localhost:5173"
     review_dev_operators: Annotated[tuple[DevelopmentOperatorConfig, ...], NoDecode] = ()
+
+    @field_validator("review_base_url", mode="before")
+    @classmethod
+    def validate_review_base_url(cls, value: object) -> str:
+        if type(value) is not str or not value.strip() or value != value.strip():
+            raise ValueError("review base URL must be a nonblank absolute HTTP or HTTPS URL")
+        if len(value) > 2_048:
+            raise ValueError("review base URL must be at most 2,048 characters")
+        components = urlsplit(value)
+        if "@" in components.netloc or "?" in value or "#" in value:
+            raise ValueError("review base URL cannot contain credentials, query, or fragment")
+        try:
+            parsed = TypeAdapter(AnyHttpUrl).validate_python(value)
+        except ValidationError as error:
+            raise ValueError("review base URL must be an absolute HTTP or HTTPS URL") from error
+        return str(parsed).rstrip("/")
 
     @field_validator("review_dev_operators", mode="before")
     @classmethod

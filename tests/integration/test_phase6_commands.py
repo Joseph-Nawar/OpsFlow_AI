@@ -15,7 +15,8 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import httpx
-from sqlalchemy import delete, update
+import pytest
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -38,6 +39,7 @@ from opsflow.persistence.mappers import extraction_draft_to_payload
 from opsflow.persistence.models import (
     AuditEventModel,
     ExtractionSnapshotModel,
+    NotificationDeliveryModel,
     OrderModel,
     SourceDocumentModel,
     ValidationIssueModel,
@@ -54,6 +56,7 @@ from opsflow.validation import (
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
+PHASE_8_HEAD = "0005_phase8_notification_deliveries"
 REVIEWER_TOKEN = "synthetic-command-reviewer-credential"
 APPROVER_TOKEN = "synthetic-command-approver-credential"
 ELEVATED_TOKEN = "synthetic-command-elevated-credential"
@@ -116,6 +119,10 @@ def test_command_write_failures_rollback_state_and_all_audit_events() -> None:
     asyncio.run(_assert_atomic_command_writes())
 
 
+def test_approval_notifies_slack_and_gmail_only_for_persisted_gmail_provenance() -> None:
+    asyncio.run(_assert_approval_notification_provenance())
+
+
 def test_preflight_state_or_audit_generation_race_is_rejected(monkeypatch) -> None:
     asyncio.run(_assert_preflight_generation_race(monkeypatch))
 
@@ -165,7 +172,7 @@ async def _command_client(
     cases: tuple[CommandCase, ...],
 ) -> AsyncIterator[tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession], object]]:
     _run_alembic("upgrade", "head")
-    assert PHASE_6_REVISION in _run_alembic("current")
+    assert PHASE_8_HEAD in _run_alembic("current")
     engine = create_async_engine(Settings().database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     await _seed_cases(session_factory, cases)
@@ -637,6 +644,111 @@ async def _assert_atomic_command_writes() -> None:
             assert after_order == before_order
             assert after_audits == before_audits
             assert writes == fail_on
+
+
+async def _assert_approval_notification_failure_rolls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case(OrderState.READY_FOR_APPROVAL)
+    original_intent = review_commands.create_notification_intent
+
+    async def fail_after_intent(*args: object, **kwargs: object) -> None:
+        await original_intent(*args, **kwargs)
+        raise IntegrityError("synthetic notification failure", {}, RuntimeError("private error"))
+
+    monkeypatch.setattr(review_commands, "create_notification_intent", fail_after_intent)
+    async with _command_client((case,)) as (client, session_factory, _):
+        etag = _etag_from_detail(await _get_detail(client, case.order_id, APPROVER_TOKEN))
+        before_order, before_audits = await _read_order_and_audits(session_factory, case.order_id)
+        response = await _post_command(
+            client,
+            "approve",
+            case.order_id,
+            APPROVER_TOKEN,
+            etag,
+        )
+        after_order, after_audits = await _read_order_and_audits(session_factory, case.order_id)
+        async with session_factory() as session:
+            notification_count = await session.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.order_id == case.order_id)
+            )
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "REVIEW_PERSISTENCE_CONFLICT"
+        assert "private error" not in response.text
+        assert after_order == before_order
+        assert after_audits == before_audits
+        assert notification_count == 0
+
+
+async def _assert_approval_notification_provenance() -> None:
+    generic = _case(OrderState.READY_FOR_APPROVAL)
+    gmail = _case(OrderState.READY_FOR_APPROVAL)
+    async with _command_client((generic, gmail)) as (client, session_factory, _):
+        async with session_factory() as session:
+            await session.execute(
+                update(SourceDocumentModel)
+                .where(SourceDocumentModel.id == generic.source_id)
+                .values(message_id="generic-message-only", metadata_=[])
+            )
+            await session.execute(
+                update(SourceDocumentModel)
+                .where(SourceDocumentModel.id == gmail.source_id)
+                .values(
+                    message_id="persisted-gmail-message",
+                    metadata_=[["source_system", "GMAIL"]],
+                )
+            )
+            await session.commit()
+
+        for case in (generic, gmail):
+            detail = await _get_detail(client, case.order_id, APPROVER_TOKEN)
+            result = await _post_command(
+                client,
+                "approve",
+                case.order_id,
+                APPROVER_TOKEN,
+                _etag_from_detail(detail),
+            )
+            assert result.status_code == 200, result.text
+
+        async with session_factory() as session:
+            generic_deliveries = (
+                await session.scalars(
+                    select(NotificationDeliveryModel)
+                    .where(NotificationDeliveryModel.order_id == generic.order_id)
+                    .order_by(NotificationDeliveryModel.channel)
+                )
+            ).all()
+            gmail_deliveries = (
+                await session.scalars(
+                    select(NotificationDeliveryModel)
+                    .where(NotificationDeliveryModel.order_id == gmail.order_id)
+                    .order_by(NotificationDeliveryModel.channel)
+                )
+            ).all()
+            generic_audits = await get_audit_events(session, generic.order_id)
+            gmail_audits = await get_audit_events(session, gmail.order_id)
+
+        assert [(row.channel, row.kind) for row in generic_deliveries] == [
+            ("SLACK", "ORDER_APPROVED")
+        ]
+        assert [(row.channel, row.kind) for row in gmail_deliveries] == [
+            ("GMAIL", "ORDER_APPROVED"),
+            ("SLACK", "ORDER_APPROVED"),
+        ]
+        generic_event = next(
+            event for event in generic_audits if event.event_type == "ORDER_APPROVED"
+        )
+        gmail_event = next(event for event in gmail_audits if event.event_type == "ORDER_APPROVED")
+        assert all(row.trigger_audit_event_id == generic_event.id for row in generic_deliveries)
+        assert all(row.trigger_audit_event_id == gmail_event.id for row in gmail_deliveries)
+        gmail_payload = next(row.payload for row in gmail_deliveries if row.channel == "GMAIL")
+        assert gmail_payload == {
+            "message_id": "persisted-gmail-message",
+            "body": "Your purchase order has been approved for processing.",
+        }
 
 
 async def _assert_preflight_generation_race(monkeypatch) -> None:

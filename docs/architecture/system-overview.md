@@ -114,8 +114,9 @@ validation, the Phase 6 human-review application, and the Phase 7 authenticated
 intake, idempotent pipeline, pinned self-hosted n8n 2.40.5 sandbox
 orchestration, selective transport retry, reviewer-authorized retry/redelivery
 recovery, and verified local handoff. Phase 7 — n8n Workflow Orchestration is
-`COMPLETE`; Phase 8 is the next implementation boundary. Gmail and Slack remain
-not implemented, ERP/CRM remain later Phase 9 work, and SYNCING remains later
-work. The intended-flow diagram above remains a phased target, not a claim that
-those later integrations already exist. The full phased scope and status are
-maintained in the [project roadmap](../roadmap/project-roadmap.md).
+`COMPLETE`; Phase 8 is `IN PROGRESS` (M8A `COMPLETE`; M8B `COMPLETE`;
+M8C–M8F `NOT STARTED`). Gmail/Slack provider workflows and external message
+delivery remain unimplemented; ERP/CRM remain later Phase 9 work, and SYNCING
+remains later work. The intended-flow diagram above remains a phased target,
+not a claim that those later integrations already exist. The full phased scope
+and status are maintained in the [project roadmap](../roadmap/project-roadmap.md).

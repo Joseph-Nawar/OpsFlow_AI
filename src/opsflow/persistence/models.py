@@ -15,6 +15,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -315,3 +316,102 @@ class ReviewRevisionModel(Base):
     changes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     actor: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NotificationDeliveryModel(Base):
+    """Durable, backend-owned intent and state for one notification delivery."""
+
+    __tablename__ = "notification_deliveries"
+    __table_args__ = (
+        CheckConstraint(
+            "channel IN ('SLACK', 'GMAIL')",
+            name="ck_notification_deliveries_channel",
+        ),
+        CheckConstraint(
+            "kind IN ('REVIEW_REQUIRED', 'APPROVAL_READY', 'PROCESSING_FAILED', 'ORDER_APPROVED')",
+            name="ck_notification_deliveries_kind",
+        ),
+        CheckConstraint(
+            "status IN ('PENDING', 'CLAIMED', 'DELIVERED', 'FAILED_FINAL')",
+            name="ck_notification_deliveries_status",
+        ),
+        CheckConstraint(
+            "attempt_count BETWEEN 0 AND 3",
+            name="ck_notification_deliveries_attempt_count",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(payload) = 'object'",
+            name="ck_notification_deliveries_payload_object",
+        ),
+        CheckConstraint(
+            "((status = 'CLAIMED' AND claim_token IS NOT NULL "
+            "AND claim_expires_at IS NOT NULL) OR "
+            "(status <> 'CLAIMED' AND claim_token IS NULL "
+            "AND claim_expires_at IS NULL))",
+            name="ck_notification_deliveries_claim_pair",
+        ),
+        CheckConstraint(
+            "provider_reference IS NULL OR length(provider_reference) <= 256",
+            name="ck_notification_deliveries_provider_reference",
+        ),
+        CheckConstraint(
+            "last_failure_code IS NULL OR last_failure_code IN "
+            "('RATE_LIMITED', 'AUTHENTICATION_FAILED', 'PERMISSION_DENIED', "
+            "'TARGET_NOT_FOUND', 'PROVIDER_UNAVAILABLE', 'TIMEOUT', "
+            "'DELIVERY_REJECTED', 'UNKNOWN_FAILURE')",
+            name="ck_notification_deliveries_failure_code",
+        ),
+        UniqueConstraint(
+            "trigger_audit_event_id",
+            "channel",
+            "kind",
+            name="uq_notification_deliveries_trigger_channel_kind",
+        ),
+        ForeignKeyConstraint(
+            ["order_id"],
+            ["orders.id"],
+            name="fk_notification_deliveries_order",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["trigger_audit_event_id"],
+            ["audit_events.id"],
+            name="fk_notification_deliveries_trigger_event",
+            ondelete="CASCADE",
+        ),
+        PrimaryKeyConstraint("id", name="pk_notification_deliveries"),
+        Index(
+            "ix_notification_deliveries_claim_eligibility",
+            "status",
+            "next_attempt_at",
+            "claim_expires_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    order_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    trigger_audit_event_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default=text("'PENDING'")
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    claim_token: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True))
+    claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    provider_reference: Mapped[str | None] = mapped_column(String(256))
+    last_failure_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

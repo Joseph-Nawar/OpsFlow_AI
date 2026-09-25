@@ -46,10 +46,21 @@ LINE_ID = UUID(int=602)
 SOURCE_ID = UUID(int=603)
 INITIAL_AUDIT_ID = UUID(int=604)
 NOW = datetime(2030, 1, 2, 3, 4, 5, tzinfo=UTC)
+REVIEW_BASE_URL = "http://localhost:5173"
 REVIEWER = OperatorContext("reviewer-actor", OperatorRole.REVIEWER)
 APPROVER = OperatorContext("approver-actor", OperatorRole.APPROVER)
 ELEVATED = OperatorContext("elevated-actor", OperatorRole.ELEVATED_APPROVER)
 _CURRENT_ETAG = object()
+
+
+@pytest.fixture(autouse=True)
+def _ignore_notification_intents_in_command_unit_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_op(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    monkeypatch.setattr(commands, "create_notification_intent", no_op)
 
 
 def _source() -> SourceDocument:
@@ -282,7 +293,7 @@ def _invoke(
     current = _etag(store) if if_match is _CURRENT_ETAG else if_match
     if operation == "approve":
         result = asyncio.run(
-            commands.approve_order(session, ORDER_ID, current, operator, NOW)  # type: ignore[arg-type]
+            commands.approve_order(session, ORDER_ID, current, operator, NOW, REVIEW_BASE_URL)  # type: ignore[arg-type]
         )
     elif operation == "reject":
         result = asyncio.run(
@@ -638,7 +649,9 @@ def test_missing_if_match_closes_preflight_read_without_writes(
 
     with pytest.raises(ReviewPreconditionRequiredError):
         if operation == "approve":
-            asyncio.run(commands.approve_order(session, ORDER_ID, None, operator, NOW))
+            asyncio.run(
+                commands.approve_order(session, ORDER_ID, None, operator, NOW, REVIEW_BASE_URL)
+            )
         elif operation == "reject":
             asyncio.run(commands.reject_order(session, ORDER_ID, "reason", None, operator, NOW))
         else:
@@ -720,7 +733,16 @@ def test_missing_order_is_safe_and_leaves_preflight_transaction_closed(
     session = FakeSession(store)
 
     with pytest.raises(OrderNotFoundError):
-        asyncio.run(commands.approve_order(session, ORDER_ID, '"' + "0" * 64 + '"', APPROVER, NOW))
+        asyncio.run(
+            commands.approve_order(
+                session,
+                ORDER_ID,
+                '"' + "0" * 64 + '"',
+                APPROVER,
+                NOW,
+                REVIEW_BASE_URL,
+            )
+        )
 
     assert session.rollback_count == 1
     assert session.in_transaction() is False
@@ -762,6 +784,7 @@ def test_timezone_aware_recorded_at_is_required_before_any_read(
                 _etag(store),
                 APPROVER,
                 datetime(2030, 1, 2),
+                REVIEW_BASE_URL,
             )
         )
 

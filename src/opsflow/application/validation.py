@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsflow.domain import AuditEvent, Order, OrderState, SourceDocument
 from opsflow.extraction.models import ExtractionDraft
+from opsflow.notifications.contracts import NotificationChannel, NotificationKind
+from opsflow.notifications.service import create_notification_intent
 from opsflow.persistence.mappers import (
     PersistedExtractionSnapshot,
     extraction_draft_to_payload,
@@ -72,6 +74,7 @@ async def validate_order(
     policy: ValidationPolicy,
     context: ValidationContext,
     recorded_at: datetime,
+    review_base_url: str,
 ) -> ValidationApplicationResult:
     """Validate and atomically route one already-extracted order."""
 
@@ -185,20 +188,34 @@ async def validate_order(
             if validation_result.route is ValidationRoute.READY_FOR_APPROVAL
             else "ORDER_NEEDS_REVIEW",
         )
-        for position, (event_type, description) in enumerate(
-            zip(event_types, descriptions, strict=True)
-        ):
-            await insert_audit_event(
-                session,
-                AuditEvent(
-                    id=uuid4(),
-                    order_id=order_id,
-                    event_type=event_type,
-                    actor="system",
-                    occurred_at=recorded_at + timedelta(microseconds=position),
-                    description=description,
-                ),
+        audit_events = tuple(
+            AuditEvent(
+                id=uuid4(),
+                order_id=order_id,
+                event_type=event_type,
+                actor="system",
+                occurred_at=recorded_at + timedelta(microseconds=position),
+                description=description,
             )
+            for position, (event_type, description) in enumerate(
+                zip(event_types, descriptions, strict=True)
+            )
+        )
+        for event in audit_events:
+            await insert_audit_event(session, event)
+        await create_notification_intent(
+            session,
+            order=final_order,
+            event=audit_events[-1],
+            channel=NotificationChannel.SLACK,
+            kind=(
+                NotificationKind.APPROVAL_READY
+                if validation_result.route is ValidationRoute.READY_FOR_APPROVAL
+                else NotificationKind.REVIEW_REQUIRED
+            ),
+            review_base_url=review_base_url,
+            issues=validation_result.issues,
+        )
 
     return ValidationApplicationResult(
         order=final_order,

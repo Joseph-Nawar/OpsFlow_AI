@@ -33,7 +33,7 @@ from opsflow.settings import DevelopmentOperatorConfig, Settings
 from opsflow.validation import BusinessDataLookupRequest, TrustedBusinessData
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
-PHASE_6_REVISION = "0004_phase6_review_revisions"
+PHASE_8_HEAD = "0005_phase8_notification_deliveries"
 _TOKEN = "test-review-reader-credential"
 
 
@@ -90,7 +90,7 @@ async def _assert_authentication_fails_closed() -> None:
 
 async def _assert_review_read_contracts() -> None:
     _run_alembic("upgrade", "head")
-    assert PHASE_6_REVISION in _run_alembic("current")
+    assert PHASE_8_HEAD in _run_alembic("current")
     engine = create_async_engine(Settings().database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     order_id, source_id, snapshot_id, revision_id, audit_id = (uuid4() for _ in range(5))
@@ -346,7 +346,7 @@ async def _assert_review_read_contracts() -> None:
 
 async def _assert_missing_draft_and_integrity_failures() -> None:
     _run_alembic("upgrade", "head")
-    assert PHASE_6_REVISION in _run_alembic("current")
+    assert PHASE_8_HEAD in _run_alembic("current")
     engine = create_async_engine(Settings().database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     no_snapshot_id = uuid4()

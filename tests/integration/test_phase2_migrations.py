@@ -14,7 +14,7 @@ from opsflow.settings import Settings
 REPOSITORY_ROOT = Path(__file__).parents[2]
 BASELINE_REVISION = "0001_baseline"
 PHASE_2_REVISION = "0002_phase2_persistence"
-CURRENT_HEAD_REVISION = "0004_phase6_review_revisions"
+CURRENT_HEAD_REVISION = "0005_phase8_notification_deliveries"
 
 
 def test_migration_upgrade_downgrade_and_reupgrade() -> None:

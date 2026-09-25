@@ -282,6 +282,7 @@ async def save_review_draft_endpoint(
             runtime.policy,
             runtime.date_provider,
             datetime.now(UTC),
+            request.app.state.orchestration_runtime.review_base_url,
         )
         detail = await get_review_detail(session, order_id, operator)
     except ReviewPreconditionRequiredError as error:
@@ -374,6 +375,7 @@ async def approve_review_order_endpoint(
             if_match,
             operator,
             datetime.now(UTC),
+            request.app.state.orchestration_runtime.review_base_url,
         )
     except (
         InvalidReviewStateError,

@@ -38,6 +38,7 @@ from opsflow.settings import Settings
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_5_REVISION = "0003_phase5_extraction_snapshots"
 PHASE_6_REVISION = "0004_phase6_review_revisions"
+CURRENT_HEAD_REVISION = "0005_phase8_notification_deliveries"
 
 
 def test_phase6_migration_revision_chain_is_locked() -> None:
@@ -67,7 +68,7 @@ async def _assert_migration_lifecycle() -> None:
     await _insert_phase5_snapshot(order_id, source_id, snapshot_id)
 
     _run_alembic("upgrade", "head")
-    assert PHASE_6_REVISION in _run_alembic("current")
+    assert CURRENT_HEAD_REVISION in _run_alembic("current")
     engine = create_async_engine(Settings().database_url)
     try:
         async with engine.connect() as connection:
@@ -125,7 +126,7 @@ async def _assert_migration_lifecycle() -> None:
         await engine.dispose()
 
     _run_alembic("upgrade", "head")
-    assert PHASE_6_REVISION in _run_alembic("current")
+    assert CURRENT_HEAD_REVISION in _run_alembic("current")
 
 
 async def _assert_review_revision_repository() -> None:

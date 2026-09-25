@@ -51,7 +51,7 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
-Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7 `workflows/n8n/` area now exist. Other future areas remain absent until an applicable milestone requires them.
+Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7 `workflows/n8n/` area now exist. Phase 8 is `IN PROGRESS` (M8A `COMPLETE`; M8B `COMPLETE`; M8C–M8F `NOT STARTED`). Other future areas remain absent until an applicable milestone requires them.
 
 ## Historical verified M0B/M0C backend commands
 

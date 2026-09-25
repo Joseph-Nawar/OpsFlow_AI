@@ -37,6 +37,17 @@ from opsflow.validation import (
 )
 from opsflow.validation.business_data import TrustedBusinessDataContractError
 
+
+@pytest.fixture(autouse=True)
+def _ignore_notification_intents_in_validation_unit_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_op(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    monkeypatch.setattr(validation_module, "create_notification_intent", no_op)
+
+
 ORDER_ID = UUID(int=1)
 SOURCE_ID = UUID(int=2)
 LINE_ID = UUID(int=3)
@@ -316,6 +327,7 @@ def test_validate_order_accepts_case_difference_in_persisted_source_sha(
             validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
             validation_module.ValidationContext(date(2030, 1, 2)),
             RECORDED_AT,
+            "http://localhost:5173",
         )
     )
 
@@ -357,6 +369,7 @@ def test_validate_order_rejects_different_source_sha_before_provider_engine_or_w
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
 
@@ -385,6 +398,7 @@ def test_validate_order_rejects_document_type_mismatch_before_provider(
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
 
@@ -418,6 +432,7 @@ def test_validate_order_builds_reference_request_and_closes_read_transactions(
             validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
             validation_module.ValidationContext(date(2030, 1, 2)),
             RECORDED_AT,
+            "http://localhost:5173",
         )
     )
 
@@ -503,6 +518,7 @@ def test_ambiguous_mixed_customer_candidates_do_not_supply_local_duplicate_ident
             validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
             validation_module.ValidationContext(date(2030, 1, 2)),
             RECORDED_AT,
+            "http://localhost:5173",
         )
     )
 
@@ -546,6 +562,7 @@ def test_validate_order_distinguishes_missing_order_and_source_owner(
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
     assert provider.calls == []
@@ -570,6 +587,7 @@ def test_validate_order_distinguishes_missing_order_and_source_owner(
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
 
@@ -591,6 +609,7 @@ def test_validate_order_distinguishes_missing_order_and_source_owner(
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
 
@@ -630,6 +649,7 @@ def test_validate_order_classifies_replay_and_conflict_before_provider(
                     validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                     validation_module.ValidationContext(date(2030, 1, 2)),
                     RECORDED_AT,
+                    "http://localhost:5173",
                 )
             )
     assert provider.calls == []
@@ -661,6 +681,7 @@ def test_validate_order_translates_provider_contract_and_operational_failures(
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
     assert "malformed provider payload" not in str(contract_error.value)
@@ -687,6 +708,7 @@ def test_validate_order_translates_provider_contract_and_operational_failures(
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
     assert "provider secret" not in str(operational_error.value)
@@ -726,6 +748,7 @@ def test_validate_order_aborts_on_changed_facts_without_rerunning_engine(
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
 
@@ -769,6 +792,7 @@ def test_validate_order_aborts_ready_route_on_changed_facts_without_rerunning_en
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
 
@@ -807,6 +831,7 @@ def test_validate_order_rejects_state_race_after_engine_without_writes(
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         )
 
@@ -827,6 +852,7 @@ def test_validate_order_requires_aware_recorded_at() -> None:
                 validation_module.ValidationPolicy(("USD",), Decimal("0"), Decimal("100")),
                 validation_module.ValidationContext(date(2030, 1, 2)),
                 datetime(2030, 1, 2),
+                "http://localhost:5173",
             )
         )
 

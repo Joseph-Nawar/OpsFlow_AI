@@ -58,6 +58,8 @@ def test_openapi_exposes_only_the_approved_business_routes() -> None:
         "/v1/orders/{order_id}/audit",
         *review_paths,
         "/v1/orchestration/intakes",
+        "/v1/integrations/notifications/claim",
+        "/v1/integrations/notifications/{notification_id}/outcome",
     }
 
 
@@ -302,7 +304,9 @@ async def _assert_list() -> None:
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            created_ids = []
+            before = await client.get("/v1/orders?limit=2&offset=0")
+            before_total = before.json()["total"]
+            created_ids: set[str] = set()
             for index in range(2):
                 response = await client.post(
                     "/v1/orders",
@@ -310,16 +314,19 @@ async def _assert_list() -> None:
                     headers={"Idempotency-Key": f"api-list-{uuid4()}"},
                 )
                 assert response.status_code == 201
-                created_ids.append(response.json()["id"])
+                created_ids.add(response.json()["id"])
+            first_page = await client.get("/v1/orders?limit=2&offset=0")
             page = await client.get("/v1/orders?limit=1&offset=1")
             invalid_limit = await client.get("/v1/orders?limit=0")
             invalid_offset = await client.get("/v1/orders?offset=-1")
 
+    assert before.status_code == 200
+    assert first_page.status_code == 200
     assert page.status_code == 200
     body = page.json()
     assert body["limit"] == 1
     assert body["offset"] == 1
-    assert body["total"] >= 2
+    assert body["total"] == before_total + 2
     assert len(body["items"]) == 1
     assert set(body["items"][0]) == {
         "id",
@@ -331,7 +338,8 @@ async def _assert_list() -> None:
         "state",
         "created_at",
     }
-    assert body["items"][0]["id"] in created_ids
+    assert len(created_ids) == 2
+    assert body["items"][0]["id"] == first_page.json()["items"][1]["id"]
     assert invalid_limit.status_code == 422
     assert invalid_offset.status_code == 422
 

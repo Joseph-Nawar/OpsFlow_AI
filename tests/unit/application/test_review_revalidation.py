@@ -71,6 +71,16 @@ OPERATOR = OperatorContext("reviewer-test", OperatorRole.REVIEWER)
 POLICY = ValidationPolicy(("USD",), Decimal("0.05"), Decimal("1000"))
 
 
+@pytest.fixture(autouse=True)
+def _ignore_notification_intents_in_revalidation_unit_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_op(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    monkeypatch.setattr(review_module, "create_notification_intent", no_op)
+
+
 class FakeSession:
     """Expose AsyncSession's transaction boundary used by the application service."""
 
@@ -465,6 +475,7 @@ def call_service(
             policy=POLICY,
             date_provider=date_provider or FixedDateProvider(),
             recorded_at=RECORDED_AT,
+            review_base_url="http://localhost:5173",
         )
     )
 
