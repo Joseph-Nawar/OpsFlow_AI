@@ -107,14 +107,15 @@ Trusted business data—customers, products, catalogue prices, inventory, and ex
 
 ## Current implementation and next boundary
 
-Phases 0–6 are implemented and independently audited, including the order
+Phases 0–7 are implemented and independently audited, including the order
 aggregate and state machine, PostgreSQL persistence and idempotent order
 creation, canonical document processing, structured extraction, deterministic
-validation, and the Phase 6 human-review application. Phase 7 remains
-`IN PROGRESS`; M7A–M7E are implemented, including the authenticated
-orchestration intake service, pinned self-hosted n8n 2.40.5 runtime,
-version-controlled sandbox workflow, backend-state routing, and bounded
-connection/503 transport retry. M7F independent whole-Phase-7 audit/closeout
-remains pending. The intended-flow diagram above remains a phased target, not a
-claim that later Gmail/Slack, ERP/CRM, or SYNCING behavior already exists. The
-full phased scope and status are maintained in the [project roadmap](../roadmap/project-roadmap.md).
+validation, the Phase 6 human-review application, and the Phase 7 authenticated
+intake, idempotent pipeline, pinned self-hosted n8n 2.40.5 sandbox
+orchestration, selective transport retry, reviewer-authorized retry/redelivery
+recovery, and verified local handoff. Phase 7 — n8n Workflow Orchestration is
+`COMPLETE`; Phase 8 is the next implementation boundary. Gmail and Slack remain
+not implemented, ERP/CRM remain later Phase 9 work, and SYNCING remains later
+work. The intended-flow diagram above remains a phased target, not a claim that
+those later integrations already exist. The full phased scope and status are
+maintained in the [project roadmap](../roadmap/project-roadmap.md).

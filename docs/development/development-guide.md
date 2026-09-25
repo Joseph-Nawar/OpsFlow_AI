@@ -2,19 +2,19 @@
 
 ## Status of this guide
 
-Phases 0–6 are complete and independently audited. The repository contains the
+Phases 0–7 are complete and independently audited. The repository contains the
 M0 foundation and CI, the Phase 1 domain/state contract, Phase 2 PostgreSQL
 persistence and idempotent core API, Phase 3 document processing, Phase 4
-structured extraction, Phase 5 deterministic validation, and Phase 6 review
-contracts, persistence, commands, and React application. Phase 7 remains
-`IN PROGRESS`; M7A–M7E are implemented, including the authenticated
-orchestration boundary and application pipeline, pinned local n8n
-runtime/workflow, selective transport retry, and sandbox handoff. M7F
-independent audit/closeout remains pending. The [Phase 0 audit
-record](../audits/phase-0-audit.md) through the [Phase 6 audit
-record](../audits/phase-6-audit.md) preserve closeout evidence. Commands below
-distinguish historical verified checks from current or still-planned
-later-milestone workflows.
+structured extraction, Phase 5 deterministic validation, Phase 6 review
+contracts, persistence, commands, and React application, and the complete Phase
+7 authenticated orchestration pipeline, pinned local n8n runtime/workflow,
+bounded selective retry, recovery/demo hardening, and independent audit. Phase
+8 is the next planned implementation phase; later integrations remain
+unimplemented. The [Phase 0 audit record](../audits/phase-0-audit.md) through
+the [Phase 6 audit record](../audits/phase-6-audit.md), together with the [Phase
+7 audit record](../audits/phase-7-audit.md), preserve closeout evidence.
+Commands below distinguish historical verified checks from current or
+still-planned later-milestone workflows.
 
 ## Working principles
 
