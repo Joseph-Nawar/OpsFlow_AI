@@ -74,6 +74,8 @@ class Settings(BaseSettings):
         components = urlsplit(value)
         if "@" in components.netloc or "?" in value or "#" in value:
             raise ValueError("review base URL cannot contain credentials, query, or fragment")
+        if components.path not in ("", "/"):
+            raise ValueError("review base URL must not contain a path")
         try:
             parsed = TypeAdapter(AnyHttpUrl).validate_python(value)
         except ValidationError as error:

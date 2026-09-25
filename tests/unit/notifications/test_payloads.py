@@ -73,7 +73,7 @@ def _issue(explanation: str = "RAW-EXTRACTION-SECRET") -> ValidationIssue:
 
 
 def test_build_review_url_appends_one_canonical_review_path() -> None:
-    assert build_review_url(f"{REVIEW_BASE}///", ORDER_ID) == (f"{REVIEW_BASE}/review/{ORDER_ID}")
+    assert build_review_url(f"{REVIEW_BASE}/", ORDER_ID) == (f"{REVIEW_BASE}/review/{ORDER_ID}")
 
 
 def test_review_required_payload_uses_only_issue_count_and_server_reference() -> None:
