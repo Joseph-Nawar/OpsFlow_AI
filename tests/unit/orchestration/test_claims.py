@@ -85,6 +85,7 @@ def test_claim_records_are_frozen_and_slotted() -> None:
         (
             OrderState.PROCESSING,
             (
+                "ORDER_RECEIVED",
                 "ORDER_PROCESSING_STARTED",
                 "ORDER_PROCESSING_FAILED",
                 "ORDER_RETRY_REQUESTED",
@@ -95,6 +96,7 @@ def test_claim_records_are_frozen_and_slotted() -> None:
         (
             OrderState.PROCESSING,
             (
+                "ORDER_RECEIVED",
                 "ORDER_PROCESSING_STARTED",
                 "ORDER_PROCESSING_FAILED",
                 "ORDER_RETRY_REQUESTED",
@@ -106,6 +108,7 @@ def test_claim_records_are_frozen_and_slotted() -> None:
         (
             OrderState.PROCESSING,
             (
+                "ORDER_RECEIVED",
                 "ORDER_PROCESSING_STARTED",
                 "ORDER_PROCESSING_FAILED",
                 "ORDER_RETRY_REQUESTED",
@@ -125,6 +128,8 @@ def test_claim_records_are_frozen_and_slotted() -> None:
         (
             OrderState.EXTRACTED,
             (
+                "ORDER_RECEIVED",
+                "ORDER_PROCESSING_STARTED",
                 "ORDER_EXTRACTION_COMPLETED",
                 "ORDER_VALIDATION_FAILED",
                 "ORDER_RETRY_REQUESTED",
@@ -135,6 +140,8 @@ def test_claim_records_are_frozen_and_slotted() -> None:
         (
             OrderState.EXTRACTED,
             (
+                "ORDER_RECEIVED",
+                "ORDER_PROCESSING_STARTED",
                 "ORDER_EXTRACTION_COMPLETED",
                 "ORDER_VALIDATION_FAILED",
                 "ORDER_RETRY_REQUESTED",
@@ -191,6 +198,67 @@ def test_unrecognized_or_impossible_processing_sequence_stands_down() -> None:
         )
         is IntakeClaimKind.STAND_DOWN
     )
+
+
+@pytest.mark.parametrize(
+    ("state", "event_types"),
+    [
+        (
+            OrderState.PROCESSING,
+            (
+                "ORDER_PROCESSING_STARTED",
+                "ORDER_PROCESSING_FAILED",
+                "ORDER_RETRY_REQUESTED",
+                "ORDER_RETRY_RESTORED",
+            ),
+        ),
+        (
+            OrderState.EXTRACTED,
+            (
+                "ORDER_RECEIVED",
+                "ORDER_EXTRACTION_COMPLETED",
+                "ORDER_VALIDATION_FAILED",
+                "ORDER_RETRY_REQUESTED",
+                "ORDER_RETRY_RESTORED",
+            ),
+        ),
+        (
+            OrderState.EXTRACTED,
+            (
+                "ORDER_EXTRACTION_COMPLETED",
+                "ORDER_VALIDATION_FAILED",
+                "ORDER_RETRY_REQUESTED",
+                "ORDER_RETRY_RESTORED",
+            ),
+        ),
+        (
+            OrderState.PROCESSING,
+            (
+                "ORDER_PROCESSING_STARTED",
+                "ORDER_RECEIVED",
+                "ORDER_PROCESSING_FAILED",
+                "ORDER_RETRY_REQUESTED",
+                "ORDER_RETRY_RESTORED",
+            ),
+        ),
+        (
+            OrderState.PROCESSING,
+            (
+                "ORDER_RECEIVED",
+                "ORDER_PROCESSING_STARTED",
+                "ORDER_RECEIVED",
+                "ORDER_PROCESSING_FAILED",
+                "ORDER_RETRY_REQUESTED",
+                "ORDER_RETRY_RESTORED",
+            ),
+        ),
+    ],
+)
+def test_retry_history_missing_or_misordered_lifecycle_prefix_stands_down(
+    state: OrderState,
+    event_types: tuple[str, ...],
+) -> None:
+    assert decide_intake_claim_kind(state, _events(*event_types)) is IntakeClaimKind.STAND_DOWN
 
 
 def test_audit_ties_are_ordered_by_occurred_at_then_id() -> None:

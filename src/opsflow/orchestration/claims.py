@@ -235,6 +235,9 @@ def _audit_history_status(
 ) -> tuple[bool, str, bool, bool]:
     """Parse lifecycle history and report the latest unconsumed retry origins."""
 
+    if event_types[:2] != ("ORDER_RECEIVED", "ORDER_PROCESSING_STARTED"):
+        return False, "RECEIVED", False, False
+
     generations: dict[str, list[bool]] = {"PROCESSING": [], "EXTRACTED": []}
     phase = "RECEIVED"
     pending_failure_origin: str | None = None
