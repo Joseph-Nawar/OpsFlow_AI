@@ -281,7 +281,7 @@ Test success, backend unavailability, duplicate triggers, malformed payloads, bo
 
 ### Phase 8 — Email & Notification Integrations
 
-**Status:** `IN PROGRESS`; M8A `COMPLETE`; M8B `COMPLETE`; M8C–M8F `NOT STARTED`.
+**Status:** `IN PROGRESS`; M8A `COMPLETE`; M8B `COMPLETE`; M8C `IN PROGRESS`; M8D–M8F `NOT STARTED`.
 
 **Objective:** Move from synthetic triggers to recognizable business integrations.
 

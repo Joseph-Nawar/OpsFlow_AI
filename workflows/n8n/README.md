@@ -192,3 +192,46 @@ may therefore stand down in `PROCESSING` or `EXTRACTED`. Stop the local API,
 n8n, PostgreSQL, and Vite processes after verification; preserve named
 volumes, remove temporary response/environment files, and never commit local
 credentials, runtime state, execution data, or raw documents.
+
+## Phase 8 Gmail intake
+
+`opsflow-gmail-intake.json` is the inactive, sanitized M8C workflow for n8n
+`2.40.5`. Its Gmail Trigger is restricted to search
+`label:OpsFlow/Intake`; create that label and use a Gmail UI filter or manually
+apply it only to synthetic messages in a dedicated sandbox mailbox. The label
+routes mailbox messages but does not narrow OAuth access.
+
+Use a dedicated test mailbox, never a personal or customer mailbox. Configure
+the local credential `OpsFlow Gmail Sandbox` with the approved scopes:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.send
+```
+
+After importing, relink that Gmail credential and the existing
+`OpsFlow Orchestration` HTTP bearer credential. Set the bearer token from the
+local `OPSFLOW_ORCHESTRATION_TOKEN`. Keep OAuth client values, tokens, mailbox
+data, and credential IDs out of version control.
+
+The one Code v2 node runs once per message and only counts supported
+`attachment_` binaries, ignores `image/*`, applies suffix-based PDF/XLSX/CSV
+metadata, and copies the single selected binary under `document` without
+re-encoding its bytes. Multiple supported files stop visibly as
+`AMBIGUOUS_SUPPORTED_ATTACHMENTS`. With none, parser text is preferred; HTML
+is converted to visible text only when plain text is absent. The body path
+normalizes line endings and Unicode, trims outer whitespace only, and creates
+`email-body.txt` as `EMAIL_BODY` / `text/plain`. Empty normalized content stops
+as `NO_SUPPORTED_SOURCE`.
+
+The workflow sends the raw Gmail message ID, `source_system=GMAIL`, and exact
+`gmail:<message_id>` idempotency key to the existing
+`/v1/orchestration/intakes` endpoint. Only transport failures and exact HTTP
+503 receive two one-second retries. Backend states lead to Review Required,
+Approval Required, Retryable Failure, Final Failure, In Progress, or
+Validation Pending; unrecognized states remain visible as Unexpected State.
+
+The workflow disables successful, failed, and manual execution-data saving.
+After the controlled matrix, inspect only synthetic pass/fail results and
+remove any retained n8n executions. Never export or commit mailbox contents,
+attachments, headers, OAuth material, or live execution data.
