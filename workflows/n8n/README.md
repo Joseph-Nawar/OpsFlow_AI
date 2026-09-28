@@ -270,8 +270,28 @@ failure contract remains authoritative. If Slack accepts a send and the
 outcome acknowledgement is lost, a later lease recovery may send a duplicate;
 exactly-once external delivery is not claimed.
 
-Final live review found that pinned Slack 2.7 defaults to appending an n8n
-workflow link to the message text. That violates the M8D unchanged-payload
-boundary. The contract regression now requires `includeLinkToWorkflow: false`;
-M8D remains `IN PROGRESS` until the corrected local workflow is reimported and
-the affected sandbox deliveries are verified again.
+M8D live verification passed on n8n `2.40.5` with a dedicated Slack sandbox
+app limited to `chat:write`. Pinned Slack 2.7 defaults to appending an n8n
+workflow footer, so the workflow explicitly sets
+`includeLinkToWorkflow: false`; the pinned request builder then submits the
+configured backend `payload.text` unchanged to `chat.postMessage`. The Slack
+response text echo is not retained; only the confirmed message timestamp is
+reported as the provider reference.
+
+The empty-queue case returned 204 without a provider call. REVIEW_REQUIRED
+and ORDER_APPROVED each completed one-claim/one-send/one-delivered-outcome
+executions; REVIEW_REQUIRED was rerun three times during text-boundary
+remediation, with one send per execution. A controlled invalid-channel case
+made one provider attempt and one `UNKNOWN_FAILURE` outcome; Python scheduled
+the retry. A successful send with lost outcome acknowledgement did not send
+again in that execution; controlled lease expiry confirmed later claim
+recovery can permit a duplicate external message. No provider retry or Wait
+node exists. Live before/after evidence and backend regressions confirm
+delivery does not change order state or audit history; review URLs still
+require normal OpsFlow operator authentication.
+
+Execution data saving is disabled for successful, failed, and manual runs.
+The dispatcher is inactive with zero retained executions. Temporary test
+settings, workflow versions, and execution data were removed; local sandbox
+credentials/channel remain configured. No secrets or raw provider responses
+were retained in the repository or n8n execution history.
