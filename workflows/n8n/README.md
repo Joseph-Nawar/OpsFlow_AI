@@ -244,3 +244,33 @@ exact replay, and the changed-bytes 409 conflict boundary. The approved single
 Code v2 exception remains limited to attachment-envelope normalization.
 The workflow is inactive and saved execution data was cleared. No secrets,
 mailbox content, or test attachments were retained.
+
+## Phase 8 Slack notification dispatch
+
+`opsflow-notification-dispatch.json` is the inactive, sanitized M8D workflow
+for n8n `2.40.5`. Its Schedule Trigger runs every minute and makes one
+authenticated claim request per execution. HTTP 204 ends with a no-work result;
+only `channel=SLACK` reaches the native Slack 2.7 Message / Send node. Other
+channels end visibly as deferred without a provider send.
+
+On import, relink the local `OpsFlow Orchestration` HTTP bearer credential and
+create the local `OpsFlow Slack Sandbox` Slack API credential. Configure the
+Slack node's channel locator locally in the n8n editor using the sandbox
+channel ID; the committed workflow leaves that value empty so no workspace or
+channel identifier is tracked. The sandbox bot needs only `chat:write` and
+must be invited to that channel. Never export or commit its bot token.
+
+The Slack node forwards the backend's pre-rendered `payload.text` unchanged.
+On confirmed success, the workflow reports only Slack's `message_timestamp`
+as `provider_reference`. Provider errors become a fixed `UNKNOWN_FAILURE`
+code with no raw diagnostics; pinned Slack 2.7 does not expose Retry-After
+through its node result, so the workflow omits the hint. There is no provider
+retry, Wait, or loop: Python's durable claim, attempt, retry, lease, and final
+failure contract remains authoritative. If Slack accepts a send and the
+outcome acknowledgement is lost, a later lease recovery may send a duplicate;
+exactly-once external delivery is not claimed.
+
+Successful, failed, and manual execution data saving are disabled. Before
+live verification, remove any retained test execution data and keep only
+synthetic pass/fail evidence. M8D remains `IN PROGRESS` until the sandbox Slack
+credential and local channel are configured and the approved live cases pass.
