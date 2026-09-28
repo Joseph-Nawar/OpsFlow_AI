@@ -290,7 +290,9 @@
           },
           "messageType": "text",
           "text": "={{ $json.body.payload.text }}",
-          "otherOptions": {}
+          "otherOptions": {
+            "includeLinkToWorkflow": false
+          }
         },
         "id": "8d000000-0000-4000-8000-000000000013",
         "name": "Send Slack Notification",

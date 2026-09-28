@@ -270,29 +270,8 @@ failure contract remains authoritative. If Slack accepts a send and the
 outcome acknowledgement is lost, a later lease recovery may send a duplicate;
 exactly-once external delivery is not claimed.
 
-M8D live verification passed on n8n `2.40.5` using a dedicated Slack sandbox
-app with only `chat:write`. The final dispatcher was run once per case: an
-empty queue returned 204 without a provider call; a `REVIEW_REQUIRED` message
-and an `ORDER_APPROVED` message each produced one Slack send and one delivered
-outcome; and a controlled invalid-channel case produced one bounded
-`UNKNOWN_FAILURE` outcome without a provider retry. The backend's
-`payload.text` is mapped directly to the Slack text field, without workflow
-rewriting. The only successful provider reference retained is Slack's confirmed
-message timestamp; raw provider responses and failure diagnostics are not
-persisted. Python remains the retry and lease authority. Pinned Slack 2.7 does
-not expose Retry-After, so the workflow omits that hint.
-
-A successful Slack send followed by a lost OpsFlow outcome acknowledgement did
-not trigger a second send in the same execution. Lease recovery can make the
-claim eligible again later, so a duplicate external message remains possible;
-exactly-once provider delivery is not claimed. Before/after snapshots and the
-notification regression tests confirmed that delivery lifecycle handling does
-not change order state or add order audit events. The controlled failure left
-the order's original trigger event as its sole audit event. The review route
-continued to require normal OpsFlow operator authentication.
-
-Execution data saving is disabled for successful, failed, and manual runs.
-After verification, the dispatcher was left inactive with zero retained
-executions; temporary test configuration and execution records were removed,
-the sandbox channel configuration and credentials were retained locally, and
-no secrets or raw provider responses were committed.
+Final live review found that pinned Slack 2.7 defaults to appending an n8n
+workflow link to the message text. That violates the M8D unchanged-payload
+boundary. The contract regression now requires `includeLinkToWorkflow: false`;
+M8D remains `IN PROGRESS` until the corrected local workflow is reimported and
+the affected sandbox deliveries are verified again.

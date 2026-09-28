@@ -224,7 +224,7 @@ def test_native_slack_27_sends_only_pre_rendered_text_to_local_channel() -> None
     assert parameters["channelId"] == {"__rl": True, "value": "", "mode": "id"}
     assert parameters["messageType"] == "text"
     assert parameters["text"] == "={{ $json.body.payload.text }}"
-    assert parameters["otherOptions"] == {}
+    assert parameters["otherOptions"] == {"includeLinkToWorkflow": False}
     assert slack["retryOnFail"] is False
     assert "maxTries" not in slack and "waitBetweenTries" not in slack
     assert "waitBetweenTries" not in parameters
