@@ -235,3 +235,12 @@ The workflow disables successful, failed, and manual execution-data saving.
 After the controlled matrix, inspect only synthetic pass/fail results and
 remove any retained n8n executions. Never export or commit mailbox contents,
 attachments, headers, OAuth material, or live execution data.
+
+M8C sandbox verification completed on n8n `2.40.5` with a dedicated Gmail
+sandbox and a `[OpsFlow M8C]` subject filter that applies `OpsFlow/Intake`.
+Case A had previously passed; Cases B–I passed, including authenticated
+OpsFlow intake, attachment/body selection, byte-hash parity, Gmail provenance,
+exact replay, and the changed-bytes 409 conflict boundary. The approved single
+Code v2 exception remains limited to attachment-envelope normalization.
+The workflow is inactive and saved execution data was cleared. No secrets,
+mailbox content, or test attachments were retained.
