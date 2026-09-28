@@ -134,7 +134,7 @@ def test_workflow_has_frozen_node_inventory_versions_and_wiring() -> None:
         "Prepare Gmail Provenance": ("n8n-nodes-base.set", 3.5),
         "Normalize Gmail Attachment Envelope": ("n8n-nodes-base.code", 2),
         "Is Attachment Ambiguous": ("n8n-nodes-base.if", 2.3),
-        "AMBIGUOUS_SUPPORTED_ATTACHMENTS": ("n8n-nodes-base.stopAndError", 1),
+        "AMBIGUOUS_SUPPORTED_ATTACHMENTS": ("n8n-nodes-base.set", 3.5),
         "Has One Supported Attachment": ("n8n-nodes-base.if", 2.3),
         "Prepare Attachment Request": ("n8n-nodes-base.set", 3.5),
         "Has Parser Text": ("n8n-nodes-base.if", 2.3),
@@ -143,7 +143,7 @@ def test_workflow_has_frozen_node_inventory_versions_and_wiring() -> None:
         "Use HTML Text": ("n8n-nodes-base.set", 3.5),
         "Normalize Body": ("n8n-nodes-base.set", 3.5),
         "Has Nonempty Body": ("n8n-nodes-base.if", 2.3),
-        "NO_SUPPORTED_SOURCE": ("n8n-nodes-base.stopAndError", 1),
+        "NO_SUPPORTED_SOURCE": ("n8n-nodes-base.set", 3.5),
         "Prepare Email Body": ("n8n-nodes-base.set", 3.5),
         "Create Email Body Document": ("n8n-nodes-base.moveBinaryData", 1.1),
         "Preserve Original Gmail Intake": ("n8n-nodes-base.set", 3.5),
@@ -261,6 +261,28 @@ def test_code_node_is_the_single_bounded_attachment_normalizer() -> None:
     )
 
 
+def test_expected_source_outcomes_are_item_local_nonthrowing_terminals() -> None:
+    workflow = _workflow()
+    nodes = _nodes(workflow)
+
+    for name, outcome in (
+        ("AMBIGUOUS_SUPPORTED_ATTACHMENTS", "AMBIGUOUS_SUPPORTED_ATTACHMENTS"),
+        ("NO_SUPPORTED_SOURCE", "NO_SUPPORTED_SOURCE"),
+    ):
+        terminal = nodes[name]
+        assert terminal["type"] == "n8n-nodes-base.set"
+        assert terminal["typeVersion"] == 3.5
+        parameters = terminal["parameters"]
+        assignments = parameters["assignments"]["assignments"]
+        assert len(assignments) == 1
+        assert assignments[0]["name"] == "operator_outcome"
+        assert assignments[0]["value"] == outcome
+        assert assignments[0]["type"] == "string"
+        assert parameters["includeOtherFields"] is False
+        assert parameters["options"] == {"stripBinary": True}
+        assert not _reachable(workflow, name, "Submit to OpsFlow API")
+
+
 def test_gmail_trigger_and_provenance_contract() -> None:
     workflow = _workflow()
     nodes = _nodes(workflow)
@@ -300,6 +322,15 @@ def test_body_fallback_prefers_plain_text_and_creates_email_body_file() -> None:
     assert condition["leftValue"] == "={{ $json.text !== undefined && $json.text !== null }}"
     assert _targets(workflow, "Use Parser Text") == [("Normalize Body", 0)]
     assert _targets(workflow, "HTML to Visible Text") == [("Use HTML Text", 0)]
+    assert (
+        _assignment(nodes["Ensure HTML Body Exists"], "html")["value"]
+        == "={{ typeof $json.html === 'string' ? $json.html : '' }}"
+    )
+    assert (
+        _assignment(nodes["Use HTML Text"], "bodyCandidate")["value"]
+        == "={{ typeof $json.html === 'string' && $json.html.length > 0 && "
+        "typeof $json.visibleText === 'string' ? $json.visibleText : '' }}"
+    )
     assert nodes["HTML to Visible Text"]["typeVersion"] == 1.2
     assert nodes["HTML to Visible Text"]["parameters"] == {
         "operation": "extractHtmlContent",
@@ -317,9 +348,6 @@ def test_body_fallback_prefers_plain_text_and_creates_email_body_file() -> None:
         },
         "options": {"trimValues": False, "cleanUpText": False},
     }
-    assert (
-        _assignment(nodes["Ensure HTML Body Exists"], "html")["value"] == "={{ $json.html ?? '' }}"
-    )
     assert _targets(workflow, "Use HTML Text") == [("Normalize Body", 0)]
     normalizer = _assignment(nodes["Normalize Body"], "normalizedBody")["value"]
     assert "replace(/\\r\\n?/g, '\\n')" in normalizer
@@ -345,6 +373,7 @@ def test_body_fallback_prefers_plain_text_and_creates_email_body_file() -> None:
             "fileName": "email-body.txt",
             "mimeType": "text/plain",
             "keepSource": True,
+            "useRawData": True,
         },
     }
 

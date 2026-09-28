@@ -134,12 +134,26 @@
       },
       {
         "parameters": {
-          "errorMessage": "AMBIGUOUS_SUPPORTED_ATTACHMENTS: message has more than one supported attachment and was not submitted."
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8c000000-0000-4000-8000-000000000038",
+                "name": "operator_outcome",
+                "value": "AMBIGUOUS_SUPPORTED_ATTACHMENTS",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
         },
         "id": "8c000000-0000-4000-8000-000000000005",
         "name": "AMBIGUOUS_SUPPORTED_ATTACHMENTS",
-        "type": "n8n-nodes-base.stopAndError",
-        "typeVersion": 1,
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
         "position": [
           940,
           -160
@@ -285,7 +299,7 @@
               {
                 "id": "059ce285-4e70-5968-bd0b-10320474aa8a",
                 "name": "html",
-                "value": "={{ $json.html ?? '' }}",
+                "value": "={{ typeof $json.html === 'string' ? $json.html : '' }}",
                 "type": "string"
               }
             ]
@@ -341,7 +355,7 @@
               {
                 "id": "473f92f5-36da-501f-a5cd-ba4148f0d590",
                 "name": "bodyCandidate",
-                "value": "={{ $json.visibleText }}",
+                "value": "={{ typeof $json.html === 'string' && $json.html.length > 0 && typeof $json.visibleText === 'string' ? $json.visibleText : '' }}",
                 "type": "string"
               }
             ]
@@ -422,12 +436,26 @@
       },
       {
         "parameters": {
-          "errorMessage": "NO_SUPPORTED_SOURCE: message has no supported attachment and no non-empty body; it was not submitted."
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8c000000-0000-4000-8000-000000000039",
+                "name": "operator_outcome",
+                "value": "NO_SUPPORTED_SOURCE",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
         },
         "id": "8c000000-0000-4000-8000-000000000014",
         "name": "NO_SUPPORTED_SOURCE",
-        "type": "n8n-nodes-base.stopAndError",
-        "typeVersion": 1,
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
         "position": [
           2380,
           420
@@ -483,7 +511,8 @@
             "encoding": "utf8",
             "fileName": "email-body.txt",
             "mimeType": "text/plain",
-            "keepSource": true
+            "keepSource": true,
+            "useRawData": true
           }
         },
         "id": "8c000000-0000-4000-8000-000000000016",
