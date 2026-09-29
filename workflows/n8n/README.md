@@ -318,9 +318,13 @@ separate `OPSFLOW_MIGRATION_TEST_DATABASE_URL` and skip when it is absent.
 
 The paused clean-clone dispatcher left pre-approval `REVIEW_REQUIRED` and
 `APPROVAL_READY` intents pending; they were quarantined for the test and their
-scheduling fields were restored. M8F should examine this notification-freshness
-edge. Provider retries remain disabled in n8n; Python owns claims, leases,
-backoff, and terminal outcomes. A provider success followed by lost outcome
-acknowledgement can lead to duplicate external delivery after lease recovery.
-Retain no mailbox content, provider response, credential value, or execution
-history.
+scheduling fields were restored. M8F confirmed normal downtime or queue delay
+can produce the same ordering. Slack now describes these as historical state
+entries: `Order entered NEEDS_REVIEW ...` and `Order entered
+READY_FOR_APPROVAL.` Delayed delivery therefore reports the triggering event
+instead of asserting that the action is still pending. The event-driven intents
+remain durable and are not cancelled or superseded. Provider retries remain
+disabled in n8n; Python owns claims, leases, backoff, and terminal outcomes. A
+provider success followed by lost outcome acknowledgement can lead to duplicate
+external delivery after lease recovery. Retain no mailbox content, provider
+response, credential value, or execution history.
