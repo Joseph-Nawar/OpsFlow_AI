@@ -86,15 +86,17 @@ def test_review_required_payload_uses_only_issue_count_and_server_reference() ->
 
     assert payload == {
         "text": (
-            "2 validation issue(s) require review. Order 12345678-1234-5678-9abc-"
+            "Order entered NEEDS_REVIEW with 2 validation issue(s). Order "
+            "12345678-1234-5678-9abc-"
             "def012345678; state NEEDS_REVIEW. "
             "http://localhost:5173/review/12345678-1234-5678-9abc-def012345678"
         ),
         "order_id": str(ORDER_ID),
         "state": "NEEDS_REVIEW",
-        "summary": "2 validation issue(s) require review.",
+        "summary": "Order entered NEEDS_REVIEW with 2 validation issue(s).",
         "review_url": f"{REVIEW_BASE}/review/{ORDER_ID}",
     }
+    assert "require review" not in payload["text"]
     _assert_no_untrusted_source_data(payload)
 
 
@@ -106,10 +108,29 @@ def test_approval_ready_payload_has_fixed_truthful_summary() -> None:
         REVIEW_BASE,
     )
 
-    assert payload["summary"] == "Order is ready for approval."
+    assert payload["summary"] == "Order entered READY_FOR_APPROVAL."
     assert payload["state"] == "READY_FOR_APPROVAL"
+    assert "ready for approval" not in str(payload["text"]).lower()
     assert "synchron" not in str(payload["text"]).lower()
     _assert_no_untrusted_source_data(payload)
+
+
+def test_delayed_review_notification_describes_the_triggering_event() -> None:
+    historical_payload = render_slack_payload(
+        NotificationKind.REVIEW_REQUIRED,
+        _order(OrderState.NEEDS_REVIEW),
+        (_issue(),),
+        REVIEW_BASE,
+    )
+    current_order = _order(OrderState.APPROVED)
+
+    assert current_order.state is OrderState.APPROVED
+    assert historical_payload["state"] == "NEEDS_REVIEW"
+    assert historical_payload["summary"] == (
+        "Order entered NEEDS_REVIEW with 1 validation issue(s)."
+    )
+    assert "require review" not in str(historical_payload["text"])
+    assert "currently" not in str(historical_payload["text"]).lower()
 
 
 def test_processing_failed_payload_has_fixed_safe_summary() -> None:

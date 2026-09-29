@@ -11,7 +11,7 @@ from opsflow.notifications.contracts import NotificationKind
 _GMAIL_APPROVAL_BODY = "Your purchase order has been approved for processing."
 _SLACK_SUMMARIES = {
     NotificationKind.REVIEW_REQUIRED: None,
-    NotificationKind.APPROVAL_READY: "Order is ready for approval.",
+    NotificationKind.APPROVAL_READY: "Order entered READY_FOR_APPROVAL.",
     NotificationKind.PROCESSING_FAILED: "Order processing failed; operator review may be required.",
     NotificationKind.ORDER_APPROVED: "Order approved for processing.",
 }
@@ -30,10 +30,10 @@ def render_slack_payload(
     issues: Sequence[ValidationIssue],
     review_base_url: AnyHttpUrl | str,
 ) -> dict[str, object]:
-    """Render only the safe server order ID, current state, fixed summary, and URL."""
+    """Render only the safe order ID, recorded state, fixed summary, and URL."""
 
     if kind is NotificationKind.REVIEW_REQUIRED:
-        summary = f"{len(issues)} validation issue(s) require review."
+        summary = f"Order entered NEEDS_REVIEW with {len(issues)} validation issue(s)."
     else:
         fixed_summary = _SLACK_SUMMARIES[kind]
         if fixed_summary is None:
