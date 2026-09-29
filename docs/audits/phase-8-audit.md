@@ -38,6 +38,12 @@ Frozen initial severity totals: **CRITICAL 0, HIGH 0, MEDIUM 1, LOW 2**.
 Final totals: **CRITICAL 0, HIGH 0, MEDIUM 0, LOW 0**. All three findings are
 resolved; there are no accepted open findings.
 
+### Senior-review closeout
+
+| ID | Severity | Finding | Resolution | Status |
+| --- | --- | --- | --- | --- |
+| SR-001 | LOW | Embedding exact-head GitHub run IDs in this tracked artifact makes them stale when a later commit changes the artifact. | Removed recursive CI-run references. Exact final-head SHA and run IDs belong in PR metadata/conversation and must be checked on the actual PR head immediately before merge. Documentation/evidence only; no implementation impact. | RESOLVED |
+
 ### M8F-001 — MEDIUM — RESOLVED
 
 - **Affected files/components:** `src/opsflow/notifications/payloads.py`,
@@ -207,7 +213,7 @@ containers and primary Docker volumes were not changed.
 | Compose config / workflow JSON | PASS — Compose configuration valid; all three tracked n8n JSON files parse. |
 | Diff whitespace check | PASS — `git diff --check`. |
 | Primary DB safety | PASS for final gates — migration head `0005_phase8_notification_deliveries`; orders, lines, sources, idempotency, audits, snapshots, review revisions, and notification rows were zero before and after targeted/full suites. The initial TDD-run deviation and post-run zero-row check are disclosed above. |
-| Gitleaks / exact-head CI | PASS. Prospective tracked-tree scan passed; final exact-head full-history Gitleaks scanned 195 commits with zero leaks. Exact-head CI runs 36583869535 (push) and 36583879650 (pull request) both passed Backend, Frontend, and Secret scan. The push run reported 1,455 backend tests at 92.61% coverage; frontend tests, lint, and build passed. |
+| Gitleaks / GitHub CI | PASS. Full-history Gitleaks is a required CI check and passed with zero leaks. Backend, Frontend, and Secret Scan must all be green on the actual PR head before merge. Exact final-head SHA and run IDs are intentionally not embedded here because changing this tracked artifact creates a new commit; record those values in PR metadata/conversation and independently recheck them immediately before merge. |
 
 Final repository status is Phase 8 `COMPLETE` with M8A–M8F `COMPLETE`;
 Phases 9–12 remain `NOT STARTED`. Pull request #8 is open for independent
