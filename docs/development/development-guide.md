@@ -51,7 +51,7 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
-Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7 `workflows/n8n/` area now exist. Phase 8 is `IN PROGRESS` (M8A `COMPLETE`; M8B `COMPLETE`; M8C–M8F `NOT STARTED`). Other future areas remain absent until an applicable milestone requires them.
+Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7 `workflows/n8n/` area now exist. Phase 8 is `IN PROGRESS` (M8A–M8E `COMPLETE`; M8F `NOT STARTED`). Other future areas remain absent until an applicable milestone requires them.
 
 ## Historical verified M0B/M0C backend commands
 
@@ -176,6 +176,15 @@ For deterministic business behavior, follow the red-green-refactor loop where pr
 5. refactor only when the behavior remains covered and the change is justified.
 
 Tests must not remove assertions, change expected results to suit broken behavior, or skip coverage without an explicit reason. Live AI calls and real external side effects must never be hidden in ordinary automated tests.
+
+### Destructive migration test isolation
+
+Integration tests that downgrade Alembic revisions require an explicit
+`OPSFLOW_MIGRATION_TEST_DATABASE_URL` naming a PostgreSQL database whose name
+differs from `OPSFLOW_DATABASE_URL`. If it is unset, those tests skip; they
+never fall back to the configured development database. CI provisions a
+separate migration-test database, and migration subprocesses and schema
+assertions use that same URL.
 
 M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure; M0D adds only the static frontend foundation page; M0E adds only developer commands, CI, and secret scanning. M0D intentionally adds no frontend test framework because it has no meaningful application behavior yet. No business tables, review UI, or later-milestone behavior is covered here.
 

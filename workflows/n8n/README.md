@@ -296,7 +296,7 @@ settings, workflow versions, and execution data were removed; local sandbox
 credentials/channel remain configured. No secrets or raw provider responses
 were retained in the repository or n8n execution history.
 
-## Phase 8 Gmail approval replies (M8E in progress)
+## Phase 8 Gmail approval replies (M8E complete)
 
 The dispatcher routes only backend claims with `channel=GMAIL` to one native
 Gmail 2.2 Message / Reply node. It uses the persisted original Gmail message
@@ -308,10 +308,19 @@ backend-owned. Generic sources with a `message_id` but without persisted
 `source_system=GMAIL` provenance cannot create a Gmail approval intent.
 
 The exact reply body is `Your purchase order has been approved for processing.`
-No synchronization or completion claim is made. M8E contract and PostgreSQL
-regressions pass. A synthetic Gmail intake reached `NEEDS_REVIEW`; the review
-and live reply path remain pending because this session has no available
-browser session for the review UI. The separate clean-clone handoff must still
-be verified without copying local OAuth credentials. Keep the milestone
-`IN PROGRESS` until those external checks pass. Retain no mailbox content,
-provider response, credential value, or execution history.
+No synchronization or completion claim is made. Contract tests and live primary
+and clean-clone intake-to-review-to-approval-to-Slack-and-Gmail runs passed.
+The clean clone used fresh PostgreSQL and n8n storage with credentials manually
+relinked; no primary database or credential storage was copied. The primary
+development database is now a fresh baseline at migration head; previous local
+synthetic rows were not reconstructed. Destructive migration tests require the
+separate `OPSFLOW_MIGRATION_TEST_DATABASE_URL` and skip when it is absent.
+
+The paused clean-clone dispatcher left pre-approval `REVIEW_REQUIRED` and
+`APPROVAL_READY` intents pending; they were quarantined for the test and their
+scheduling fields were restored. M8F should examine this notification-freshness
+edge. Provider retries remain disabled in n8n; Python owns claims, leases,
+backoff, and terminal outcomes. A provider success followed by lost outcome
+acknowledgement can lead to duplicate external delivery after lease recovery.
+Retain no mailbox content, provider response, credential value, or execution
+history.
