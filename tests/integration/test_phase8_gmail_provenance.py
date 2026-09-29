@@ -5,6 +5,7 @@ from datetime import date
 
 import httpx
 import pytest
+from test_phase6_commands import _assert_approval_notification_provenance
 from test_phase7_pipeline import (
     _assert_gmail_changed_bytes_conflict,
     _assert_gmail_provenance_replay,
@@ -25,6 +26,10 @@ def test_gmail_changed_bytes_conflict_without_second_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     asyncio.run(_assert_gmail_changed_bytes_conflict(monkeypatch))
+
+
+def test_approval_creates_gmail_intent_only_for_genuine_persisted_provenance() -> None:
+    asyncio.run(_assert_approval_notification_provenance())
 
 
 @pytest.mark.parametrize(

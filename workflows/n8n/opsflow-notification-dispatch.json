@@ -233,6 +233,27 @@
                   ],
                   "combinator": "and"
                 }
+              },
+              {
+                "outputKey": "GMAIL",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.channel }}",
+                      "rightValue": "GMAIL",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
               }
             ]
           },
@@ -531,6 +552,125 @@
           2200,
           120
         ]
+      },
+      {
+        "parameters": {
+          "authentication": "oAuth2",
+          "resource": "message",
+          "operation": "reply",
+          "messageId": "={{ $json.body.payload.message_id }}",
+          "emailType": "text",
+          "message": "={{ $json.body.payload.body }}",
+          "options": {
+            "appendAttribution": false,
+            "replyToSenderOnly": true
+          }
+        },
+        "id": "5f73b114-727b-46e2-805e-065a8a36398d",
+        "name": "Reply to Gmail Sender",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.2,
+        "onError": "continueErrorOutput",
+        "retryOnFail": false,
+        "position": [
+          1100,
+          440
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "name": "OpsFlow Gmail Sandbox"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "0ae61f68-844a-4bf3-b1d5-10c5c539023d",
+                "name": "notification_id",
+                "value": "={{ $('Claim One Notification').item.json.body.notification_id }}",
+                "type": "string"
+              },
+              {
+                "id": "8b58f5b8-0597-4320-a056-55595df54feb",
+                "name": "claim_token",
+                "value": "={{ $('Claim One Notification').item.json.body.claim_token }}",
+                "type": "string"
+              },
+              {
+                "id": "ce42d66a-3349-47b7-a56e-8cc5e40f182a",
+                "name": "outcome",
+                "value": "DELIVERED",
+                "type": "string"
+              },
+              {
+                "id": "5ef0883e-77f2-47f4-b40c-dacce4e9f04a",
+                "name": "provider_reference",
+                "value": "={{ $json.id }}",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "e9ffb2f5-3c19-4fe3-aae4-ce10f5817ce5",
+        "name": "Normalize Gmail Success",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          1380,
+          360
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "adc563de-d489-4448-9f80-b909d079218d",
+                "name": "notification_id",
+                "value": "={{ $('Claim One Notification').item.json.body.notification_id }}",
+                "type": "string"
+              },
+              {
+                "id": "081dce91-2193-4c98-a051-64e516663d3c",
+                "name": "claim_token",
+                "value": "={{ $('Claim One Notification').item.json.body.claim_token }}",
+                "type": "string"
+              },
+              {
+                "id": "2449a9ca-b8a4-4e2c-ae76-209aa61613da",
+                "name": "outcome",
+                "value": "FAILED",
+                "type": "string"
+              },
+              {
+                "id": "d04825f0-94f2-498d-beaf-94eb4fcc3b99",
+                "name": "failure_code",
+                "value": "UNKNOWN_FAILURE",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "6eb3733f-e260-4f01-aa75-4a46143cb122",
+        "name": "Normalize Gmail Failure",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          1380,
+          500
+        ]
       }
     ],
     "connections": {
@@ -593,6 +733,13 @@
           [
             {
               "node": "Send Slack Notification",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Reply to Gmail Sender",
               "type": "main",
               "index": 0
             }
@@ -676,6 +823,46 @@
           [
             {
               "node": "Outcome Not Confirmed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Reply to Gmail Sender": {
+        "main": [
+          [
+            {
+              "node": "Normalize Gmail Success",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Normalize Gmail Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Gmail Success": {
+        "main": [
+          [
+            {
+              "node": "Record Notification Outcome",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Gmail Failure": {
+        "main": [
+          [
+            {
+              "node": "Record Notification Outcome",
               "type": "main",
               "index": 0
             }

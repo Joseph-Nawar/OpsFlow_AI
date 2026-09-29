@@ -6,7 +6,18 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from test_phase6_commands import (
+    APPROVER_TOKEN,
+    _command_client,
+    _etag_from_detail,
+    _get_detail,
+    _post_command,
+)
+from test_phase6_commands import (
+    _case as _approval_case,
+)
 from test_phase6_revalidation import (
     StaticProvider,
     _case_client,
@@ -14,6 +25,7 @@ from test_phase6_revalidation import (
     _make_case,
 )
 
+from opsflow.domain import OrderState
 from opsflow.notifications.contracts import (
     NotificationFailureCode,
     NotificationOutcome,
@@ -31,6 +43,7 @@ from opsflow.persistence.models import (
     NotificationDeliveryModel,
     OrderModel,
     ReviewRevisionModel,
+    SourceDocumentModel,
 )
 from opsflow.settings import Settings
 
@@ -87,6 +100,178 @@ def test_pending_attempt_three_row_is_never_claimed_again() -> None:
 
 def test_claim_and_outcome_leave_review_etag_audit_and_revision_unchanged() -> None:
     asyncio.run(_assert_review_etag_isolated())
+
+
+def test_gmail_reply_failure_changes_only_delivery_and_preserves_approved_review_etag() -> None:
+    asyncio.run(_assert_gmail_failure_preserves_approved_order_etag())
+
+
+def test_duplicate_gmail_intent_for_one_approval_event_is_rejected() -> None:
+    asyncio.run(_assert_duplicate_gmail_approval_intent_rejected())
+
+
+async def _assert_gmail_failure_preserves_approved_order_etag() -> None:
+    case = _approval_case(OrderState.READY_FOR_APPROVAL)
+    async with _command_client((case,)) as (client, sessions, _app):
+        async with sessions() as session, session.begin():
+            await session.execute(
+                update(SourceDocumentModel)
+                .where(SourceDocumentModel.id == case.source_id)
+                .values(
+                    message_id="synthetic-approved-gmail-message",
+                    metadata_=[["source_system", "GMAIL"]],
+                )
+            )
+
+        ready = await _get_detail(client, case.order_id, APPROVER_TOKEN)
+        approval = await _post_command(
+            client,
+            "approve",
+            case.order_id,
+            APPROVER_TOKEN,
+            _etag_from_detail(ready),
+        )
+        assert approval.status_code == 200
+        approved_detail = await _get_detail(client, case.order_id, APPROVER_TOKEN)
+        approved_etag = _etag_from_detail(approved_detail)
+
+        async with sessions() as session:
+            deliveries = (
+                await session.scalars(
+                    select(NotificationDeliveryModel).where(
+                        NotificationDeliveryModel.order_id == case.order_id
+                    )
+                )
+            ).all()
+            audit_before = (
+                await session.scalars(
+                    select(AuditEventModel)
+                    .where(AuditEventModel.order_id == case.order_id)
+                    .order_by(AuditEventModel.occurred_at, AuditEventModel.id)
+                )
+            ).all()
+            assert (await session.get(OrderModel, case.order_id)).state == "APPROVED"
+
+        gmail_delivery = next(row for row in deliveries if row.channel == "GMAIL")
+        slack_delivery = next(row for row in deliveries if row.channel == "SLACK")
+        assert gmail_delivery.kind == "ORDER_APPROVED"
+        async with sessions() as session, session.begin():
+            await session.execute(
+                update(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.id == slack_delivery.id)
+                .values(next_attempt_at=datetime.now(UTC) + timedelta(days=1))
+            )
+
+        async with sessions() as session:
+            claim = await claim_next_notification(session)
+        assert claim is not None and claim.notification_id == gmail_delivery.id
+        async with sessions() as session:
+            outcome = await record_notification_outcome(
+                session,
+                gmail_delivery.id,
+                NotificationOutcome(
+                    claim_token=claim.claim_token,
+                    kind=NotificationOutcomeKind.FAILED,
+                    failure_code=NotificationFailureCode.UNKNOWN_FAILURE,
+                ),
+            )
+        assert outcome.status is NotificationStatus.PENDING
+
+        after_detail = await _get_detail(client, case.order_id, APPROVER_TOKEN)
+        after_etag = _etag_from_detail(after_detail)
+        async with sessions() as session:
+            order = await session.get(OrderModel, case.order_id)
+            audit_after = (
+                await session.scalars(
+                    select(AuditEventModel)
+                    .where(AuditEventModel.order_id == case.order_id)
+                    .order_by(AuditEventModel.occurred_at, AuditEventModel.id)
+                )
+            ).all()
+            failed_gmail = await session.get(NotificationDeliveryModel, gmail_delivery.id)
+
+        assert after_etag == approved_etag
+        assert after_detail.json()["order"]["state"] == "APPROVED"
+        assert order is not None and order.state == "APPROVED"
+        assert [event.id for event in audit_after] == [event.id for event in audit_before]
+        assert failed_gmail is not None
+        assert failed_gmail.status == "PENDING"
+        assert failed_gmail.attempt_count == 1
+        assert failed_gmail.last_failure_code == "UNKNOWN_FAILURE"
+
+
+async def _assert_duplicate_gmail_approval_intent_rejected() -> None:
+    engine = create_async_engine(Settings().database_url)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime.now(UTC)
+    order_id, event_id = uuid4(), uuid4()
+    message_id = "synthetic-gmail-idempotency"
+    payload = {
+        "message_id": message_id,
+        "body": "Your purchase order has been approved for processing.",
+    }
+
+    def make_delivery(delivery_id: UUID) -> NotificationDeliveryModel:
+        return NotificationDeliveryModel(
+            id=delivery_id,
+            order_id=order_id,
+            trigger_audit_event_id=event_id,
+            channel="GMAIL",
+            kind="ORDER_APPROVED",
+            payload=payload,
+            status="PENDING",
+            attempt_count=0,
+            next_attempt_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+
+    try:
+        async with sessions() as session, session.begin():
+            session.add(
+                OrderModel(
+                    id=order_id,
+                    customer_reference="CUST-GMAIL-NOTIFY",
+                    po_number="PO-GMAIL-NOTIFY",
+                    order_date=None,
+                    requested_delivery_date=None,
+                    currency="USD",
+                    state="APPROVED",
+                    failure_origin=None,
+                    created_at=now,
+                )
+            )
+            await session.flush()
+            session.add(
+                AuditEventModel(
+                    id=event_id,
+                    order_id=order_id,
+                    event_type="ORDER_APPROVED",
+                    actor="system",
+                    occurred_at=now,
+                    description="Synthetic approved Gmail notification event.",
+                )
+            )
+            session.add(make_delivery(uuid4()))
+
+        with pytest.raises(IntegrityError):
+            async with sessions() as session, session.begin():
+                session.add(make_delivery(uuid4()))
+                await session.flush()
+
+        async with sessions() as session:
+            count = await session.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(
+                    NotificationDeliveryModel.trigger_audit_event_id == event_id,
+                    NotificationDeliveryModel.channel == "GMAIL",
+                    NotificationDeliveryModel.kind == "ORDER_APPROVED",
+                )
+            )
+        assert count == 1
+    finally:
+        await _dispose(engine, sessions, order_id)
 
 
 async def _seed_delivery(
