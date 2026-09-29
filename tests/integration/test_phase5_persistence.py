@@ -67,12 +67,18 @@ def test_phase5_migration_revision_chain_is_locked() -> None:
     assert migration["down_revision"] == PHASE_2_REVISION
 
 
-def test_phase5_migration_preserves_phase2_data_and_downgrades_in_reverse_order() -> None:
-    asyncio.run(_assert_migration_lifecycle())
+def test_phase5_migration_preserves_phase2_data_and_downgrades_in_reverse_order(
+    migration_test_database_url: str,
+) -> None:
+    asyncio.run(_assert_migration_lifecycle(migration_test_database_url))
 
 
-def test_phase5_schema_has_exact_snapshot_envelope_and_named_constraints() -> None:
-    asyncio.run(_assert_snapshot_schema())
+def test_phase5_schema_has_exact_snapshot_envelope_and_named_constraints(
+    migration_test_database_url: str,
+) -> None:
+    _run_alembic("downgrade", "base", database_url=migration_test_database_url)
+    _run_alembic("upgrade", PHASE_5_REVISION, database_url=migration_test_database_url)
+    asyncio.run(_assert_snapshot_schema(migration_test_database_url))
 
 
 def test_phase5_snapshot_constraints_reject_invalid_rows() -> None:
@@ -120,18 +126,18 @@ def test_phase5_repository_writes_rollback_without_caller_commit() -> None:
     asyncio.run(_assert_repository_rollback())
 
 
-async def _assert_migration_lifecycle() -> None:
-    _run_alembic("downgrade", "base")
-    _run_alembic("upgrade", PHASE_2_REVISION)
+async def _assert_migration_lifecycle(database_url: str) -> None:
+    _run_alembic("downgrade", "base", database_url=database_url)
+    _run_alembic("upgrade", PHASE_2_REVISION, database_url=database_url)
 
     order_id = uuid4()
     source_id = uuid4()
-    await _insert_phase2_order_and_source(order_id, source_id)
+    await _insert_phase2_order_and_source(order_id, source_id, database_url=database_url)
 
-    _run_alembic("upgrade", PHASE_5_REVISION)
-    assert PHASE_5_REVISION in _run_alembic("current")
+    _run_alembic("upgrade", PHASE_5_REVISION, database_url=database_url)
+    assert PHASE_5_REVISION in _run_alembic("current", database_url=database_url)
 
-    engine = create_async_engine(Settings().database_url)
+    engine = create_async_engine(database_url)
     try:
         async with engine.connect() as connection:
             assert (
@@ -155,8 +161,8 @@ async def _assert_migration_lifecycle() -> None:
     finally:
         await engine.dispose()
 
-    _run_alembic("downgrade", PHASE_2_REVISION)
-    engine = create_async_engine(Settings().database_url)
+    _run_alembic("downgrade", PHASE_2_REVISION, database_url=database_url)
+    engine = create_async_engine(database_url)
     try:
         async with engine.connect() as connection:
             tables = await connection.run_sync(
@@ -175,11 +181,11 @@ async def _assert_migration_lifecycle() -> None:
     finally:
         await engine.dispose()
 
-    _run_alembic("upgrade", PHASE_5_REVISION)
+    _run_alembic("upgrade", PHASE_5_REVISION, database_url=database_url)
 
 
-async def _assert_snapshot_schema() -> None:
-    engine = create_async_engine(Settings().database_url)
+async def _assert_snapshot_schema(database_url: str) -> None:
+    engine = create_async_engine(database_url)
     try:
         async with engine.connect() as connection:
             tables = await connection.run_sync(
@@ -837,8 +843,9 @@ async def _insert_phase2_order_and_source(
     source_id: object,
     source_sha256: str = "a" * 64,
     position: int = 0,
+    database_url: str | None = None,
 ) -> None:
-    engine = create_async_engine(Settings().database_url)
+    engine = create_async_engine(database_url or Settings().database_url)
     try:
         async with engine.begin() as connection:
             await connection.execute(
@@ -915,8 +922,10 @@ async def _assert_snapshot_rejected(
             )
 
 
-def _run_alembic(*arguments: str) -> str:
+def _run_alembic(*arguments: str, database_url: str | None = None) -> str:
     environment = os.environ.copy()
+    if database_url is not None:
+        environment["OPSFLOW_DATABASE_URL"] = database_url
     result = subprocess.run(
         [sys.executable, "-m", "alembic", *arguments],
         cwd=REPOSITORY_ROOT,

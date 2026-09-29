@@ -22,7 +22,6 @@ from opsflow.persistence.models import (
     ReviewRevisionModel,
     SourceDocumentModel,
 )
-from opsflow.settings import Settings
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
@@ -39,31 +38,36 @@ def test_phase8_migration_revision_is_child_of_phase6_head() -> None:
     assert migration["down_revision"] == PHASE_6_REVISION
 
 
-def test_clean_upgrade_and_notification_schema_constraints() -> None:
-    _run_alembic("downgrade", "base")
-    _run_alembic("upgrade", "head")
-    assert PHASE_8_REVISION in _run_alembic("current")
-    asyncio.run(_assert_schema_and_constraints())
+def test_clean_upgrade_and_notification_schema_constraints(
+    migration_test_database_url: str,
+) -> None:
+    _run_alembic(migration_test_database_url, "downgrade", "base")
+    _run_alembic(migration_test_database_url, "upgrade", "head")
+    assert PHASE_8_REVISION in _run_alembic(migration_test_database_url, "current")
+    asyncio.run(_assert_schema_and_constraints(migration_test_database_url))
 
 
-def test_phase8_downgrade_and_reupgrade_preserve_phase6_rows() -> None:
-    _run_alembic("downgrade", "base")
-    _run_alembic("upgrade", PHASE_6_REVISION)
-    revision_id = asyncio.run(_insert_phase6_revision())
+def test_phase8_downgrade_and_reupgrade_preserve_phase6_rows(
+    migration_test_database_url: str,
+) -> None:
+    _run_alembic(migration_test_database_url, "downgrade", "base")
+    _run_alembic(migration_test_database_url, "upgrade", PHASE_6_REVISION)
+    revision_id = asyncio.run(_insert_phase6_revision(migration_test_database_url))
 
-    _run_alembic("upgrade", PHASE_8_REVISION)
-    assert PHASE_8_REVISION in _run_alembic("current")
-    _run_alembic("downgrade", PHASE_6_REVISION)
-    assert PHASE_6_REVISION in _run_alembic("current")
-    assert asyncio.run(_revision_exists(revision_id))
+    _run_alembic(migration_test_database_url, "upgrade", PHASE_8_REVISION)
+    assert PHASE_8_REVISION in _run_alembic(migration_test_database_url, "current")
+    _run_alembic(migration_test_database_url, "downgrade", PHASE_6_REVISION)
+    assert PHASE_6_REVISION in _run_alembic(migration_test_database_url, "current")
+    assert asyncio.run(_revision_exists(migration_test_database_url, revision_id))
 
-    _run_alembic("upgrade", "head")
-    assert PHASE_8_REVISION in _run_alembic("current")
-    assert asyncio.run(_revision_exists(revision_id))
+    _run_alembic(migration_test_database_url, "upgrade", "head")
+    assert PHASE_8_REVISION in _run_alembic(migration_test_database_url, "current")
+    assert asyncio.run(_revision_exists(migration_test_database_url, revision_id))
 
 
-def _run_alembic(*arguments: str) -> str:
+def _run_alembic(database_url: str, *arguments: str) -> str:
     environment = os.environ.copy()
+    environment["OPSFLOW_DATABASE_URL"] = database_url
     result = subprocess.run(
         [sys.executable, "-m", "alembic", *arguments],
         cwd=REPOSITORY_ROOT,
@@ -101,8 +105,8 @@ def _delivery_row(
     return NotificationDeliveryModel(**values)
 
 
-async def _assert_schema_and_constraints() -> None:
-    engine = create_async_engine(Settings().database_url)
+async def _assert_schema_and_constraints(database_url: str) -> None:
+    engine = create_async_engine(database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     order_id, event_id = uuid4(), uuid4()
     async with session_factory() as session:
@@ -312,8 +316,8 @@ async def _assert_schema_and_constraints() -> None:
         await engine.dispose()
 
 
-async def _insert_phase6_revision() -> object:
-    engine = create_async_engine(Settings().database_url)
+async def _insert_phase6_revision(database_url: str) -> object:
+    engine = create_async_engine(database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     order_id, source_id, snapshot_id, revision_id = uuid4(), uuid4(), uuid4(), uuid4()
     digest = "a" * 64
@@ -364,8 +368,8 @@ async def _insert_phase6_revision() -> object:
     return revision_id
 
 
-async def _revision_exists(revision_id: object) -> bool:
-    engine = create_async_engine(Settings().database_url)
+async def _revision_exists(database_url: str, revision_id: object) -> bool:
+    engine = create_async_engine(database_url)
     try:
         async with engine.connect() as connection:
             return (

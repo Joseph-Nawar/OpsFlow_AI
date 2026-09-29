@@ -50,8 +50,10 @@ def test_phase6_migration_revision_chain_is_locked() -> None:
     assert migration["down_revision"] == PHASE_5_REVISION
 
 
-def test_phase6_migration_upgrade_downgrade_and_reupgrade_preserve_phase5_data() -> None:
-    asyncio.run(_assert_migration_lifecycle())
+def test_phase6_migration_upgrade_downgrade_and_reupgrade_preserve_phase5_data(
+    migration_test_database_url: str,
+) -> None:
+    asyncio.run(_assert_migration_lifecycle(migration_test_database_url))
 
 
 def test_review_revision_repository_is_append_only_and_transaction_owned() -> None:
@@ -60,16 +62,16 @@ def test_review_revision_repository_is_append_only_and_transaction_owned() -> No
     asyncio.run(_assert_review_revision_repository())
 
 
-async def _assert_migration_lifecycle() -> None:
-    _run_alembic("downgrade", PHASE_5_REVISION)
+async def _assert_migration_lifecycle(database_url: str) -> None:
+    _run_alembic("downgrade", PHASE_5_REVISION, database_url=database_url)
     order_id = uuid4()
     source_id = uuid4()
     snapshot_id = uuid4()
-    await _insert_phase5_snapshot(order_id, source_id, snapshot_id)
+    await _insert_phase5_snapshot(order_id, source_id, snapshot_id, database_url)
 
-    _run_alembic("upgrade", "head")
-    assert CURRENT_HEAD_REVISION in _run_alembic("current")
-    engine = create_async_engine(Settings().database_url)
+    _run_alembic("upgrade", "head", database_url=database_url)
+    assert CURRENT_HEAD_REVISION in _run_alembic("current", database_url=database_url)
+    engine = create_async_engine(database_url)
     try:
         async with engine.connect() as connection:
             assert (
@@ -96,9 +98,9 @@ async def _assert_migration_lifecycle() -> None:
     finally:
         await engine.dispose()
 
-    _run_alembic("downgrade", PHASE_5_REVISION)
-    assert PHASE_5_REVISION in _run_alembic("current")
-    engine = create_async_engine(Settings().database_url)
+    _run_alembic("downgrade", PHASE_5_REVISION, database_url=database_url)
+    assert PHASE_5_REVISION in _run_alembic("current", database_url=database_url)
+    engine = create_async_engine(database_url)
     try:
         async with engine.connect() as connection:
             assert (
@@ -125,8 +127,8 @@ async def _assert_migration_lifecycle() -> None:
     finally:
         await engine.dispose()
 
-    _run_alembic("upgrade", "head")
-    assert CURRENT_HEAD_REVISION in _run_alembic("current")
+    _run_alembic("upgrade", "head", database_url=database_url)
+    assert CURRENT_HEAD_REVISION in _run_alembic("current", database_url=database_url)
 
 
 async def _assert_review_revision_repository() -> None:
@@ -230,12 +232,19 @@ async def _assert_review_revision_repository() -> None:
     await engine.dispose()
 
 
-async def _insert_phase5_snapshot(order_id: UUID, source_id: UUID, snapshot_id: UUID) -> None:
-    await _insert_order_snapshot_graph(order_id, source_id, snapshot_id)
+async def _insert_phase5_snapshot(
+    order_id: UUID, source_id: UUID, snapshot_id: UUID, database_url: str
+) -> None:
+    await _insert_order_snapshot_graph(order_id, source_id, snapshot_id, database_url)
 
 
-async def _insert_order_snapshot_graph(order_id: UUID, source_id: UUID, snapshot_id: UUID) -> None:
-    engine = create_async_engine(Settings().database_url)
+async def _insert_order_snapshot_graph(
+    order_id: UUID,
+    source_id: UUID,
+    snapshot_id: UUID,
+    database_url: str | None = None,
+) -> None:
+    engine = create_async_engine(database_url or Settings().database_url)
     try:
         async with engine.begin() as connection:
             await connection.execute(
@@ -316,8 +325,10 @@ def _revision(
     )
 
 
-def _run_alembic(*arguments: str) -> str:
+def _run_alembic(*arguments: str, database_url: str | None = None) -> str:
     environment = os.environ.copy()
+    if database_url is not None:
+        environment["OPSFLOW_DATABASE_URL"] = database_url
     result = subprocess.run(
         [sys.executable, "-m", "alembic", *arguments],
         cwd=REPOSITORY_ROOT,
