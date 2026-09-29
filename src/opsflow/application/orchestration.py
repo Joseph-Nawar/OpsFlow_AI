@@ -128,6 +128,7 @@ async def _persist_failure_result(
     classifier: Callable[[BaseException], FailureClassification],
     actor: str,
     recorded_at: datetime,
+    review_base_url: str,
     idempotent_replay: bool,
 ) -> OrchestrationIntakeResult:
     classification = classifier(error)
@@ -138,6 +139,7 @@ async def _persist_failure_result(
             classification=classification,
             actor=actor,
             recorded_at=recorded_at,
+            review_base_url=review_base_url,
         )
     except SQLAlchemyError:
         raise OrchestrationUnavailableError() from None
@@ -200,7 +202,7 @@ async def execute_orchestration_intake(
         sha256=source_sha256,
         message_id=command.message_id,
         storage_reference=None,
-        metadata=(),
+        metadata=(("source_system", "GMAIL"),) if command.source_system == "GMAIL" else (),
     )
     create_input = CreateOrderInput(
         customer_reference=None,
@@ -271,6 +273,7 @@ async def execute_orchestration_intake(
             classifier=processing_classifier,
             actor=actor,
             recorded_at=failure_at,
+            review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
         )
 
@@ -287,6 +290,7 @@ async def execute_orchestration_intake(
             classifier=processing_classifier,
             actor=actor,
             recorded_at=failure_at,
+            review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
         )
 
@@ -320,6 +324,7 @@ async def execute_orchestration_intake(
             runtime.policy,
             ValidationContext(evaluation_date=runtime.date_provider.current_date()),
             recorded_at + timedelta(microseconds=3),
+            runtime.review_base_url,
         )
     except (
         BusinessDataProviderError,
@@ -333,6 +338,7 @@ async def execute_orchestration_intake(
             classifier=classify_extracted_failure,
             actor=actor,
             recorded_at=recorded_at + timedelta(microseconds=3),
+            review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
         )
     except SQLAlchemyError:

@@ -28,6 +28,7 @@ class OrchestrationIntakeCommand:
     mime_type: str
     message_id: str | None
     idempotency_key: str
+    source_system: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

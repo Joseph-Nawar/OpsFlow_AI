@@ -2,17 +2,18 @@
 
 ## Status of this guide
 
-Phases 0–7 are complete and independently audited. The repository contains the
+Phases 0–8 are complete and independently audited. The repository contains the
 M0 foundation and CI, the Phase 1 domain/state contract, Phase 2 PostgreSQL
 persistence and idempotent core API, Phase 3 document processing, Phase 4
 structured extraction, Phase 5 deterministic validation, Phase 6 review
 contracts, persistence, commands, and React application, and the complete Phase
 7 authenticated orchestration pipeline, pinned local n8n runtime/workflow,
-bounded selective retry, recovery/demo hardening, and independent audit. Phase
-8 is the next planned implementation phase; later integrations remain
+bounded selective retry, recovery/demo hardening, independent audit, and Phase
+8 Gmail intake, durable notifications, Slack delivery, Gmail approval replies,
+and independent whole-phase audit. Phase 9 ERP/CRM integrations remain
 unimplemented. The [Phase 0 audit record](../audits/phase-0-audit.md) through
-the [Phase 6 audit record](../audits/phase-6-audit.md), together with the [Phase
-7 audit record](../audits/phase-7-audit.md), preserve closeout evidence.
+the [Phase 8 audit record](../audits/phase-8-audit.md) preserve closeout
+evidence.
 Commands below distinguish historical verified checks from current or
 still-planned later-milestone workflows.
 
@@ -51,7 +52,7 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
-Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7 `workflows/n8n/` area now exist. Other future areas remain absent until an applicable milestone requires them.
+Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7–8 `workflows/n8n/` area now exist. Phase 8 is `COMPLETE` (M8A–M8F `COMPLETE`); Phase 9 and later integrations remain `NOT STARTED`. Other future areas remain absent until an applicable milestone requires them.
 
 ## Historical verified M0B/M0C backend commands
 
@@ -176,6 +177,15 @@ For deterministic business behavior, follow the red-green-refactor loop where pr
 5. refactor only when the behavior remains covered and the change is justified.
 
 Tests must not remove assertions, change expected results to suit broken behavior, or skip coverage without an explicit reason. Live AI calls and real external side effects must never be hidden in ordinary automated tests.
+
+### Destructive migration test isolation
+
+Integration tests that downgrade Alembic revisions require an explicit
+`OPSFLOW_MIGRATION_TEST_DATABASE_URL` naming a PostgreSQL database whose name
+differs from `OPSFLOW_DATABASE_URL`. If it is unset, those tests skip; they
+never fall back to the configured development database. CI provisions a
+separate migration-test database, and migration subprocesses and schema
+assertions use that same URL.
 
 M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure; M0D adds only the static frontend foundation page; M0E adds only developer commands, CI, and secret scanning. M0D intentionally adds no frontend test framework because it has no meaningful application behavior yet. No business tables, review UI, or later-milestone behavior is covered here.
 

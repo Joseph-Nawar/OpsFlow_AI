@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
@@ -35,6 +35,7 @@ from opsflow.orchestration.failures import (
 from opsflow.persistence.models import (
     AuditEventModel,
     ExtractionSnapshotModel,
+    NotificationDeliveryModel,
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
@@ -115,6 +116,7 @@ async def _assert_processing_retryable_failure() -> None:
                 classification=classification,
                 actor="orchestration:n8n",
                 recorded_at=RECORDED_AT,
+                review_base_url="http://localhost:5173",
             )
             assert session.in_transaction() is False
 
@@ -122,6 +124,11 @@ async def _assert_processing_retryable_failure() -> None:
         assert persisted.order.failure_origin is OrderState.PROCESSING
         async with AsyncSession(engine) as session:
             audits = await get_audit_events(session, order.id)
+            delivery = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == order.id
+                )
+            )
         assert len(audits) == 1
         assert audits[0] == AuditEvent(
             id=audits[0].id,
@@ -131,6 +138,9 @@ async def _assert_processing_retryable_failure() -> None:
             occurred_at=RECORDED_AT,
             description=PROCESSING_DESCRIPTION,
         )
+        assert delivery is not None
+        assert delivery.trigger_audit_event_id == audits[0].id
+        assert (delivery.channel, delivery.kind) == ("SLACK", "PROCESSING_FAILED")
     finally:
         await engine.dispose()
 
@@ -154,6 +164,7 @@ async def _assert_processing_final_failure() -> None:
                 classification=classification,
                 actor="orchestration:n8n",
                 recorded_at=RECORDED_AT,
+                review_base_url="http://localhost:5173",
             )
         assert persisted.order.state is OrderState.FAILED_FINAL
         assert persisted.order.failure_origin is OrderState.PROCESSING
@@ -182,14 +193,23 @@ async def _assert_extracted_retryable_failure() -> None:
                 classification=classification,
                 actor="orchestration:n8n",
                 recorded_at=RECORDED_AT,
+                review_base_url="http://localhost:5173",
             )
             assert session.in_transaction() is False
         assert persisted.order.state is OrderState.FAILED_RETRYABLE
         assert persisted.order.failure_origin is OrderState.EXTRACTED
         async with AsyncSession(engine) as session:
             audits = await get_audit_events(session, order.id)
+            delivery = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == order.id
+                )
+            )
         assert [event.event_type for event in audits] == ["ORDER_VALIDATION_FAILED"]
         assert audits[0].description == EXTRACTED_DESCRIPTION
+        assert delivery is not None
+        assert delivery.trigger_audit_event_id == audits[0].id
+        assert (delivery.channel, delivery.kind) == ("SLACK", "PROCESSING_FAILED")
     finally:
         await engine.dispose()
 
@@ -211,6 +231,7 @@ async def _assert_extracted_final_failure() -> None:
                 classification=classification,
                 actor="orchestration:n8n",
                 recorded_at=RECORDED_AT,
+                review_base_url="http://localhost:5173",
             )
         assert persisted.order.state is OrderState.FAILED_FINAL
         assert persisted.order.failure_origin is OrderState.EXTRACTED
@@ -241,6 +262,7 @@ async def _assert_extracted_reconstruction_provider_failure() -> None:
                 classification=classification,
                 actor="orchestration:n8n",
                 recorded_at=RECORDED_AT,
+                review_base_url="http://localhost:5173",
             )
             assert session.in_transaction() is False
 
@@ -274,6 +296,7 @@ async def _assert_extracted_reconstruction_document_failure() -> None:
                 classification=classification,
                 actor="orchestration:n8n",
                 recorded_at=RECORDED_AT,
+                review_base_url="http://localhost:5173",
             )
             assert session.in_transaction() is False
 
@@ -324,6 +347,7 @@ async def _assert_stale_origin(
                     classification=classification,
                     actor="orchestration:n8n",
                     recorded_at=RECORDED_AT,
+                    review_base_url="http://localhost:5173",
                 )
             assert session.in_transaction() is False
         async with AsyncSession(engine) as session:
@@ -364,6 +388,7 @@ async def _assert_audit_failure_rollback(monkeypatch: pytest.MonkeyPatch) -> Non
                     classification=classification,
                     actor="orchestration:n8n",
                     recorded_at=RECORDED_AT,
+                    review_base_url="http://localhost:5173",
                 )
             assert session.in_transaction() is False
         await _assert_original_state_and_no_audit(engine, order.id, OrderState.PROCESSING)
@@ -375,6 +400,63 @@ def test_state_failure_rolls_back_without_audit_and_propagates_sqlalchemy_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     asyncio.run(_assert_state_failure_rollback(monkeypatch))
+
+
+async def _assert_notification_failure_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+    origin: OrderState,
+) -> None:
+    order, _ = _order(origin)
+    engine = _engine()
+    original = failures_module.create_notification_intent
+
+    async def fail_after_intent(*args: object, **kwargs: object) -> None:
+        await original(*args, **kwargs)
+        raise SQLAlchemyError("SYNTHETIC-NOTIFICATION-PERSISTENCE-FAILURE")
+
+    monkeypatch.setattr(failures_module, "create_notification_intent", fail_after_intent)
+    try:
+        await _commit_order(engine, order)
+        classification = (
+            classify_processing_failure(ProviderError("synthetic"))
+            if origin is OrderState.PROCESSING
+            else classify_extracted_failure(InvalidTrustedDataError())
+        )
+        async with AsyncSession(engine) as session:
+            with pytest.raises(SQLAlchemyError):
+                await persist_orchestration_failure(
+                    session,
+                    order_id=order.id,
+                    classification=classification,
+                    actor="orchestration:n8n",
+                    recorded_at=RECORDED_AT,
+                    review_base_url="http://localhost:5173",
+                )
+            assert session.in_transaction() is False
+
+        await _assert_original_state_no_notification(engine, order.id, origin)
+    finally:
+        await engine.dispose()
+
+
+async def _assert_original_state_no_notification(
+    engine: AsyncEngine,
+    order_id: UUID,
+    state: OrderState,
+) -> None:
+    async with AsyncSession(engine) as session:
+        persisted = await get_order(session, order_id)
+        audits = await get_audit_events(session, order_id)
+        notification_count = await session.scalar(
+            select(func.count())
+            .select_from(NotificationDeliveryModel)
+            .where(NotificationDeliveryModel.order_id == order_id)
+        )
+    assert persisted is not None
+    assert persisted.order.state is state
+    assert persisted.order.failure_origin is None
+    assert audits == ()
+    assert notification_count == 0
 
 
 async def _assert_state_failure_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -398,6 +480,7 @@ async def _assert_state_failure_rollback(monkeypatch: pytest.MonkeyPatch) -> Non
                     classification=classification,
                     actor="orchestration:n8n",
                     recorded_at=RECORDED_AT,
+                    review_base_url="http://localhost:5173",
                 )
             assert session.in_transaction() is False
         await _assert_original_state_and_no_audit(engine, order.id, OrderState.EXTRACTED)

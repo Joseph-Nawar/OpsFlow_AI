@@ -39,6 +39,7 @@ async def build_intake_command(
     message_id: str | None,
     idempotency_key: str,
     *,
+    source_system: str | None = None,
     max_input_bytes: int = DEFAULT_DOCUMENT_LIMITS.max_input_bytes,
 ) -> OrchestrationIntakeCommand:
     """Validate multipart metadata and retain accepted bytes for this request."""
@@ -48,6 +49,7 @@ async def build_intake_command(
     mime_type = _validated_mime_type(upload.content_type)
     _validate_message_id(message_id)
     _validate_idempotency_key(idempotency_key)
+    _validate_source_provenance(source_system, message_id, idempotency_key)
     content = await read_bounded_upload(upload, max_input_bytes)
     return OrchestrationIntakeCommand(
         content=content,
@@ -56,6 +58,7 @@ async def build_intake_command(
         mime_type=mime_type,
         message_id=message_id,
         idempotency_key=idempotency_key,
+        source_system=source_system,
     )
 
 
@@ -106,3 +109,18 @@ def _validate_idempotency_key(idempotency_key: str) -> None:
         raise DocumentValidationError("idempotency key must be a nonblank string")
     if len(idempotency_key) > _MAX_IDEMPOTENCY_KEY_CHARACTERS:
         raise DocumentValidationError("idempotency key exceeds 128 characters")
+
+
+def _validate_source_provenance(
+    source_system: str | None,
+    message_id: str | None,
+    idempotency_key: str,
+) -> None:
+    if source_system is None:
+        return
+    if source_system != "GMAIL":
+        raise DocumentValidationError("source_system is not supported")
+    if message_id is None or not message_id.strip():
+        raise DocumentValidationError("GMAIL source requires a nonblank message_id")
+    if idempotency_key != f"gmail:{message_id}":
+        raise DocumentValidationError("GMAIL source requires its exact message idempotency key")

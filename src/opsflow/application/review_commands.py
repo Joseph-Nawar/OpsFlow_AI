@@ -14,6 +14,8 @@ from opsflow.application.errors import (
     ReviewPersistenceConflictError,
 )
 from opsflow.domain import AuditEvent, Order, OrderState, ValidationSeverity
+from opsflow.notifications.contracts import NotificationChannel, NotificationKind
+from opsflow.notifications.service import create_notification_intent
 from opsflow.persistence.repositories import (
     PersistedOrder,
     get_latest_audit_event_id,
@@ -49,6 +51,7 @@ async def approve_order(
     if_match: str | None,
     operator: OperatorContext,
     recorded_at: datetime,
+    review_base_url: str,
 ) -> ReviewCommandResult:
     """Approve one ready order after rechecking its current authority and ETag."""
 
@@ -80,6 +83,28 @@ async def approve_order(
                 description="Order approved by operator.",
             )
             await insert_audit_event(session, event)
+            await create_notification_intent(
+                session,
+                order=final_order,
+                event=event,
+                channel=NotificationChannel.SLACK,
+                kind=NotificationKind.ORDER_APPROVED,
+                review_base_url=review_base_url,
+            )
+            if any(
+                ("source_system", "GMAIL") in source.metadata
+                and isinstance(source.message_id, str)
+                and source.message_id.strip()
+                for source in persisted.order.source_documents
+            ):
+                await create_notification_intent(
+                    session,
+                    order=final_order,
+                    event=event,
+                    channel=NotificationChannel.GMAIL,
+                    kind=NotificationKind.ORDER_APPROVED,
+                    review_base_url=review_base_url,
+                )
             latest_audit_id = await get_latest_audit_event_id(session, order_id)
     except IntegrityError:
         raise ReviewPersistenceConflictError() from None

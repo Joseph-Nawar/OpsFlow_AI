@@ -43,6 +43,7 @@ def _build(
     document_type: SourceDocumentType | str = SourceDocumentType.PDF,
     message_id: str | None = "message-1",
     idempotency_key: str = "event-1",
+    source_system: str | None = None,
     max_input_bytes: int = 32,
 ) -> OrchestrationIntakeCommand:
     return asyncio.run(
@@ -51,6 +52,7 @@ def _build(
             document_type,
             message_id,
             idempotency_key,
+            source_system=source_system,
             max_input_bytes=max_input_bytes,
         )
     )
@@ -121,6 +123,53 @@ def test_valid_message_id_is_preserved_exactly() -> None:
     command = _build(_upload(), message_id=message_id)
 
     assert command.message_id == message_id
+
+
+def test_generic_message_id_does_not_establish_source_provenance() -> None:
+    command = _build(_upload(), message_id="generic-message-1")
+
+    assert command.message_id == "generic-message-1"
+    assert command.source_system is None
+
+
+def test_gmail_provenance_requires_nonblank_message_id_and_exact_key() -> None:
+    command = _build(
+        _upload(),
+        message_id="gmail-message-1",
+        idempotency_key="gmail:gmail-message-1",
+        source_system="GMAIL",
+    )
+
+    assert command.source_system == "GMAIL"
+    assert command.message_id == "gmail-message-1"
+
+
+@pytest.mark.parametrize(
+    ("source_system", "message_id", "idempotency_key"),
+    [
+        ("GMAIL", None, "gmail:message-1"),
+        ("GMAIL", "   ", "gmail:   "),
+        ("GMAIL", "message-1", "other-key"),
+        ("gmail", "message-1", "gmail:message-1"),
+        ("OUTLOOK", "message-1", "outlook:message-1"),
+    ],
+)
+def test_invalid_gmail_provenance_is_rejected_before_reading_upload(
+    source_system: str,
+    message_id: str | None,
+    idempotency_key: str,
+) -> None:
+    upload = _upload()
+
+    with pytest.raises(DocumentValidationError):
+        _build(
+            upload,
+            source_system=source_system,
+            message_id=message_id,
+            idempotency_key=idempotency_key,
+        )
+
+    assert upload.read_sizes == []
 
 
 @pytest.mark.parametrize("idempotency_key", ["", "   ", "k" * 129])

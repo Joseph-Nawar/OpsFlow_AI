@@ -93,6 +93,7 @@ async def create_orchestration_intake_endpoint(
     session: SessionDependency,
     response: Response,
     message_id: Annotated[str | None, Form()] = None,
+    source_system: Annotated[str | None, Form()] = None,
 ) -> OrchestrationIntakeResponse:
     """Accept one authenticated document and delegate to orchestration intake."""
 
@@ -102,6 +103,7 @@ async def create_orchestration_intake_endpoint(
             document_type,
             message_id,
             idempotency_key,
+            source_system=source_system,
         )
     except (DocumentLimitError, DocumentValidationError, UnsupportedDocumentTypeError) as error:
         raise _invalid_intake() from error

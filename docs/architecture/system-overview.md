@@ -107,15 +107,15 @@ Trusted business data—customers, products, catalogue prices, inventory, and ex
 
 ## Current implementation and next boundary
 
-Phases 0–7 are implemented and independently audited, including the order
+Phases 0–8 are implemented and independently audited, including the order
 aggregate and state machine, PostgreSQL persistence and idempotent order
-creation, canonical document processing, structured extraction, deterministic
-validation, the Phase 6 human-review application, and the Phase 7 authenticated
-intake, idempotent pipeline, pinned self-hosted n8n 2.40.5 sandbox
-orchestration, selective transport retry, reviewer-authorized retry/redelivery
-recovery, and verified local handoff. Phase 7 — n8n Workflow Orchestration is
-`COMPLETE`; Phase 8 is the next implementation boundary. Gmail and Slack remain
-not implemented, ERP/CRM remain later Phase 9 work, and SYNCING remains later
-work. The intended-flow diagram above remains a phased target, not a claim that
-those later integrations already exist. The full phased scope and status are
-maintained in the [project roadmap](../roadmap/project-roadmap.md).
+creation, document processing and extraction, deterministic validation, the
+Phase 6 human-review application, the Phase 7 authenticated intake pipeline,
+and Phase 8 labeled Gmail intake with durable notification delivery, Slack
+notifications, and sender-only Gmail approval replies. Python owns business
+state, provenance, notification eligibility, claims, retry schedules, leases,
+and outcomes; the sanitized n8n 2.40.5 workflows perform provider transport.
+Phase 8 ends at approval-for-processing. ERP/CRM synchronization, `SYNCING`,
+and completion claims remain later work; the intended-flow diagram above is a
+phased target for those capabilities, not a claim that they exist. The full
+phased scope and status are maintained in the [project roadmap](../roadmap/project-roadmap.md).

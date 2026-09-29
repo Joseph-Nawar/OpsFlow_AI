@@ -19,6 +19,8 @@ from opsflow.application.errors import (
 )
 from opsflow.domain import AuditEvent, DomainValidationError, Order, OrderState
 from opsflow.extraction.models import ExtractionDraft
+from opsflow.notifications.contracts import NotificationChannel, NotificationKind
+from opsflow.notifications.service import create_notification_intent
 from opsflow.persistence.mappers import PersistedExtractionSnapshot
 from opsflow.persistence.repositories import (
     PersistedOrder,
@@ -92,6 +94,7 @@ async def save_and_revalidate(
     policy: ValidationPolicy,
     date_provider: ReviewDateProvider,
     recorded_at: datetime,
+    review_base_url: str,
 ) -> ReviewRevalidationResult:
     """Validate a changed human candidate, then atomically persist its result."""
 
@@ -210,6 +213,19 @@ async def save_and_revalidate(
             )
             for event in audit_events:
                 await insert_audit_event(session, event)
+            await create_notification_intent(
+                session,
+                order=final_order,
+                event=audit_events[-1],
+                channel=NotificationChannel.SLACK,
+                kind=(
+                    NotificationKind.APPROVAL_READY
+                    if validation_result.route is ValidationRoute.READY_FOR_APPROVAL
+                    else NotificationKind.REVIEW_REQUIRED
+                ),
+                review_base_url=review_base_url,
+                issues=validation_result.issues,
+            )
     except IntegrityError:
         raise ReviewPersistenceConflictError() from None
 

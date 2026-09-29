@@ -155,6 +155,7 @@ def _runtime(factory: object | None = None) -> OrchestrationRuntime:
         business_data_provider=review.provider,
         policy=review.policy,
         date_provider=review.date_provider,
+        review_base_url="http://localhost:5173",
     )
 
 
@@ -263,6 +264,7 @@ def _install_pipeline(
         policy: object,
         context: object,
         recorded_at: datetime,
+        review_base_url: str,
     ) -> ValidationApplicationResult:
         assert not received_session.in_transaction()
         calls["sequence"].append("validate")  # type: ignore[attr-defined]
@@ -274,6 +276,7 @@ def _install_pipeline(
             policy,
             context,
             recorded_at,
+            review_base_url,
         )
         if validation_error is not None:
             raise validation_error
@@ -291,10 +294,11 @@ def _install_pipeline(
         classification: object,
         actor: str,
         recorded_at: datetime,
+        review_base_url: str,
     ) -> PersistedOrder:
         assert not received_session.in_transaction()
         calls["sequence"].append("failure")  # type: ignore[attr-defined]
-        calls["failure"] = (order_id, classification, actor, recorded_at)
+        calls["failure"] = (order_id, classification, actor, recorded_at, review_base_url)
         target = classification.target  # type: ignore[attr-defined]
         origin = classification.origin  # type: ignore[attr-defined]
         base = claimed.order

@@ -152,6 +152,9 @@ async def _assert_real_http_pipeline_reaches_ready_for_approval(
 
         order_id, counts, event_types = await _read_order_evidence(key)
         assert counts == {"orders": 1, "sources": 1, "idempotency": 1, "snapshots": 1}
+        message_id, source_metadata = await _read_source_provenance(order_id)
+        assert message_id == "task9-ready"
+        assert source_metadata == []
         assert event_types == [
             "ORDER_RECEIVED",
             "ORDER_PROCESSING_STARTED",
@@ -292,6 +295,103 @@ async def _assert_fingerprint_conflict(monkeypatch: pytest.MonkeyPatch) -> None:
         assert counts["orders"] == 1
     finally:
         await _delete_orders((order_id,))
+
+
+async def _assert_gmail_provenance_replay(monkeypatch: pytest.MonkeyPatch) -> None:
+    message_id = "phase8-gmail-valid-message"
+    key = f"gmail:{message_id}"
+    app = _build_test_app(monkeypatch, date(2025, 1, 1))
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client,
+    ):
+        first = await _post_intake(
+            client,
+            key,
+            source_system="GMAIL",
+            message_id=message_id,
+        )
+        replay = await _post_intake(
+            client,
+            key,
+            source_system="GMAIL",
+            message_id=message_id,
+        )
+    assert first.status_code == 201
+    assert replay.status_code == 200
+    assert replay.json()["order_id"] == first.json()["order_id"]
+    assert replay.json()["idempotent_replay"] is True
+    order_id, counts, _ = await _read_order_evidence(key)
+    try:
+        assert counts["orders"] == 1
+        assert counts["sources"] == 1
+        persisted_message_id, source_metadata = await _read_source_provenance(order_id)
+        assert persisted_message_id == message_id
+        assert source_metadata == [["source_system", "GMAIL"]]
+    finally:
+        await _delete_orders((order_id,))
+
+
+async def _assert_gmail_changed_bytes_conflict(monkeypatch: pytest.MonkeyPatch) -> None:
+    message_id = "phase8-gmail-changed-message"
+    key = f"gmail:{message_id}"
+    app = _build_test_app(monkeypatch, date(2025, 1, 1))
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client,
+    ):
+        first = await _post_intake(
+            client,
+            key,
+            source_system="GMAIL",
+            message_id=message_id,
+        )
+        conflict = await _post_intake(
+            client,
+            key,
+            content=b"changed Gmail source bytes\n",
+            source_system="GMAIL",
+            message_id=message_id,
+        )
+    assert first.status_code == 201
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "IDEMPOTENCY_CONFLICT"
+    assert "changed Gmail source bytes" not in conflict.text
+    order_id, counts, _ = await _read_order_evidence(key)
+    try:
+        assert counts["orders"] == 1
+        assert counts["sources"] == 1
+    finally:
+        await _delete_orders((order_id,))
+
+
+async def _assert_invalid_gmail_provenance_has_no_database_effect(
+    monkeypatch: pytest.MonkeyPatch,
+    source_system: str,
+    message_id: str | None,
+    key: str,
+) -> None:
+    before = await _table_counts()
+    app = _build_test_app(monkeypatch, date(2025, 1, 1))
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client,
+    ):
+        response = await _post_intake(
+            client,
+            key,
+            source_system=source_system,
+            message_id=message_id,
+        )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "INVALID_ORCHESTRATION_INTAKE"
+    assert await _table_counts() == before
 
 
 def test_processing_failure_is_retryable_and_reviewer_retry_resumes_once(
@@ -781,6 +881,19 @@ async def _read_state_and_issue_count(order_id: UUID) -> tuple[OrderState, int]:
         await engine.dispose()
 
 
+async def _read_source_provenance(order_id: UUID) -> tuple[str | None, list[list[str]]]:
+    engine = create_async_engine(Settings().database_url)
+    try:
+        async with AsyncSession(engine) as session:
+            source = await session.scalar(
+                select(SourceDocumentModel).where(SourceDocumentModel.order_id == order_id)
+            )
+            assert source is not None
+            return source.message_id, source.metadata_
+    finally:
+        await engine.dispose()
+
+
 async def _corrupt_source_sha(order_id: UUID) -> None:
     engine = create_async_engine(Settings().database_url)
     try:
@@ -816,11 +929,17 @@ async def _post_intake(
     *,
     content: bytes = DOCUMENT,
     mime_type: str = "text/plain",
-    message_id: str = "task9-message",
+    message_id: str | None = "task9-message",
+    source_system: str | None = None,
 ) -> httpx.Response:
+    form_data = {"document_type": "EMAIL_BODY"}
+    if message_id is not None:
+        form_data["message_id"] = message_id
+    if source_system is not None:
+        form_data["source_system"] = source_system
     return await client.post(
         INTAKE_PATH,
-        data={"document_type": "EMAIL_BODY", "message_id": message_id},
+        data=form_data,
         files={"document": ("purchase-order.txt", content, mime_type)},
         headers={
             "Authorization": f"Bearer {ORCHESTRATION_TOKEN}",
@@ -894,6 +1013,7 @@ async def _approve_order(order_id: UUID) -> None:
                 etag,
                 operator,
                 datetime(2030, 1, 1, tzinfo=UTC),
+                "http://localhost:5173",
             )
             assert result.state is OrderState.APPROVED
     finally:

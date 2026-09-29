@@ -58,7 +58,9 @@ def test_orchestration_runtime_is_frozen_and_slotted() -> None:
         "business_data_provider",
         "policy",
         "date_provider",
+        "review_base_url",
     ]
+    assert runtime.review_base_url == "http://localhost:5173"
     with pytest.raises(FrozenInstanceError):
         runtime.policy = runtime.policy  # type: ignore[misc]
 

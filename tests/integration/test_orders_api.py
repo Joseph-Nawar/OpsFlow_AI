@@ -5,8 +5,17 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from opsflow.main import create_app
+from opsflow.persistence.models import (
+    AuditEventModel,
+    OrderCreationIdempotencyModel,
+    OrderLineModel,
+    OrderModel,
+    SourceDocumentModel,
+)
 from opsflow.settings import Settings
 
 
@@ -58,6 +67,8 @@ def test_openapi_exposes_only_the_approved_business_routes() -> None:
         "/v1/orders/{order_id}/audit",
         *review_paths,
         "/v1/orchestration/intakes",
+        "/v1/integrations/notifications/claim",
+        "/v1/integrations/notifications/{notification_id}/outcome",
     }
 
 
@@ -86,6 +97,36 @@ def test_populated_create_returns_generated_children_and_ordered_metadata() -> N
     assert body["source_documents"][0]["metadata"] == [
         {"key": "source", "value": "form"},
         {"key": "source", "value": "archive"},
+    ]
+
+
+def test_generic_order_rejects_reserved_gmail_provenance_without_side_effect() -> None:
+    response, before, after = asyncio.run(_post_order_and_count_tables(_gmail_forgery_payload()))
+
+    assert response.status_code == 422
+    assert after == before
+
+
+def test_generic_order_accepts_message_id_without_reserved_provenance() -> None:
+    payload = {
+        "source_documents": [
+            {
+                "document_type": "EMAIL_BODY",
+                "name": "generic-email",
+                "mime_type": "text/plain",
+                "sha256": "b" * 64,
+                "message_id": "generic-message-only",
+                "metadata": [{"key": "source", "value": "manual-import"}],
+            }
+        ]
+    }
+
+    response = asyncio.run(_post_order(payload))
+
+    assert response.status_code == 201
+    assert response.json()["source_documents"][0]["message_id"] == "generic-message-only"
+    assert response.json()["source_documents"][0]["metadata"] == [
+        {"key": "source", "value": "manual-import"}
     ]
 
 
@@ -205,6 +246,58 @@ async def _post_order(
             return await client.post("/v1/orders", json=payload, headers=request_headers)
 
 
+async def _post_order_and_count_tables(
+    payload: dict[str, object],
+) -> tuple[httpx.Response, dict[str, int], dict[str, int]]:
+    app = create_app(Settings())
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            before = await _order_table_counts()
+            response = await client.post(
+                "/v1/orders",
+                json=payload,
+                headers={"Idempotency-Key": f"api-forged-gmail-{uuid4()}"},
+            )
+            after = await _order_table_counts()
+    return response, before, after
+
+
+async def _order_table_counts() -> dict[str, int]:
+    engine = create_async_engine(Settings().database_url)
+    try:
+        async with AsyncSession(engine) as session:
+            return {
+                "orders": await _count_rows(session, OrderModel),
+                "order_lines": await _count_rows(session, OrderLineModel),
+                "source_documents": await _count_rows(session, SourceDocumentModel),
+                "audit_events": await _count_rows(session, AuditEventModel),
+                "idempotency": await _count_rows(session, OrderCreationIdempotencyModel),
+            }
+    finally:
+        await engine.dispose()
+
+
+async def _count_rows(session: AsyncSession, model: type[object]) -> int:
+    count = await session.scalar(select(func.count()).select_from(model))
+    return int(count or 0)
+
+
+def _gmail_forgery_payload() -> dict[str, object]:
+    return {
+        "source_documents": [
+            {
+                "document_type": "EMAIL_BODY",
+                "name": "forged-gmail-email",
+                "mime_type": "text/plain",
+                "sha256": "c" * 64,
+                "message_id": "forged-gmail-message",
+                "metadata": [{"key": "source_system", "value": "GMAIL"}],
+            }
+        ]
+    }
+
+
 async def _assert_replay() -> None:
     key = f"api-replay-{uuid4()}"
     payload = _populated_payload()
@@ -302,7 +395,9 @@ async def _assert_list() -> None:
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            created_ids = []
+            before = await client.get("/v1/orders?limit=2&offset=0")
+            before_total = before.json()["total"]
+            created_ids: set[str] = set()
             for index in range(2):
                 response = await client.post(
                     "/v1/orders",
@@ -310,16 +405,19 @@ async def _assert_list() -> None:
                     headers={"Idempotency-Key": f"api-list-{uuid4()}"},
                 )
                 assert response.status_code == 201
-                created_ids.append(response.json()["id"])
+                created_ids.add(response.json()["id"])
+            first_page = await client.get("/v1/orders?limit=2&offset=0")
             page = await client.get("/v1/orders?limit=1&offset=1")
             invalid_limit = await client.get("/v1/orders?limit=0")
             invalid_offset = await client.get("/v1/orders?offset=-1")
 
+    assert before.status_code == 200
+    assert first_page.status_code == 200
     assert page.status_code == 200
     body = page.json()
     assert body["limit"] == 1
     assert body["offset"] == 1
-    assert body["total"] >= 2
+    assert body["total"] == before_total + 2
     assert len(body["items"]) == 1
     assert set(body["items"][0]) == {
         "id",
@@ -331,7 +429,8 @@ async def _assert_list() -> None:
         "state",
         "created_at",
     }
-    assert body["items"][0]["id"] in created_ids
+    assert len(created_ids) == 2
+    assert body["items"][0]["id"] == first_page.json()["items"][1]["id"]
     assert invalid_limit.status_code == 422
     assert invalid_offset.status_code == 422
 

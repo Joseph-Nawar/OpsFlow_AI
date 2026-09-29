@@ -21,6 +21,7 @@ from opsflow.persistence.models import (
     AuditEventModel,
     Base,
     ExtractionSnapshotModel,
+    NotificationDeliveryModel,
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
@@ -106,6 +107,23 @@ EXPECTED_COLUMNS = {
         "actor",
         "created_at",
     },
+    "notification_deliveries": {
+        "id",
+        "order_id",
+        "trigger_audit_event_id",
+        "channel",
+        "kind",
+        "payload",
+        "status",
+        "attempt_count",
+        "claim_token",
+        "claim_expires_at",
+        "next_attempt_at",
+        "provider_reference",
+        "last_failure_code",
+        "created_at",
+        "updated_at",
+    },
 }
 
 
@@ -159,6 +177,7 @@ def test_named_models_map_to_the_expected_relational_tables() -> None:
             OrderCreationIdempotencyModel,
             ExtractionSnapshotModel,
             ReviewRevisionModel,
+            NotificationDeliveryModel,
         )
     } == set(EXPECTED_COLUMNS)
 

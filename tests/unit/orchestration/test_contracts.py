@@ -47,11 +47,13 @@ def test_command_is_immutable_slotted_and_preserves_input_values() -> None:
         "mime_type",
         "message_id",
         "idempotency_key",
+        "source_system",
     )
     assert command.content == b"original bytes"
     assert command.filename == "invoice.pdf"
     assert command.message_id == "message-1"
     assert command.idempotency_key == "event-1"
+    assert command.source_system is None
 
     with pytest.raises(FrozenInstanceError):
         command.filename = "changed.pdf"  # type: ignore[misc]

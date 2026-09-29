@@ -192,3 +192,139 @@ may therefore stand down in `PROCESSING` or `EXTRACTED`. Stop the local API,
 n8n, PostgreSQL, and Vite processes after verification; preserve named
 volumes, remove temporary response/environment files, and never commit local
 credentials, runtime state, execution data, or raw documents.
+
+## Phase 8 Gmail intake
+
+`opsflow-gmail-intake.json` is the inactive, sanitized M8C workflow for n8n
+`2.40.5`. Its Gmail Trigger is restricted to search
+`label:OpsFlow/Intake`; create that label and use a Gmail UI filter or manually
+apply it only to synthetic messages in a dedicated sandbox mailbox. The label
+routes mailbox messages but does not narrow OAuth access.
+
+Use a dedicated test mailbox, never a personal or customer mailbox. Configure
+the local credential `OpsFlow Gmail Sandbox` with the approved scopes:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.send
+```
+
+After importing, relink that Gmail credential and the existing
+`OpsFlow Orchestration` HTTP bearer credential. Set the bearer token from the
+local `OPSFLOW_ORCHESTRATION_TOKEN`. Keep OAuth client values, tokens, mailbox
+data, and credential IDs out of version control.
+
+The one Code v2 node runs once per message and only counts supported
+`attachment_` binaries, ignores `image/*`, applies suffix-based PDF/XLSX/CSV
+metadata, and copies the single selected binary under `document` without
+re-encoding its bytes. Multiple supported files stop visibly as
+`AMBIGUOUS_SUPPORTED_ATTACHMENTS`. With none, parser text is preferred; HTML
+is converted to visible text only when plain text is absent. The body path
+normalizes line endings and Unicode, trims outer whitespace only, and creates
+`email-body.txt` as `EMAIL_BODY` / `text/plain`. Empty normalized content stops
+as `NO_SUPPORTED_SOURCE`.
+
+The workflow sends the raw Gmail message ID, `source_system=GMAIL`, and exact
+`gmail:<message_id>` idempotency key to the existing
+`/v1/orchestration/intakes` endpoint. Only transport failures and exact HTTP
+503 receive two one-second retries. Backend states lead to Review Required,
+Approval Required, Retryable Failure, Final Failure, In Progress, or
+Validation Pending; unrecognized states remain visible as Unexpected State.
+
+The workflow disables successful, failed, and manual execution-data saving.
+After the controlled matrix, inspect only synthetic pass/fail results and
+remove any retained n8n executions. Never export or commit mailbox contents,
+attachments, headers, OAuth material, or live execution data.
+
+M8C sandbox verification completed on n8n `2.40.5` with a dedicated Gmail
+sandbox and a `[OpsFlow M8C]` subject filter that applies `OpsFlow/Intake`.
+Case A had previously passed; Cases B–I passed, including authenticated
+OpsFlow intake, attachment/body selection, byte-hash parity, Gmail provenance,
+exact replay, and the changed-bytes 409 conflict boundary. The approved single
+Code v2 exception remains limited to attachment-envelope normalization.
+The workflow is inactive and saved execution data was cleared. No secrets,
+mailbox content, or test attachments were retained.
+
+## Phase 8 Slack notification dispatch
+
+`opsflow-notification-dispatch.json` is the inactive, sanitized M8D workflow
+for n8n `2.40.5`. Its Schedule Trigger runs every minute and makes one
+authenticated claim request per execution. HTTP 204 ends with a no-work result;
+only `channel=SLACK` reaches the native Slack 2.7 Message / Send node. Other
+channels end visibly as deferred without a provider send.
+
+On import, relink the local `OpsFlow Orchestration` HTTP bearer credential and
+create the local `OpsFlow Slack Sandbox` Slack API credential. Configure the
+Slack node's channel locator locally in the n8n editor using the sandbox
+channel ID; the committed workflow leaves that value empty so no workspace or
+channel identifier is tracked. The sandbox bot needs only `chat:write` and
+must be invited to that channel. Never export or commit its bot token.
+
+The Slack node forwards the backend's pre-rendered `payload.text` unchanged.
+On confirmed success, the workflow reports only Slack's `message_timestamp`
+as `provider_reference`. Provider errors become a fixed `UNKNOWN_FAILURE`
+code with no raw diagnostics; pinned Slack 2.7 does not expose Retry-After
+through its node result, so the workflow omits the hint. There is no provider
+retry, Wait, or loop: Python's durable claim, attempt, retry, lease, and final
+failure contract remains authoritative. If Slack accepts a send and the
+outcome acknowledgement is lost, a later lease recovery may send a duplicate;
+exactly-once external delivery is not claimed.
+
+M8D live verification passed on n8n `2.40.5` with a dedicated Slack sandbox
+app limited to `chat:write`. Pinned Slack 2.7 defaults to appending an n8n
+workflow footer, so the workflow explicitly sets
+`includeLinkToWorkflow: false`; the pinned request builder then submits the
+configured backend `payload.text` unchanged to `chat.postMessage`. The Slack
+response text echo is not retained; only the confirmed message timestamp is
+reported as the provider reference.
+
+The empty-queue case returned 204 without a provider call. REVIEW_REQUIRED
+and ORDER_APPROVED each completed one-claim/one-send/one-delivered-outcome
+executions; REVIEW_REQUIRED was rerun three times during text-boundary
+remediation, with one send per execution. A controlled invalid-channel case
+made one provider attempt and one `UNKNOWN_FAILURE` outcome; Python scheduled
+the retry. A successful send with lost outcome acknowledgement did not send
+again in that execution; controlled lease expiry confirmed later claim
+recovery can permit a duplicate external message. No provider retry or Wait
+node exists. Live before/after evidence and backend regressions confirm
+delivery does not change order state or audit history; review URLs still
+require normal OpsFlow operator authentication.
+
+Execution data saving is disabled for successful, failed, and manual runs.
+The dispatcher is inactive with zero retained executions. Temporary test
+settings, workflow versions, and execution data were removed; local sandbox
+credentials/channel remain configured. No secrets or raw provider responses
+were retained in the repository or n8n execution history.
+
+## Phase 8 Gmail approval replies (M8E complete)
+
+The dispatcher routes only backend claims with `channel=GMAIL` to one native
+Gmail 2.2 Message / Reply node. It uses the persisted original Gmail message
+ID, sends the backend-owned plain-text body unchanged, replies to the sender
+only, adds no attribution or attachments, and reports only Gmail's confirmed
+reply ID through the existing authenticated outcome endpoint. Gmail provider
+retry is disabled; bounded failure normalization and retry scheduling remain
+backend-owned. Generic sources with a `message_id` but without persisted
+`source_system=GMAIL` provenance cannot create a Gmail approval intent.
+
+The exact reply body is `Your purchase order has been approved for processing.`
+No synchronization or completion claim is made. Contract tests and live primary
+and clean-clone intake-to-review-to-approval-to-Slack-and-Gmail runs passed.
+The clean clone used fresh PostgreSQL and n8n storage with credentials manually
+relinked; no primary database or credential storage was copied. The primary
+development database is now a fresh baseline at migration head; previous local
+synthetic rows were not reconstructed. Destructive migration tests require the
+separate `OPSFLOW_MIGRATION_TEST_DATABASE_URL` and skip when it is absent.
+
+The paused clean-clone dispatcher left pre-approval `REVIEW_REQUIRED` and
+`APPROVAL_READY` intents pending; they were quarantined for the test and their
+scheduling fields were restored. M8F confirmed normal downtime or queue delay
+can produce the same ordering. Slack now describes these as historical state
+entries: `Order entered NEEDS_REVIEW ...` and `Order entered
+READY_FOR_APPROVAL.` Delayed delivery therefore reports the triggering event
+instead of asserting that the action is still pending. The event-driven intents
+remain durable and are not cancelled or superseded. Provider retries remain
+disabled in n8n; Python owns claims, leases, backoff, and terminal outcomes. A
+provider success followed by lost outcome acknowledgement can lead to duplicate
+external delivery after lease recovery. Retain no mailbox content, provider
+response, credential value, or execution history.

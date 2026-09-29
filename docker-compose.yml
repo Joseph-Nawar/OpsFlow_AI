@@ -25,6 +25,7 @@ services:
       OPSFLOW_DATABASE_URL: postgresql+asyncpg://opsflow:opsflow@postgres:5432/opsflow
       OPSFLOW_ORCHESTRATION_TOKEN: ${OPSFLOW_ORCHESTRATION_TOKEN:-}
       OPSFLOW_REVIEW_DEV_OPERATORS: ${OPSFLOW_REVIEW_DEV_OPERATORS:-}
+      OPSFLOW_REVIEW_BASE_URL: ${OPSFLOW_REVIEW_BASE_URL:-http://localhost:5173}
     ports:
       - "8000:8000"
 

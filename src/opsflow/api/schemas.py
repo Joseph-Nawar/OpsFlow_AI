@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from opsflow.application.orders import (
     CreateLineInput,
@@ -55,6 +55,15 @@ class SourceDocumentCreate(BaseModel):
     message_id: str | None = None
     storage_reference: str | None = None
     metadata: list[MetadataPair] = Field(default_factory=list)
+
+    @field_validator("metadata")
+    @classmethod
+    def reject_reserved_source_system_metadata(
+        cls, metadata: list[MetadataPair]
+    ) -> list[MetadataPair]:
+        if any(pair.key == "source_system" for pair in metadata):
+            raise ValueError("source_system metadata is reserved")
+        return metadata
 
 
 class OrderCreateRequest(BaseModel):

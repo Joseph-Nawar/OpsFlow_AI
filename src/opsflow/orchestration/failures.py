@@ -21,6 +21,8 @@ from opsflow.extraction.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
+from opsflow.notifications.contracts import NotificationChannel, NotificationKind
+from opsflow.notifications.service import create_notification_intent
 from opsflow.persistence.repositories import (
     PersistedOrder,
     get_order_for_update,
@@ -150,6 +152,7 @@ async def persist_orchestration_failure(
     classification: FailureClassification,
     actor: str,
     recorded_at: datetime,
+    review_base_url: str,
 ) -> PersistedOrder:
     """Persist one typed failure and its audit event in one short transaction."""
 
@@ -169,16 +172,22 @@ async def persist_orchestration_failure(
 
         failed_order = locked.order.transition_to(classification.target)
         await update_order_snapshot(session, failed_order)
-        await insert_audit_event(
+        event = AuditEvent(
+            id=uuid4(),
+            order_id=order_id,
+            event_type=classification.event_type,
+            actor=actor,
+            occurred_at=recorded_at,
+            description=classification.description,
+        )
+        await insert_audit_event(session, event)
+        await create_notification_intent(
             session,
-            AuditEvent(
-                id=uuid4(),
-                order_id=order_id,
-                event_type=classification.event_type,
-                actor=actor,
-                occurred_at=recorded_at,
-                description=classification.description,
-            ),
+            order=failed_order,
+            event=event,
+            channel=NotificationChannel.SLACK,
+            kind=NotificationKind.PROCESSING_FAILED,
+            review_base_url=review_base_url,
         )
 
     return PersistedOrder(failed_order, locked.created_at, locked.validation_issues)

@@ -44,6 +44,7 @@ class OrchestrationRuntime:
     business_data_provider: BusinessDataProvider
     policy: ValidationPolicy
     date_provider: ReviewDateProvider
+    review_base_url: str
 
 
 def _build_fake_provider() -> LLMProvider:
@@ -90,6 +91,7 @@ def build_orchestration_runtime(
         business_data_provider=selected_review_runtime.provider,
         policy=selected_review_runtime.policy,
         date_provider=selected_review_runtime.date_provider,
+        review_base_url=settings.review_base_url,
     )
 
 

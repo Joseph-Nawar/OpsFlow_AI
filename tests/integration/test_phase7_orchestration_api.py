@@ -66,13 +66,19 @@ def test_openapi_exposes_exactly_the_phase7_intake_boundary() -> None:
         openapi,
         operation["requestBody"]["content"]["multipart/form-data"]["schema"],
     )
-    assert set(request_schema["properties"]) == {"document", "document_type", "message_id"}
+    assert set(request_schema["properties"]) == {
+        "document",
+        "document_type",
+        "message_id",
+        "source_system",
+    }
     assert (
         request_schema["properties"]["document"]["contentMediaType"] == "application/octet-stream"
     )
     assert request_schema["properties"]["document_type"]["type"] == "string"
     assert request_schema["properties"]["message_id"]["anyOf"][0]["type"] == "string"
     assert "message_id" not in request_schema["required"]
+    assert "source_system" not in request_schema["required"]
     assert "document_type" in request_schema["required"]
     assert operation["security"]
     response_schema = _resolve_schema(
@@ -198,9 +204,77 @@ def test_valid_request_forwards_exact_command_actor_session_and_timestamp() -> N
     assert command.mime_type == "application/pdf"
     assert command.message_id == "message-id-001"
     assert command.idempotency_key == "key-unchanged-001"
+    assert command.source_system is None
     assert actor == "orchestration:n8n"
     assert isinstance(recorded_at, datetime)
     assert recorded_at.tzinfo is UTC
+
+
+def test_valid_gmail_provenance_is_forwarded_without_rewriting_identity() -> None:
+    stub = RecordingHandler(_result())
+    response = asyncio.run(
+        _post_with_handler(
+            stub,
+            source_system="GMAIL",
+            message_id="gmail-message-001",
+            idempotency_key="gmail:gmail-message-001",
+        )
+    )
+
+    assert response.status_code == 201
+    assert stub.calls[0][1].source_system == "GMAIL"
+    assert stub.calls[0][1].message_id == "gmail-message-001"
+    assert stub.calls[0][1].idempotency_key == "gmail:gmail-message-001"
+
+
+@pytest.mark.parametrize(
+    ("source_system", "message_id", "idempotency_key"),
+    [
+        ("GMAIL", None, "gmail:message-001"),
+        ("GMAIL", "   ", "gmail:   "),
+        ("GMAIL", "message-001", "wrong-key"),
+        ("OUTLOOK", "message-001", "outlook:message-001"),
+    ],
+)
+def test_invalid_gmail_provenance_returns_bounded_422_without_handler_call(
+    source_system: str,
+    message_id: str | None,
+    idempotency_key: str,
+) -> None:
+    stub = RecordingHandler(_result())
+    response = asyncio.run(
+        _post_with_handler(
+            stub,
+            source_system=source_system,
+            message_id=message_id,
+            idempotency_key=idempotency_key,
+        )
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": {
+            "code": "INVALID_ORCHESTRATION_INTAKE",
+            "message": "The orchestration intake request is invalid.",
+        }
+    }
+    assert stub.calls == []
+
+
+def test_overlong_gmail_prefixed_key_returns_bounded_422() -> None:
+    message_id = "m" * 123
+    response = asyncio.run(
+        _post_with_handler(
+            RecordingHandler(_result()),
+            source_system="GMAIL",
+            message_id=message_id,
+            idempotency_key=f"gmail:{message_id}",
+        )
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "INVALID_ORCHESTRATION_INTAKE"
+    assert message_id not in response.text
 
 
 @pytest.mark.parametrize(
@@ -419,6 +493,7 @@ async def _post_with_handler(
     content: bytes = PDF_BYTES,
     filename: str = "invoice.pdf",
     message_id: str | None = "message-id-001",
+    source_system: str | None = None,
     idempotency_key: str = "api-test-key",
     include_idempotency_key: bool = True,
     extra_headers: dict[str, str] | None = None,
@@ -430,6 +505,8 @@ async def _post_with_handler(
     form = data if data is not None else {"document_type": "PDF"}
     if message_id is not None:
         form["message_id"] = message_id
+    if source_system is not None:
+        form["source_system"] = source_system
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:

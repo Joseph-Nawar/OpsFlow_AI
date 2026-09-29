@@ -6,6 +6,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 import opsflow.application.validation as validation_module
@@ -22,6 +23,7 @@ from opsflow.domain import (
 )
 from opsflow.extraction.models import ExtractedLine, ExtractionDraft
 from opsflow.persistence.mappers import PersistedExtractionSnapshot
+from opsflow.persistence.models import NotificationDeliveryModel
 from opsflow.persistence.repositories import (
     PersistedOrder,
     get_audit_events,
@@ -225,6 +227,7 @@ async def _assert_ready_validation() -> None:
                 make_policy(),
                 ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         assert provider.calls == 1
         assert result.order.state is OrderState.READY_FOR_APPROVAL
@@ -237,6 +240,11 @@ async def _assert_ready_validation() -> None:
             persisted = await get_order(session, order_id)
             snapshot = await get_extraction_snapshot(session, order_id, source_id)
             audits = await get_audit_events(session, order_id)
+            delivery = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == order_id
+                )
+            )
         assert persisted is not None
         assert persisted.order == result.order
         assert snapshot is not None
@@ -246,6 +254,9 @@ async def _assert_ready_validation() -> None:
             "ORDER_VALIDATED",
             "ORDER_READY_FOR_APPROVAL",
         ]
+        assert delivery is not None
+        assert delivery.trigger_audit_event_id == audits[-1].id
+        assert (delivery.channel, delivery.kind) == ("SLACK", "APPROVAL_READY")
         assert [event.actor for event in audits] == ["system"] * 3
         assert [event.description for event in audits] == [
             "Immutable extraction snapshot recorded for the order source document.",
@@ -258,8 +269,9 @@ async def _assert_ready_validation() -> None:
 
 async def _assert_uppercase_persisted_source_sha() -> None:
     order_id, source_id = uuid4(), uuid4()
-    canonical_source = make_source(source_id, "a" * 64)
-    persisted_source = make_source(source_id, "A" * 64)
+    source_sha256 = uuid4().hex * 2
+    canonical_source = make_source(source_id, source_sha256)
+    persisted_source = make_source(source_id, source_sha256.upper())
     order = make_extracted_order(order_id, persisted_source)
     engine = create_async_engine(Settings().database_url)
     try:
@@ -274,6 +286,7 @@ async def _assert_uppercase_persisted_source_sha() -> None:
                 make_policy(),
                 ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
 
         assert result.validation_result.route is ValidationRoute.READY_FOR_APPROVAL
@@ -281,10 +294,10 @@ async def _assert_uppercase_persisted_source_sha() -> None:
             snapshot = await get_extraction_snapshot(session, order_id, source_id)
             persisted = await get_order(session, order_id)
         assert snapshot is not None
-        assert snapshot.source_sha256 == "a" * 64
-        assert snapshot.draft.source_sha256 == "a" * 64
+        assert snapshot.source_sha256 == source_sha256
+        assert snapshot.draft.source_sha256 == source_sha256
         assert persisted is not None
-        assert persisted.order.source_documents[0].sha256 == "A" * 64
+        assert persisted.order.source_documents[0].sha256 == source_sha256.upper()
     finally:
         await engine.dispose()
 
@@ -314,6 +327,7 @@ async def _assert_review_validation() -> None:
                 make_policy(),
                 ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         assert result.order.state is OrderState.NEEDS_REVIEW
         assert result.validation_result.route is ValidationRoute.NEEDS_REVIEW
@@ -324,6 +338,11 @@ async def _assert_review_validation() -> None:
             persisted = await get_order(session, order_id)
             snapshot = await get_extraction_snapshot(session, order_id, source_id)
             audits = await get_audit_events(session, order_id)
+            delivery = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == order_id
+                )
+            )
         assert persisted is not None
         assert persisted.order.customer_reference == order.customer_reference
         assert persisted.order.lines == order.lines
@@ -344,6 +363,9 @@ async def _assert_review_validation() -> None:
             "ORDER_VALIDATED",
             "ORDER_NEEDS_REVIEW",
         ]
+        assert delivery is not None
+        assert delivery.trigger_audit_event_id == audits[-1].id
+        assert (delivery.channel, delivery.kind) == ("SLACK", "REVIEW_REQUIRED")
     finally:
         await engine.dispose()
 
@@ -365,6 +387,7 @@ async def _assert_high_value_validation() -> None:
                 make_policy("24"),
                 ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         assert result.order.state is OrderState.READY_FOR_APPROVAL
         assert result.validation_result.approval_level.value == "ELEVATED"
@@ -388,7 +411,7 @@ async def _assert_high_value_validation() -> None:
 async def _assert_duplicate_customer_po_validation() -> None:
     first_order_id, first_source_id = uuid4(), uuid4()
     second_order_id, second_source_id = uuid4(), uuid4()
-    duplicate_po = "DUPLICATE-PO"
+    duplicate_po = f"DUPLICATE-PO-{uuid4()}"
     first_source = make_source(first_source_id)
     second_source = make_source(second_source_id)
     first_order = make_extracted_order(first_order_id, first_source)
@@ -406,6 +429,7 @@ async def _assert_duplicate_customer_po_validation() -> None:
                 make_policy(),
                 ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         assert first_result.order.state is OrderState.READY_FOR_APPROVAL
 
@@ -420,6 +444,7 @@ async def _assert_duplicate_customer_po_validation() -> None:
                 make_policy(),
                 ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
 
         assert result.order.state is OrderState.NEEDS_REVIEW
@@ -473,6 +498,7 @@ async def _assert_duplicate_sha_validation() -> None:
                 make_policy(),
                 ValidationContext(date(2030, 1, 2)),
                 RECORDED_AT,
+                "http://localhost:5173",
             )
         assert result.validation_result.route is ValidationRoute.NEEDS_REVIEW
         assert any(
@@ -506,6 +532,7 @@ async def _assert_final_write_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
                     make_policy(),
                     ValidationContext(date(2030, 1, 2)),
                     RECORDED_AT,
+                    "http://localhost:5173",
                 )
 
         async with AsyncSession(engine) as session:
@@ -523,6 +550,8 @@ async def _assert_final_write_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
 async def _assert_final_write_failure_stage(
     monkeypatch: pytest.MonkeyPatch,
     failure_stage: str,
+    *,
+    quantity: Decimal | None = Decimal("2"),
 ) -> None:
     order_id, source_id = uuid4(), uuid4()
     source = make_source(source_id)
@@ -542,6 +571,7 @@ async def _assert_final_write_failure_stage(
         "order": "update_order_snapshot",
         "graph": "replace_order_graph",
         "audit": "insert_audit_event",
+        "notification": "create_notification_intent",
     }[failure_stage]
     original = getattr(validation_module, target_name)
 
@@ -562,22 +592,29 @@ async def _assert_final_write_failure_stage(
                     session,
                     order_id,
                     source_id,
-                    make_draft(source),
+                    make_draft(source, quantity=quantity),
                     FixedProvider(make_business_data()),
                     make_policy(),
                     ValidationContext(date(2030, 1, 2)),
                     RECORDED_AT,
+                    "http://localhost:5173",
                 )
 
         async with AsyncSession(engine) as session:
             persisted = await get_order(session, order_id)
             snapshot = await get_extraction_snapshot(session, order_id, source_id)
             audits = await get_audit_events(session, order_id)
+            notification_count = await session.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.order_id == order_id)
+            )
         assert persisted is not None
         assert persisted.order == order
         assert persisted.validation_issues == (prior_issue,)
         assert snapshot is None
         assert audits == ()
+        assert notification_count == 0
     finally:
         await engine.dispose()
 
@@ -608,6 +645,7 @@ async def _assert_final_state_race(monkeypatch: pytest.MonkeyPatch) -> None:
                     make_policy(),
                     ValidationContext(date(2030, 1, 2)),
                     RECORDED_AT,
+                    "http://localhost:5173",
                 )
 
         async with AsyncSession(engine) as session:
@@ -650,6 +688,7 @@ async def _assert_final_facts_change(monkeypatch: pytest.MonkeyPatch) -> None:
                     make_policy(),
                     ValidationContext(date(2030, 1, 2)),
                     RECORDED_AT,
+                    "http://localhost:5173",
                 )
 
         async with AsyncSession(engine) as session:
@@ -693,6 +732,7 @@ async def _assert_final_review_facts_change(monkeypatch: pytest.MonkeyPatch) -> 
                     make_policy(),
                     ValidationContext(date(2030, 1, 2)),
                     RECORDED_AT,
+                    "http://localhost:5173",
                 )
 
         async with AsyncSession(engine) as session:

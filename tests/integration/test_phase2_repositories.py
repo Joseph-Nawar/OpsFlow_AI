@@ -1,7 +1,7 @@
 """Real-PostgreSQL tests for concrete Phase 2 repository operations."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -47,6 +47,10 @@ def test_missing_order_returns_none() -> None:
 
 def test_list_returns_summaries_with_deterministic_pagination_and_total() -> None:
     asyncio.run(_assert_list_behavior())
+
+
+def test_list_pagination_is_deterministic_with_an_unrelated_newer_order() -> None:
+    asyncio.run(_assert_list_behavior_with_newer_existing_order())
 
 
 def test_audit_events_are_domain_records_in_deterministic_order() -> None:
@@ -198,16 +202,21 @@ async def _assert_list_behavior() -> None:
     before_engine = create_async_engine(Settings().database_url)
     try:
         async with AsyncSession(before_engine) as session:
-            before_total = await session.scalar(select(func.count()).select_from(OrderModel))
+            before_total, latest_created_at = (
+                await session.execute(select(func.count(), func.max(OrderModel.created_at)))
+            ).one()
     finally:
         await before_engine.dispose()
 
-    order_low = Order.received(id=UUID("11111111-1111-4111-8111-111111111111"), po_number="low")
-    order_high = Order.received(id=UUID("33333333-3333-4333-8333-333333333333"), po_number="high")
-    order_middle = Order.received(
-        id=UUID("22222222-2222-4222-8222-222222222222"), po_number="middle"
+    low_id, middle_id, high_id = sorted(uuid4() for _ in range(3))
+    order_low = Order.received(id=low_id, po_number="low")
+    order_high = Order.received(id=high_id, po_number="high")
+    order_middle = Order.received(id=middle_id, po_number="middle")
+    created_at = (
+        latest_created_at + timedelta(microseconds=1)
+        if latest_created_at is not None
+        else datetime(2030, 2, 1, tzinfo=UTC)
     )
-    created_at = datetime(2030, 2, 1, tzinfo=UTC)
     engine = create_async_engine(Settings().database_url)
     try:
         async with AsyncSession(engine) as session:
@@ -245,6 +254,23 @@ async def _assert_list_behavior() -> None:
             assert not hasattr(items[0], "lines")
     finally:
         await engine.dispose()
+
+
+async def _assert_list_behavior_with_newer_existing_order() -> None:
+    existing_order = Order.received(id=uuid4(), po_number="unrelated-newer")
+    engine = create_async_engine(Settings().database_url)
+    try:
+        async with AsyncSession(engine) as session:
+            await insert_order_graph(
+                session,
+                existing_order,
+                datetime(2090, 1, 1, tzinfo=UTC),
+            )
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+    await _assert_list_behavior()
 
 
 async def _assert_audit_behavior() -> None:

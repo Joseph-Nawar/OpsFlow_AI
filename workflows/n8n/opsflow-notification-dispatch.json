@@ -1,0 +1,874 @@
+[
+  {
+    "id": "opsflowNotificationDispatch1",
+    "active": false,
+    "name": "OpsFlow Notification Dispatch",
+    "tags": [],
+    "settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "none",
+      "saveDataSuccessExecution": "none",
+      "saveManualExecutions": false
+    },
+    "staticData": null,
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes",
+                "minutesInterval": 1
+              }
+            ]
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000001",
+        "name": "Schedule Every Minute",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.4,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpBearerAuth",
+          "method": "POST",
+          "url": "={{ 'http://' + 'api' + ':8000' + '/v1/integrations/notifications/claim' }}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json",
+                "fullResponse": true
+              }
+            }
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000002",
+        "name": "Claim One Notification",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "onError": "continueErrorOutput",
+        "retryOnFail": false,
+        "position": [
+          260,
+          0
+        ],
+        "credentials": {
+          "httpBearerAuth": {
+            "name": "OpsFlow Orchestration"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "outputKey": "HTTP 200 Claim",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.statusCode }}",
+                      "rightValue": 200,
+                      "operator": {
+                        "type": "number",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "outputKey": "HTTP 204 No Work",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.statusCode }}",
+                      "rightValue": 204,
+                      "operator": {
+                        "type": "number",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Unexpected Claim Response"
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000003",
+        "name": "Route Claim Response",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          520,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8d000000-0000-4000-8000-000000000004",
+                "name": "operator_outcome",
+                "value": "NO_WORK",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000005",
+        "name": "No Work Available",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          800,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8d000000-0000-4000-8000-000000000006",
+                "name": "operator_outcome",
+                "value": "CLAIM_API_FAILURE",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000007",
+        "name": "Claim Response Failed",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          800,
+          320
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8d000000-0000-4000-8000-000000000008",
+                "name": "operator_outcome",
+                "value": "CLAIM_TRANSPORT_FAILURE",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000009",
+        "name": "Claim Transport Failed",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          520,
+          380
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "outputKey": "SLACK",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.channel }}",
+                      "rightValue": "SLACK",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "outputKey": "GMAIL",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.channel }}",
+                      "rightValue": "GMAIL",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Unsupported Channel"
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000010",
+        "name": "Route Notification Channel",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          800,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8d000000-0000-4000-8000-000000000011",
+                "name": "operator_outcome",
+                "value": "UNSUPPORTED_CHANNEL_DEFERRED",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000012",
+        "name": "Unsupported Channel Deferred",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          1100,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "authentication": "accessToken",
+          "resource": "message",
+          "operation": "post",
+          "select": "channel",
+          "channelId": {
+            "__rl": true,
+            "value": "",
+            "mode": "id"
+          },
+          "messageType": "text",
+          "text": "={{ $json.body.payload.text }}",
+          "otherOptions": {
+            "includeLinkToWorkflow": false
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000013",
+        "name": "Send Slack Notification",
+        "type": "n8n-nodes-base.slack",
+        "typeVersion": 2.7,
+        "onError": "continueErrorOutput",
+        "retryOnFail": false,
+        "position": [
+          1100,
+          0
+        ],
+        "credentials": {
+          "slackApi": {
+            "name": "OpsFlow Slack Sandbox"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8d000000-0000-4000-8000-000000000014",
+                "name": "notification_id",
+                "value": "={{ $('Claim One Notification').item.json.body.notification_id }}",
+                "type": "string"
+              },
+              {
+                "id": "8d000000-0000-4000-8000-000000000015",
+                "name": "claim_token",
+                "value": "={{ $('Claim One Notification').item.json.body.claim_token }}",
+                "type": "string"
+              },
+              {
+                "id": "8d000000-0000-4000-8000-000000000016",
+                "name": "outcome",
+                "value": "DELIVERED",
+                "type": "string"
+              },
+              {
+                "id": "8d000000-0000-4000-8000-000000000017",
+                "name": "provider_reference",
+                "value": "={{ $json.message_timestamp }}",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000018",
+        "name": "Normalize Slack Success",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          1380,
+          -120
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8d000000-0000-4000-8000-000000000019",
+                "name": "notification_id",
+                "value": "={{ $('Claim One Notification').item.json.body.notification_id }}",
+                "type": "string"
+              },
+              {
+                "id": "8d000000-0000-4000-8000-000000000020",
+                "name": "claim_token",
+                "value": "={{ $('Claim One Notification').item.json.body.claim_token }}",
+                "type": "string"
+              },
+              {
+                "id": "8d000000-0000-4000-8000-000000000021",
+                "name": "outcome",
+                "value": "FAILED",
+                "type": "string"
+              },
+              {
+                "id": "8d000000-0000-4000-8000-000000000022",
+                "name": "failure_code",
+                "value": "UNKNOWN_FAILURE",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000023",
+        "name": "Normalize Slack Failure",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          1380,
+          120
+        ]
+      },
+      {
+        "parameters": {
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpBearerAuth",
+          "method": "POST",
+          "url": "={{ 'http://' + 'api' + ':8000' + '/v1/integrations/notifications/' + $json.notification_id + '/outcome' }}",
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.outcome === 'DELIVERED' ? { claim_token: $json.claim_token, outcome: 'DELIVERED', provider_reference: $json.provider_reference } : { claim_token: $json.claim_token, outcome: 'FAILED', failure_code: $json.failure_code } }}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json",
+                "fullResponse": true
+              }
+            }
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000024",
+        "name": "Record Notification Outcome",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "onError": "continueErrorOutput",
+        "retryOnFail": false,
+        "position": [
+          1660,
+          0
+        ],
+        "credentials": {
+          "httpBearerAuth": {
+            "name": "OpsFlow Orchestration"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "outputKey": "HTTP 200 Outcome",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.statusCode }}",
+                      "rightValue": 200,
+                      "operator": {
+                        "type": "number",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Outcome Not Confirmed"
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000025",
+        "name": "Route Outcome Response",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          1940,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8d000000-0000-4000-8000-000000000026",
+                "name": "operator_outcome",
+                "value": "OUTCOME_ACKNOWLEDGED",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000027",
+        "name": "Outcome Acknowledged",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          2200,
+          -100
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "8d000000-0000-4000-8000-000000000028",
+                "name": "operator_outcome",
+                "value": "OUTCOME_NOT_CONFIRMED",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "8d000000-0000-4000-8000-000000000029",
+        "name": "Outcome Not Confirmed",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          2200,
+          120
+        ]
+      },
+      {
+        "parameters": {
+          "authentication": "oAuth2",
+          "resource": "message",
+          "operation": "reply",
+          "messageId": "={{ $json.body.payload.message_id }}",
+          "emailType": "text",
+          "message": "={{ $json.body.payload.body }}",
+          "options": {
+            "appendAttribution": false,
+            "replyToSenderOnly": true
+          }
+        },
+        "id": "5f73b114-727b-46e2-805e-065a8a36398d",
+        "name": "Reply to Gmail Sender",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.2,
+        "onError": "continueErrorOutput",
+        "retryOnFail": false,
+        "position": [
+          1100,
+          440
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "name": "OpsFlow Gmail Sandbox"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "0ae61f68-844a-4bf3-b1d5-10c5c539023d",
+                "name": "notification_id",
+                "value": "={{ $('Claim One Notification').item.json.body.notification_id }}",
+                "type": "string"
+              },
+              {
+                "id": "8b58f5b8-0597-4320-a056-55595df54feb",
+                "name": "claim_token",
+                "value": "={{ $('Claim One Notification').item.json.body.claim_token }}",
+                "type": "string"
+              },
+              {
+                "id": "ce42d66a-3349-47b7-a56e-8cc5e40f182a",
+                "name": "outcome",
+                "value": "DELIVERED",
+                "type": "string"
+              },
+              {
+                "id": "5ef0883e-77f2-47f4-b40c-dacce4e9f04a",
+                "name": "provider_reference",
+                "value": "={{ $json.id }}",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "e9ffb2f5-3c19-4fe3-aae4-ce10f5817ce5",
+        "name": "Normalize Gmail Success",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          1380,
+          360
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "adc563de-d489-4448-9f80-b909d079218d",
+                "name": "notification_id",
+                "value": "={{ $('Claim One Notification').item.json.body.notification_id }}",
+                "type": "string"
+              },
+              {
+                "id": "081dce91-2193-4c98-a051-64e516663d3c",
+                "name": "claim_token",
+                "value": "={{ $('Claim One Notification').item.json.body.claim_token }}",
+                "type": "string"
+              },
+              {
+                "id": "2449a9ca-b8a4-4e2c-ae76-209aa61613da",
+                "name": "outcome",
+                "value": "FAILED",
+                "type": "string"
+              },
+              {
+                "id": "d04825f0-94f2-498d-beaf-94eb4fcc3b99",
+                "name": "failure_code",
+                "value": "UNKNOWN_FAILURE",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {
+            "stripBinary": true
+          }
+        },
+        "id": "6eb3733f-e260-4f01-aa75-4a46143cb122",
+        "name": "Normalize Gmail Failure",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          1380,
+          500
+        ]
+      }
+    ],
+    "connections": {
+      "Schedule Every Minute": {
+        "main": [
+          [
+            {
+              "node": "Claim One Notification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Claim One Notification": {
+        "main": [
+          [
+            {
+              "node": "Route Claim Response",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Claim Transport Failed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Claim Response": {
+        "main": [
+          [
+            {
+              "node": "Route Notification Channel",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "No Work Available",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Claim Response Failed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Notification Channel": {
+        "main": [
+          [
+            {
+              "node": "Send Slack Notification",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Reply to Gmail Sender",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Unsupported Channel Deferred",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Slack Notification": {
+        "main": [
+          [
+            {
+              "node": "Normalize Slack Success",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Normalize Slack Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Slack Success": {
+        "main": [
+          [
+            {
+              "node": "Record Notification Outcome",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Slack Failure": {
+        "main": [
+          [
+            {
+              "node": "Record Notification Outcome",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Record Notification Outcome": {
+        "main": [
+          [
+            {
+              "node": "Route Outcome Response",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Outcome Not Confirmed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Outcome Response": {
+        "main": [
+          [
+            {
+              "node": "Outcome Acknowledged",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Outcome Not Confirmed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Reply to Gmail Sender": {
+        "main": [
+          [
+            {
+              "node": "Normalize Gmail Success",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Normalize Gmail Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Gmail Success": {
+        "main": [
+          [
+            {
+              "node": "Record Notification Outcome",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Gmail Failure": {
+        "main": [
+          [
+            {
+              "node": "Record Notification Outcome",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  }
+]

@@ -40,6 +40,7 @@ from opsflow.persistence.mappers import (
 from opsflow.persistence.models import (
     AuditEventModel,
     ExtractionSnapshotModel,
+    NotificationDeliveryModel,
     OrderLineModel,
     OrderModel,
     ReviewRevisionModel,
@@ -78,6 +79,7 @@ from opsflow.validation.policy import ValidationPolicy
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
+PHASE_8_HEAD = "0005_phase8_notification_deliveries"
 REVIEWER_TOKEN = "synthetic-reviewer-integration-credential"
 APPROVER_TOKEN = "synthetic-approver-integration-credential"
 REVIEWER = OperatorContext("reviewer-integration", OperatorRole.REVIEWER)
@@ -323,7 +325,7 @@ async def _case_client(
     """Create isolated test data and a real PostgreSQL-backed review HTTP app."""
 
     _run_alembic("upgrade", "head")
-    assert PHASE_6_REVISION in _run_alembic("current")
+    assert PHASE_8_HEAD in _run_alembic("current")
     engine = create_async_engine(Settings().database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     await _seed_case(
@@ -701,6 +703,15 @@ async def _assert_invalid_correction_is_untrusted() -> None:
             "REVIEW_REVALIDATION_COMPLETED",
             "ORDER_REMAINS_NEEDS_REVIEW",
         ]
+        async with session_factory() as session:
+            delivery = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == case.order_id
+                )
+            )
+        assert delivery is not None
+        assert delivery.trigger_audit_event_id == audits[-1].id
+        assert (delivery.channel, delivery.kind) == ("SLACK", "REVIEW_REQUIRED")
         assert {event.actor for event in audits[-3:]} == {REVIEWER.actor}
         assert provider.session is not None and provider.session.in_transaction() is False
         raw_after = await _read_raw_state(session_factory, case.order_id)
@@ -799,6 +810,15 @@ async def _assert_clean_high_value_correction_promotes_trusted_values(monkeypatc
             "REVIEW_REVALIDATION_COMPLETED",
             "ORDER_READY_FOR_APPROVAL_AFTER_HUMAN_CORRECTION",
         ]
+        async with session_factory() as session:
+            delivery = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == case.order_id
+                )
+            )
+        assert delivery is not None
+        assert delivery.trigger_audit_event_id == audits[-1].id
+        assert (delivery.channel, delivery.kind) == ("SLACK", "APPROVAL_READY")
         refreshed = await client.get(
             f"/v1/review/orders/{case.order_id}",
             headers={"Authorization": f"Bearer {REVIEWER_TOKEN}"},
@@ -1285,3 +1305,10 @@ async def _assert_final_write_stage_rolls_back(monkeypatch, stage, candidate) ->
         assert after_issues == before_issues
         assert after_revisions == before_revisions
         assert after_audits == before_audits
+        async with session_factory() as session:
+            notification_count = await session.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.order_id == case.order_id)
+            )
+        assert notification_count == 0
