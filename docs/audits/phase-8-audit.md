@@ -207,8 +207,8 @@ containers and primary Docker volumes were not changed.
 | Compose config / workflow JSON | PASS — Compose configuration valid; all three tracked n8n JSON files parse. |
 | Diff whitespace check | PASS — `git diff --check`. |
 | Primary DB safety | PASS for final gates — migration head `0005_phase8_notification_deliveries`; orders, lines, sources, idempotency, audits, snapshots, review revisions, and notification rows were zero before and after targeted/full suites. The initial TDD-run deviation and post-run zero-row check are disclosed above. |
-| Gitleaks / exact-head CI | Prospective tracked-tree Gitleaks scan PASS. Exact-head Backend, Frontend, and Secret scan CI is required after the closeout push; the final closeout report records the resulting run and job statuses. |
+| Gitleaks / exact-head CI | PASS. Prospective tracked-tree scan passed; final exact-head full-history Gitleaks scanned 195 commits with zero leaks. Exact-head CI runs 36583869535 (push) and 36583879650 (pull request) both passed Backend, Frontend, and Secret scan. The push run reported 1,455 backend tests at 92.61% coverage; frontend tests, lint, and build passed. |
 
 Final repository status is Phase 8 `COMPLETE` with M8A–M8F `COMPLETE`;
-Phases 9–12 remain `NOT STARTED`. M8F does not merge the branch or begin
-Phase 9.
+Phases 9–12 remain `NOT STARTED`. Pull request #8 is open for independent
+review and remains unmerged. M8F does not begin Phase 9.
