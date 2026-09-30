@@ -27,6 +27,7 @@ from opsflow.application.errors import (
 )
 from opsflow.application.orchestration import OrchestrationUnavailableError
 from opsflow.application.order_sync import (
+    OrderSyncExecutionDeadlineExceeded,
     OrderSyncNotFoundError,
     OrderSyncStepPreconditionError,
     execute_next_order_sync,
@@ -163,7 +164,12 @@ async def execute_next_order_sync_endpoint(
         raise _order_sync_unavailable()
     try:
         result = await execute_next_order_sync(session, executor)
-    except (SQLAlchemyError, OrderSyncNotFoundError, OrderSyncStepPreconditionError) as error:
+    except (
+        SQLAlchemyError,
+        OrderSyncExecutionDeadlineExceeded,
+        OrderSyncNotFoundError,
+        OrderSyncStepPreconditionError,
+    ) as error:
         raise _order_sync_unavailable() from error
     return OrderSyncExecutionResponse(
         result=result.kind,

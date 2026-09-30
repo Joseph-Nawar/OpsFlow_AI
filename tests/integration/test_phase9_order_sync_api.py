@@ -4,12 +4,13 @@ import asyncio
 import os
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import httpx
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -67,8 +68,16 @@ def test_budget_yield_after_receipt_keeps_attempt_count() -> None:
     asyncio.run(_assert_budget_yield_after_receipt())
 
 
+def test_execute_next_deadline_bounds_delayed_claim_and_rolls_back() -> None:
+    asyncio.run(_assert_delayed_claim_obeys_total_deadline())
+
+
 def test_completed_order_is_not_executed_again() -> None:
     asyncio.run(_assert_completed_order_is_not_reexecuted())
+
+
+def test_lease_exhaustion_is_reported_and_empty_invocation_is_no_work() -> None:
+    asyncio.run(_assert_lease_exhaustion_result_is_reported())
 
 
 def test_parallel_execute_next_requests_have_one_owner() -> None:
@@ -225,13 +234,13 @@ async def _assert_company_resume_after_hubspot_failure() -> None:
 async def _assert_budget_yield_after_receipt() -> None:
     engine, sessions, order_id = await _seed_order()
     app = create_app(_settings())
-    fake = FakeExecutor()
+    clock = [0.0]
+    fake = BudgetAdvancingExecutor(clock)
     app.state.order_sync_step_executor = fake
     import opsflow.application.order_sync as order_sync_application
 
-    ticks = iter((0.0, 0.0, 0.0, 209.0))
     original_monotonic = order_sync_application._monotonic
-    order_sync_application._monotonic = lambda: next(ticks)
+    order_sync_application._monotonic = lambda: clock[0]
     try:
         async with (
             app.router.lifespan_context(app),
@@ -256,6 +265,58 @@ async def _assert_budget_yield_after_receipt() -> None:
         await _dispose(engine, sessions, order_id)
 
 
+async def _assert_delayed_claim_obeys_total_deadline() -> None:
+    engine, sessions, order_id = await _seed_order()
+    app = create_app(_settings())
+    fake = FakeExecutor()
+    app.state.order_sync_step_executor = fake
+    import opsflow.application.order_sync as order_sync_application
+
+    original_claim = order_sync_application.claim_one_eligible_order_sync
+    original_defaults = order_sync_application.execute_next_order_sync.__kwdefaults__
+    test_budget = timedelta(milliseconds=75)
+
+    async def delayed_claim(session: AsyncSession):
+        await session.execute(text("SELECT pg_sleep(0.5)"))
+        return await original_claim(session)
+
+    order_sync_application.execute_next_order_sync.__kwdefaults__ = {
+        **(original_defaults or {}),
+        "execution_budget": test_budget,
+    }
+    order_sync_application.claim_one_eligible_order_sync = delayed_claim
+    try:
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client,
+        ):
+            started = time.monotonic()
+            response = await client.post(EXECUTE_PATH, headers=AUTH)
+            elapsed = time.monotonic() - started
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "ORDER_SYNC_UNAVAILABLE"
+        assert elapsed < 0.4
+        assert fake.calls == []
+        async with sessions() as session:
+            sync = await session.get(OrderSyncModel, order_id)
+            order = await session.get(OrderModel, order_id)
+            events = tuple(
+                await session.scalars(
+                    select(AuditEventModel).where(AuditEventModel.order_id == order_id)
+                )
+            )
+            assert await session.scalar(text("SELECT 1")) == 1
+        assert sync is not None and sync.claim_token is None
+        assert order is not None and order.state == OrderState.APPROVED.value
+        assert events == ()
+    finally:
+        order_sync_application.claim_one_eligible_order_sync = original_claim
+        order_sync_application.execute_next_order_sync.__kwdefaults__ = original_defaults
+        await _dispose(engine, sessions, order_id)
+
+
 async def _assert_completed_order_is_not_reexecuted() -> None:
     engine, sessions, order_id = await _seed_order()
     app = create_app(_settings())
@@ -273,6 +334,50 @@ async def _assert_completed_order_is_not_reexecuted() -> None:
         assert first.json()["result"] == "completed"
         assert second.json() == {"result": "no_work", "order_id": None, "state": None}
         assert len(fake.calls) == 5
+    finally:
+        await _dispose(engine, sessions, order_id)
+
+
+async def _assert_lease_exhaustion_result_is_reported() -> None:
+    engine, sessions, order_id = await _seed_order()
+    app = create_app(_settings())
+    fake = FakeExecutor()
+    app.state.order_sync_step_executor = fake
+    async with sessions() as session, session.begin():
+        order = await session.get(OrderModel, order_id)
+        sync = await session.get(OrderSyncModel, order_id)
+        assert order is not None and sync is not None
+        order.state = OrderState.SYNCING.value
+        sync.attempt_count = 2
+        sync.claim_token = uuid4()
+        sync.claim_expires_at = func.clock_timestamp() - text("interval '1 second'")
+        sync.in_flight_step = OrderSyncStep.ODOO_LOOKUP.value
+    try:
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client,
+        ):
+            exhausted = await client.post(EXECUTE_PATH, headers=AUTH)
+            empty = await client.post(EXECUTE_PATH, headers=AUTH)
+        assert exhausted.status_code == 200
+        assert exhausted.json() == {
+            "result": "needs_review",
+            "order_id": str(order_id),
+            "state": "FAILED_RETRYABLE",
+        }
+        assert empty.status_code == 200
+        assert empty.json() == {"result": "no_work", "order_id": None, "state": None}
+        assert fake.calls == []
+        async with sessions() as session:
+            sync = await session.get(OrderSyncModel, order_id)
+            order = await session.get(OrderModel, order_id)
+        assert sync is not None
+        assert sync.attempt_count == 3
+        assert sync.last_failure_code == OrderSyncFailureCode.WORKER_LEASE_EXHAUSTED.value
+        assert sync.claim_token is None and sync.claim_expires_at is None
+        assert order is not None and order.state == OrderState.FAILED_RETRYABLE.value
     finally:
         await _dispose(engine, sessions, order_id)
 
@@ -327,6 +432,19 @@ class FakeExecutor:
         if step is OrderSyncStep.HUBSPOT_ASSOCIATION:
             return HubSpotAssociationReceipt(datetime.now(UTC))
         raise AssertionError(f"unexpected step: {step}")
+
+
+class BudgetAdvancingExecutor(FakeExecutor):
+    def __init__(self, clock: list[float]) -> None:
+        super().__init__()
+        self.clock = clock
+
+    async def execute(self, order_id: UUID, step: OrderSyncStep):
+        result = await super().execute(order_id, step)
+        if step is OrderSyncStep.ODOO_BRIDGE:
+            # Model a confirmed external success that returns with one second left.
+            self.clock[0] = 209.0
+        return result
 
 
 class GatedExecutor(FakeExecutor):

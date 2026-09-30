@@ -147,6 +147,115 @@ async def _assert_stale_token_cannot_mutate_sync() -> None:
     assert order is not None and order.state == OrderState.SYNCING.value
 
 
+def test_claim_expiring_while_mutation_waits_for_order_lock_is_rejected() -> None:
+    asyncio.run(_assert_expiring_claim_is_rejected_after_order_lock_wait())
+
+
+async def _assert_expiring_claim_is_rejected_after_order_lock_wait() -> None:
+    async with _sync_database() as (session_factory, order_id):
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        async with session_factory() as session:
+            await begin_order_sync_step(
+                session, order_id, claim.claim_token, OrderSyncStep.ODOO_BRIDGE
+            )
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(OrderSyncModel)
+                .where(OrderSyncModel.order_id == order_id)
+                .values(claim_expires_at=func.clock_timestamp() + text("interval '2 seconds'"))
+            )
+        async with session_factory() as session:
+            expires_at = await session.scalar(
+                select(OrderSyncModel.claim_expires_at).where(OrderSyncModel.order_id == order_id)
+            )
+        assert expires_at is not None
+
+        engine = session_factory.kw["bind"]
+        assert engine is not None
+        async with engine.connect() as stale_connection:
+            stale_pid = await stale_connection.scalar(text("SELECT pg_backend_pid()"))
+            await stale_connection.commit()
+            assert stale_pid is not None
+            async with AsyncSession(bind=stale_connection, expire_on_commit=False) as stale_session:
+                async with session_factory() as blocker, blocker.begin():
+                    await blocker.execute(
+                        select(OrderModel.id).where(OrderModel.id == order_id).with_for_update()
+                    )
+                    async with session_factory() as clock_session:
+                        before_mutation = await clock_session.scalar(select(func.clock_timestamp()))
+                    assert before_mutation is not None and before_mutation < expires_at
+                    mutation = asyncio.create_task(
+                        _persist_receipt_in_session(stale_session, order_id, claim.claim_token)
+                    )
+                    try:
+                        await _wait_for_lock_wait(session_factory, stale_pid)
+                        async with session_factory() as clock_session:
+                            waiting_before_expiry = await clock_session.scalar(
+                                select(func.clock_timestamp())
+                            )
+                        assert waiting_before_expiry is not None
+                        assert waiting_before_expiry < expires_at
+                        async with session_factory() as clock_session:
+                            while True:
+                                now = await clock_session.scalar(select(func.clock_timestamp()))
+                                assert now is not None
+                                if now >= expires_at:
+                                    break
+                                await asyncio.sleep(0.02)
+                    except BaseException:
+                        mutation.cancel()
+                        await asyncio.gather(mutation, return_exceptions=True)
+                        raise
+
+                with pytest.raises(StaleOrderSyncClaimError):
+                    await mutation
+
+        async with session_factory() as session:
+            row = await session.get(OrderSyncModel, order_id)
+            order = await session.get(OrderModel, order_id)
+            audits = tuple(
+                await session.scalars(
+                    select(AuditEventModel)
+                    .where(AuditEventModel.order_id == order_id)
+                    .order_by(AuditEventModel.id)
+                )
+            )
+    assert row is not None
+    assert row.claim_token == claim.claim_token
+    assert row.claim_expires_at == expires_at
+    assert row.in_flight_step == OrderSyncStep.ODOO_BRIDGE.value
+    assert row.odoo_sale_order_id is None
+    assert row.last_failure_step is None and row.last_failure_code is None
+    assert row.attempt_count == 0
+    assert order is not None and order.state == OrderState.SYNCING.value
+    assert [event.event_type for event in audits] == ["ORDER_SYNC_STARTED"]
+
+
+async def _persist_receipt_in_session(
+    session: AsyncSession, order_id: UUID, claim_token: UUID
+) -> None:
+    await persist_order_sync_receipt(session, order_id, claim_token, OdooOrderReceipt(42, "S00042"))
+
+
+async def _wait_for_lock_wait(
+    session_factory: async_sessionmaker[AsyncSession], backend_pid: int
+) -> None:
+    deadline = asyncio.get_running_loop().time() + 5
+    async with session_factory() as session:
+        while asyncio.get_running_loop().time() < deadline:
+            waiting = await session.scalar(
+                text(
+                    "SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = :pid"
+                ).bindparams(pid=backend_pid)
+            )
+            if waiting:
+                return
+            await asyncio.sleep(0.01)
+    raise AssertionError("mutation transaction never waited for the held order row lock")
+
+
 def test_expired_lease_rotates_token_and_counts_one_recovery() -> None:
     asyncio.run(_assert_expired_lease_rotates_token_and_counts_one_recovery())
 

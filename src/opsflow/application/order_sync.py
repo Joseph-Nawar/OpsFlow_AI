@@ -2,7 +2,10 @@
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from functools import partial
+from typing import Literal, overload
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, text
@@ -76,6 +79,10 @@ class OrderSyncCompletionError(Exception):
     """The order cannot complete until every required receipt is durable."""
 
 
+class OrderSyncExecutionDeadlineExceeded(Exception):
+    """One bounded coordinator phase could not finish within the request budget."""
+
+
 async def create_order_sync_intent(
     session: AsyncSession,
     order_id: UUID,
@@ -92,7 +99,19 @@ async def reset_order_sync_for_retry(session: AsyncSession, order_id: UUID) -> b
     return await reset_order_sync_for_human_retry(session, order_id)
 
 
-async def claim_next_order_sync(session: AsyncSession) -> OrderSyncClaim | None:
+@overload
+async def claim_next_order_sync(session: AsyncSession) -> OrderSyncClaim | None: ...
+
+
+@overload
+async def claim_next_order_sync(
+    session: AsyncSession, *, include_exhaustion_result: Literal[True]
+) -> OrderSyncClaim | OrderSyncExecutionResult | None: ...
+
+
+async def claim_next_order_sync(
+    session: AsyncSession, *, include_exhaustion_result: bool = False
+) -> OrderSyncClaim | OrderSyncExecutionResult | None:
     """Claim at most one eligible row and commit its five-minute fencing lease."""
 
     claim: OrderSyncClaim | None = None
@@ -133,6 +152,12 @@ async def claim_next_order_sync(session: AsyncSession) -> OrderSyncClaim | None:
                     now,
                 )
                 await session.flush()
+                if include_exhaustion_result:
+                    return OrderSyncExecutionResult(
+                        ExecuteNextKind.NEEDS_REVIEW,
+                        order_row.id,
+                        OrderState.FAILED_RETRYABLE,
+                    )
                 return None
 
         first_claim = order_row.state == OrderState.APPROVED.value
@@ -346,43 +371,70 @@ async def execute_next_order_sync(
         raise ValueError("an order-sync executor is required")
     if not isinstance(execution_budget, timedelta) or execution_budget < timedelta(0):
         raise ValueError("execution_budget must be a nonnegative timedelta")
-    start = _monotonic()
-    claim = await claim_next_order_sync(session)
+    deadline = _monotonic() + execution_budget.total_seconds()
+    cleanup_allowance = min(
+        _RECEIPT_TRANSACTION_ALLOWANCE.total_seconds(),
+        execution_budget.total_seconds() / 10,
+    )
+    claim_or_result = await _within_deadline(
+        lambda: claim_next_order_sync(session, include_exhaustion_result=True),
+        deadline,
+        reserve=cleanup_allowance,
+    )
+    if isinstance(claim_or_result, OrderSyncExecutionResult):
+        return claim_or_result
+    claim = claim_or_result
     if claim is None:
         return OrderSyncExecutionResult(ExecuteNextKind.NO_WORK, None, None)
 
     lookup_succeeded = False
+    try:
+        sync_row = await _within_deadline(
+            lambda: _get_order_sync(session, claim.order_id),
+            deadline,
+            reserve=cleanup_allowance,
+        )
+    except OrderSyncExecutionDeadlineExceeded:
+        return await _yield_for_budget(session, claim, deadline)
+
     while True:
-        sync_row = await _get_order_sync(session, claim.order_id)
         step = next_order_sync_step(sync_row, lookup_succeeded=lookup_succeeded)
         if step is None:
             try:
-                await complete_order_sync(session, claim.order_id, claim.claim_token)
+                await _within_deadline(
+                    lambda: complete_order_sync(session, claim.order_id, claim.claim_token),
+                    deadline,
+                )
                 return OrderSyncExecutionResult(
                     ExecuteNextKind.COMPLETED, claim.order_id, OrderState.COMPLETED
                 )
             except StaleOrderSyncClaimError:
-                return await _stale_claim_result(session, claim.order_id)
+                return await _stale_claim_result(session, claim.order_id, deadline)
 
-        remaining = execution_budget.total_seconds() - (_monotonic() - start)
+        remaining = deadline - _monotonic()
         required = _STEP_TIMEOUTS[step] + _RECEIPT_TRANSACTION_ALLOWANCE
         if remaining < required.total_seconds():
-            try:
-                await yield_order_sync_claim(session, claim.order_id, claim.claim_token)
-            except StaleOrderSyncClaimError:
-                return await _stale_claim_result(session, claim.order_id)
-            return OrderSyncExecutionResult(
-                ExecuteNextKind.YIELDED, claim.order_id, OrderState.SYNCING
-            )
+            return await _yield_for_budget(session, claim, deadline)
 
         try:
-            await begin_order_sync_step(session, claim.order_id, claim.claim_token, step)
-        except StaleOrderSyncClaimError:
-            return await _stale_claim_result(session, claim.order_id)
-        try:
-            outcome = await asyncio.wait_for(
-                executor.execute(claim.order_id, step), timeout=_STEP_TIMEOUTS[step].total_seconds()
+            await _within_deadline(
+                partial(begin_order_sync_step, session, claim.order_id, claim.claim_token, step),
+                deadline,
+                reserve=required.total_seconds(),
             )
+        except StaleOrderSyncClaimError:
+            return await _stale_claim_result(session, claim.order_id, deadline)
+        except OrderSyncExecutionDeadlineExceeded:
+            return await _yield_for_budget(session, claim, deadline)
+        provider_timeout = min(
+            _STEP_TIMEOUTS[step].total_seconds(),
+            deadline - _monotonic() - _RECEIPT_TRANSACTION_ALLOWANCE.total_seconds(),
+        )
+        if provider_timeout <= 0:
+            return await _yield_for_budget(session, claim, deadline)
+        try:
+            async with asyncio.timeout(provider_timeout):
+                outcome = await executor.execute(claim.order_id, step)
         except TimeoutError:
             outcome = OrderSyncStepFailure(OrderSyncFailureCode.PROVIDER_UNAVAILABLE)
         except Exception:
@@ -390,32 +442,40 @@ async def execute_next_order_sync(
 
         if isinstance(outcome, OrderSyncStepFailure):
             try:
-                updated = await record_order_sync_failure(
-                    session,
-                    claim.order_id,
-                    claim.claim_token,
-                    step,
-                    outcome.code,
-                    outcome.retry_after,
+                updated = await _within_deadline(
+                    partial(
+                        record_order_sync_failure,
+                        session,
+                        claim.order_id,
+                        claim.claim_token,
+                        step,
+                        outcome.code,
+                        outcome.retry_after,
+                    ),
+                    deadline,
                 )
             except StaleOrderSyncClaimError:
-                return await _stale_claim_result(session, claim.order_id)
-            return await _failure_result(session, claim.order_id, updated)
+                return await _stale_claim_result(session, claim.order_id, deadline)
+            return await _failure_result(session, claim.order_id, updated, deadline)
         receipt = outcome
 
         if step is OrderSyncStep.ODOO_LOOKUP:
             if receipt is not None:
                 try:
-                    updated = await record_order_sync_failure(
-                        session,
-                        claim.order_id,
-                        claim.claim_token,
-                        step,
-                        OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE,
+                    updated = await _within_deadline(
+                        partial(
+                            record_order_sync_failure,
+                            session,
+                            claim.order_id,
+                            claim.claim_token,
+                            step,
+                            OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE,
+                        ),
+                        deadline,
                     )
                 except StaleOrderSyncClaimError:
-                    return await _stale_claim_result(session, claim.order_id)
-                return await _failure_result(session, claim.order_id, updated)
+                    return await _stale_claim_result(session, claim.order_id, deadline)
+                return await _failure_result(session, claim.order_id, updated, deadline)
             lookup_succeeded = True
             continue
 
@@ -434,21 +494,36 @@ async def execute_next_order_sync(
         )
         if receipt is None or actual_receipt_step is not step:
             try:
-                updated = await record_order_sync_failure(
+                updated = await _within_deadline(
+                    partial(
+                        record_order_sync_failure,
+                        session,
+                        claim.order_id,
+                        claim.claim_token,
+                        step,
+                        OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE,
+                    ),
+                    deadline,
+                )
+            except StaleOrderSyncClaimError:
+                return await _stale_claim_result(session, claim.order_id, deadline)
+            return await _failure_result(session, claim.order_id, updated, deadline)
+
+        try:
+            sync_row = await _within_deadline(
+                partial(
+                    persist_order_sync_receipt,
                     session,
                     claim.order_id,
                     claim.claim_token,
-                    step,
-                    OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE,
-                )
-            except StaleOrderSyncClaimError:
-                return await _stale_claim_result(session, claim.order_id)
-            return await _failure_result(session, claim.order_id, updated)
-
-        try:
-            await persist_order_sync_receipt(session, claim.order_id, claim.claim_token, receipt)
+                    receipt,
+                ),
+                deadline,
+            )
         except StaleOrderSyncClaimError:
-            current_state = await _read_order_state(session, claim.order_id)
+            current_state = await _within_deadline(
+                lambda: _read_order_state(session, claim.order_id), deadline
+            )
             return OrderSyncExecutionResult(
                 ExecuteNextKind.RETRY_WAIT, claim.order_id, current_state
             )
@@ -456,16 +531,20 @@ async def execute_next_order_sync(
             if not _is_external_receipt_collision(error):
                 raise
             try:
-                updated = await record_order_sync_failure(
-                    session,
-                    claim.order_id,
-                    claim.claim_token,
-                    step,
-                    OrderSyncFailureCode.IDEMPOTENCY_CONFLICT,
+                updated = await _within_deadline(
+                    partial(
+                        record_order_sync_failure,
+                        session,
+                        claim.order_id,
+                        claim.claim_token,
+                        step,
+                        OrderSyncFailureCode.IDEMPOTENCY_CONFLICT,
+                    ),
+                    deadline,
                 )
             except StaleOrderSyncClaimError:
-                return await _stale_claim_result(session, claim.order_id)
-            return await _failure_result(session, claim.order_id, updated)
+                return await _stale_claim_result(session, claim.order_id, deadline)
+            return await _failure_result(session, claim.order_id, updated, deadline)
         lookup_succeeded = False
 
 
@@ -478,7 +557,9 @@ async def _require_current_claim(
     if selected is None:
         raise OrderSyncNotFoundError
     sync_row, order_row = selected
-    now = await session.scalar(select(func.now()))
+    # `now()` is fixed at transaction start and can incorrectly preserve a lease
+    # while this transaction waits for the order/sync row locks above.
+    now = await session.scalar(select(func.clock_timestamp()))
     if (
         now is None
         or order_row.state != OrderState.SYNCING.value
@@ -498,12 +579,46 @@ async def _get_order_sync(session: AsyncSession, order_id: UUID) -> OrderSync:
         return order_sync_from_model(row)
 
 
+async def _within_deadline[T](
+    operation: Callable[[], Awaitable[T]],
+    deadline: float,
+    *,
+    reserve: float = 0,
+) -> T:
+    """Bound one coordinator phase by the request's absolute monotonic deadline."""
+
+    remaining = deadline - _monotonic() - reserve
+    if remaining <= 0:
+        raise OrderSyncExecutionDeadlineExceeded
+    try:
+        async with asyncio.timeout(remaining):
+            return await operation()
+    except TimeoutError as error:
+        raise OrderSyncExecutionDeadlineExceeded from error
+
+
+async def _yield_for_budget(
+    session: AsyncSession,
+    claim: OrderSyncClaim,
+    deadline: float,
+) -> OrderSyncExecutionResult:
+    try:
+        await _within_deadline(
+            lambda: yield_order_sync_claim(session, claim.order_id, claim.claim_token),
+            deadline,
+        )
+    except StaleOrderSyncClaimError:
+        return await _stale_claim_result(session, claim.order_id, deadline)
+    return OrderSyncExecutionResult(ExecuteNextKind.YIELDED, claim.order_id, OrderState.SYNCING)
+
+
 async def _failure_result(
     session: AsyncSession,
     order_id: UUID,
     sync: OrderSync,
+    deadline: float,
 ) -> OrderSyncExecutionResult:
-    state = await _read_order_state(session, order_id)
+    state = await _within_deadline(lambda: _read_order_state(session, order_id), deadline)
     kind = (
         ExecuteNextKind.NEEDS_REVIEW
         if state in (OrderState.FAILED_RETRYABLE, OrderState.FAILED_FINAL)
@@ -512,10 +627,12 @@ async def _failure_result(
     return OrderSyncExecutionResult(kind, order_id, state)
 
 
-async def _stale_claim_result(session: AsyncSession, order_id: UUID) -> OrderSyncExecutionResult:
+async def _stale_claim_result(
+    session: AsyncSession, order_id: UUID, deadline: float
+) -> OrderSyncExecutionResult:
     """Return only the current bounded state after a fenced write is rejected."""
 
-    state = await _read_order_state(session, order_id)
+    state = await _within_deadline(lambda: _read_order_state(session, order_id), deadline)
     if state is None:
         return OrderSyncExecutionResult(ExecuteNextKind.NO_WORK, None, None)
     if state is OrderState.COMPLETED:
