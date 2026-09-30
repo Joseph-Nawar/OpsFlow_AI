@@ -60,7 +60,13 @@ def _ignore_notification_intents_in_command_unit_tests(
     async def no_op(*args: object, **kwargs: object) -> None:
         del args, kwargs
 
+    async def reset_sync_row(*args: object, **kwargs: object) -> bool:
+        del args, kwargs
+        return True
+
     monkeypatch.setattr(commands, "create_notification_intent", no_op)
+    monkeypatch.setattr(commands, "create_order_sync_intent", no_op)
+    monkeypatch.setattr(commands, "reset_order_sync_for_retry", reset_sync_row)
 
 
 def _source() -> SourceDocument:

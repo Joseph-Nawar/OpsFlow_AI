@@ -56,9 +56,13 @@ def test_openapi_exposes_only_the_approved_business_routes() -> None:
         "/v1/review/orders/{order_id}/retry": {"post"},
     }
     orchestration_paths = {path for path in paths if path.startswith("/v1/orchestration/")}
-    assert orchestration_paths == {"/v1/orchestration/intakes"}
+    assert orchestration_paths == {
+        "/v1/orchestration/intakes",
+        "/v1/orchestration/order-sync/execute-next",
+    }
     assert {path: set(openapi_paths[path]) for path in orchestration_paths} == {
         "/v1/orchestration/intakes": {"post"},
+        "/v1/orchestration/order-sync/execute-next": {"post"},
     }
     assert not any(term in path for path in paths for term in ("transition", "upload"))
     assert {path for path in paths if path.startswith("/v1/")} == {
@@ -67,6 +71,7 @@ def test_openapi_exposes_only_the_approved_business_routes() -> None:
         "/v1/orders/{order_id}/audit",
         *review_paths,
         "/v1/orchestration/intakes",
+        "/v1/orchestration/order-sync/execute-next",
         "/v1/integrations/notifications/claim",
         "/v1/integrations/notifications/{notification_id}/outcome",
     }

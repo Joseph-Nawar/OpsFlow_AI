@@ -58,6 +58,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.orchestration_runtime = orchestration_runtime
     app.state.review_dev_operators = resolved_settings.review_dev_operators
     app.state.orchestration_token = resolved_settings.orchestration_token
+    # Phase 9 providers are configured in later milestones; fail closed until then.
+    app.state.order_sync_step_executor = None
 
     async def orchestration_intake_handler(
         session: AsyncSession,

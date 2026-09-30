@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 REPOSITORY_ROOT = Path(__file__).parents[2]
 BASELINE_REVISION = "0001_baseline"
 PHASE_2_REVISION = "0002_phase2_persistence"
-CURRENT_HEAD_REVISION = "0005_phase8_notification_deliveries"
+CURRENT_HEAD_REVISION = "0006_phase9_order_syncs"
 
 
 def test_migration_upgrade_downgrade_and_reupgrade(

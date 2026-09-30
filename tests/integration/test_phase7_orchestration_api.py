@@ -23,6 +23,7 @@ from opsflow.settings import Settings
 
 ORCHESTRATION_TOKEN = "synthetic-orchestration-service-credential"
 INTAKE_PATH = "/v1/orchestration/intakes"
+ORDER_SYNC_PATH = "/v1/orchestration/order-sync/execute-next"
 PDF_BYTES = b"%PDF-1.7 synthetic orchestration fixture"
 
 
@@ -51,7 +52,10 @@ def test_openapi_exposes_exactly_the_phase7_intake_boundary() -> None:
     openapi = create_app(Settings(orchestration_token=ORCHESTRATION_TOKEN)).openapi()
     paths = openapi["paths"]
 
-    assert set(path for path in paths if path.startswith("/v1/orchestration")) == {INTAKE_PATH}
+    assert set(path for path in paths if path.startswith("/v1/orchestration")) == {
+        INTAKE_PATH,
+        ORDER_SYNC_PATH,
+    }
     operation = paths[INTAKE_PATH]["post"]
     assert set(paths[INTAKE_PATH]) == {"post"}
     assert "multipart/form-data" in operation["requestBody"]["content"]

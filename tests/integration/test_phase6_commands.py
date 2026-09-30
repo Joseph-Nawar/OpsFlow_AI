@@ -41,6 +41,7 @@ from opsflow.persistence.models import (
     ExtractionSnapshotModel,
     NotificationDeliveryModel,
     OrderModel,
+    OrderSyncModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
@@ -56,7 +57,7 @@ from opsflow.validation import (
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
-PHASE_8_HEAD = "0005_phase8_notification_deliveries"
+PHASE_9_HEAD = "0006_phase9_order_syncs"
 REVIEWER_TOKEN = "synthetic-command-reviewer-credential"
 APPROVER_TOKEN = "synthetic-command-approver-credential"
 ELEVATED_TOKEN = "synthetic-command-elevated-credential"
@@ -172,7 +173,7 @@ async def _command_client(
     cases: tuple[CommandCase, ...],
 ) -> AsyncIterator[tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession], object]]:
     _run_alembic("upgrade", "head")
-    assert PHASE_8_HEAD in _run_alembic("current")
+    assert PHASE_9_HEAD in _run_alembic("current")
     engine = create_async_engine(Settings().database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     await _seed_cases(session_factory, cases)
@@ -220,6 +221,28 @@ async def _seed_cases(
                 )
             )
             await session.flush()
+            if case.failure_origin is OrderState.SYNCING:
+                session.add(
+                    OrderSyncModel(
+                        order_id=case.order_id,
+                        claim_token=None,
+                        claim_expires_at=None,
+                        attempt_count=0,
+                        retry_generation=0,
+                        next_attempt_at=created_at,
+                        odoo_sale_order_id=None,
+                        odoo_sale_order_name=None,
+                        hubspot_company_id=None,
+                        hubspot_deal_id=None,
+                        hubspot_association_confirmed_at=None,
+                        in_flight_step=None,
+                        last_failure_step=None,
+                        last_failure_code=None,
+                        last_attempt_at=None,
+                        created_at=created_at,
+                        updated_at=created_at,
+                    )
+                )
             session.add(
                 SourceDocumentModel(
                     id=case.source_id,

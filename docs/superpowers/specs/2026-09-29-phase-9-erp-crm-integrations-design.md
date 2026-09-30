@@ -1,12 +1,12 @@
 # Phase 9 — ERP/CRM Contract, Current-API Probe & Design
 
 **Milestone:** M9A — ERP/CRM Contract, Current-API Probe & Design
-**Status:** IN PROGRESS; pending human design review
+**Status:** M9A COMPLETE; M9B IN PROGRESS pending independent/human implementation review; M9C–M9F NOT STARTED
 **Date:** 2026-09-29
 **Revised:** 2026-09-30
 **Branch base:** Phase 8 merge `528bbf1a3218f25dddcd0893ed601686f99223e3`
 
-This document is the proposed authoritative Phase 9 design. Provider documentation and the isolated Odoo probe below are research evidence. HubSpot account writes, credentials, and account-specific validation remain untested. M9A stays IN PROGRESS until the user reviews and accepts this design.
+This document is the approved authoritative Phase 9 design. Provider documentation and the isolated Odoo probe below are research evidence. HubSpot account writes, credentials, and account-specific validation remain untested. M9A is COMPLETE following human design approval at commit `21e1cf4351e4637b074e19023754650db80f0eb3`.
 
 **Evidence labels:** VERIFIED means confirmed in authoritative provider documentation or the isolated Odoo probe; DESIGN DECISION means the recommended Phase 9 behavior; ACCEPTED LIMITATION means an explicit scope/capability boundary; LIVE SETUP GATE means a fact that still needs an interactive account or credential check.
 
@@ -434,7 +434,7 @@ The exact Odoo image digest, account setup screenshots/IDs, and account-specific
 | **M9E — n8n Sync Orchestration + Full Sandbox/Clean-Clone E2E** | Add one sanitized scheduled `opsflow-order-sync` workflow that invokes the OpsFlow execute-next endpoint; document clean reconstruction. | Clean clone runs synthetic approved order to confirmed Odoo + HubSpot Company/Deal/association + `COMPLETED`; replay and partial recovery show no duplicate logical records. | Provider calls from n8n, credentials in workflow, real customer data, cloud hosting. |
 | **M9F — Independent Whole-Phase-9 Audit** | Independently audit contracts, code, migrations, tests, external sandbox evidence, privacy, cost, and docs. | Findings closed with evidence; required scenarios and clean-clone acceptance pass; audit/status documents report commit and tree state. | New feature scope or unapproved architecture changes during audit. |
 
-M9A remains IN PROGRESS until the user reviews this specification. M9B may begin only after that review and a separate implementation plan approved for the next milestone.
+M9A is COMPLETE following human review. M9B is IN PROGRESS under its approved implementation plan; M9C–M9F remain NOT STARTED.
 
 ## 20. User-owned setup gates and accepted limitations
 

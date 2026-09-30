@@ -37,6 +37,7 @@ from opsflow.persistence.models import (
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
+    OrderSyncModel,
     ReviewRevisionModel,
     SourceDocumentModel,
     ValidationIssueModel,
@@ -583,6 +584,15 @@ async def _persist_failure(
         else:
             raise AssertionError(origin)
         await update_order_snapshot(session, failed)
+        if origin is OrderState.SYNCING:
+            session.add(
+                OrderSyncModel(
+                    order_id=order_id,
+                    next_attempt_at=base_time,
+                    created_at=base_time,
+                    updated_at=base_time,
+                )
+            )
         for event in events:
             await _insert_audit(session, event)
 

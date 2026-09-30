@@ -25,6 +25,7 @@ from opsflow.persistence.models import (
     OrderCreationIdempotencyModel,
     OrderLineModel,
     OrderModel,
+    OrderSyncModel,
     ReviewRevisionModel,
     SourceDocumentModel,
     ValidationIssueModel,
@@ -124,6 +125,25 @@ EXPECTED_COLUMNS = {
         "created_at",
         "updated_at",
     },
+    "order_syncs": {
+        "order_id",
+        "claim_token",
+        "claim_expires_at",
+        "attempt_count",
+        "retry_generation",
+        "next_attempt_at",
+        "odoo_sale_order_id",
+        "odoo_sale_order_name",
+        "hubspot_company_id",
+        "hubspot_deal_id",
+        "hubspot_association_confirmed_at",
+        "in_flight_step",
+        "last_failure_step",
+        "last_failure_code",
+        "last_attempt_at",
+        "created_at",
+        "updated_at",
+    },
 }
 
 
@@ -178,6 +198,7 @@ def test_named_models_map_to_the_expected_relational_tables() -> None:
             ExtractionSnapshotModel,
             ReviewRevisionModel,
             NotificationDeliveryModel,
+            OrderSyncModel,
         )
     } == set(EXPECTED_COLUMNS)
 
@@ -193,6 +214,7 @@ def test_primary_keys_match_the_relational_identity_contract() -> None:
         "order_creation_idempotency": ("idempotency_key",),
         "extraction_snapshots": ("id",),
         "review_revisions": ("id",),
+        "order_syncs": ("order_id",),
     }
 
     for table_name, expected_primary_key in expected_primary_keys.items():
@@ -208,6 +230,7 @@ def test_children_and_idempotency_rows_have_the_required_foreign_keys() -> None:
         "validation_issues": "CASCADE",
         "audit_events": "CASCADE",
         "order_creation_idempotency": "RESTRICT",
+        "order_syncs": "CASCADE",
     }
 
     for table_name, on_delete in expected_on_delete.items():
@@ -417,6 +440,46 @@ def test_metadata_has_no_processing_attempt_table_or_custom_enum_type() -> None:
         for table in metadata.tables.values()
         for column in table.columns
     )
+
+
+def test_order_sync_model_rejects_invalid_claim_and_counter_values() -> None:
+    table = Base.metadata.tables["order_syncs"]
+    checks = _normalized_checks(table)
+
+    assert "ck_order_syncs_claim_pair" in {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    assert "attempt_count between 0 and 3" in checks
+    assert "retry_generation >= 0" in checks
+    assert not any("retry_generation <=" in check for check in checks)
+    assert "in_flight_step" in " ".join(checks)
+    assert "last_failure_code" in " ".join(checks)
+    assert "last_failure_step" in " ".join(checks)
+
+    indexes = {index.name: index for index in table.indexes}
+    assert set(indexes) == {
+        "uq_order_syncs_odoo_sale_order_id",
+        "uq_order_syncs_hubspot_deal_id",
+        "ix_order_syncs_claim_eligibility",
+    }
+    assert indexes["uq_order_syncs_odoo_sale_order_id"].unique is True
+    assert indexes["uq_order_syncs_hubspot_deal_id"].unique is True
+    assert "hubspot_company_id" not in {
+        column.name for index in table.indexes for column in index.columns
+    }
+    assert indexes["ix_order_syncs_claim_eligibility"].unique is False
+    assert all(
+        indexes[name].dialect_options["postgresql"].get("where") is not None
+        for name in ("uq_order_syncs_odoo_sale_order_id", "uq_order_syncs_hubspot_deal_id")
+    )
+
+    order_sync = table
+    assert tuple(column.name for column in order_sync.primary_key.columns) == ("order_id",)
+    foreign_key = next(iter(order_sync.foreign_keys))
+    assert foreign_key.target_fullname == "orders.id"
+    assert foreign_key.ondelete == "CASCADE"
 
 
 def test_extraction_snapshot_checks_are_named_and_defense_in_depth_is_explicit() -> None:

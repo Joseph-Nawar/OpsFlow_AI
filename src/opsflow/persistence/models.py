@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     CHAR,
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     PrimaryKeyConstraint,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -25,6 +27,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from opsflow.order_sync.contracts import OrderSyncFailureCode, OrderSyncStep
 
 
 class Base(DeclarativeBase):
@@ -409,6 +413,112 @@ class NotificationDeliveryModel(Base):
     )
     provider_reference: Mapped[str | None] = mapped_column(String(256))
     last_failure_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class OrderSyncModel(Base):
+    """One durable Phase 9 synchronization intent and its recovery checkpoints."""
+
+    __tablename__ = "order_syncs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["order_id"], ["orders.id"], name="fk_order_syncs_order", ondelete="CASCADE"
+        ),
+        PrimaryKeyConstraint("order_id", name="pk_order_syncs"),
+        CheckConstraint(
+            "(claim_token IS NULL AND claim_expires_at IS NULL) OR "
+            "(claim_token IS NOT NULL AND claim_expires_at IS NOT NULL)",
+            name="ck_order_syncs_claim_pair",
+        ),
+        CheckConstraint("attempt_count BETWEEN 0 AND 3", name="ck_order_syncs_attempt_count"),
+        CheckConstraint("retry_generation >= 0", name="ck_order_syncs_retry_generation"),
+        CheckConstraint(
+            "in_flight_step IS NULL OR in_flight_step IN "
+            f"({_sql_values(tuple(step.value for step in OrderSyncStep))})",
+            name="ck_order_syncs_in_flight_step",
+        ),
+        CheckConstraint(
+            "last_failure_step IS NULL OR last_failure_step IN "
+            f"({_sql_values(tuple(step.value for step in OrderSyncStep))})",
+            name="ck_order_syncs_failure_step",
+        ),
+        CheckConstraint(
+            "last_failure_code IS NULL OR last_failure_code IN "
+            f"({_sql_values(tuple(code.value for code in OrderSyncFailureCode))})",
+            name="ck_order_syncs_failure_code",
+        ),
+        CheckConstraint(
+            "(last_failure_step IS NULL AND last_failure_code IS NULL) OR "
+            "(last_failure_step IS NOT NULL AND last_failure_code IS NOT NULL)",
+            name="ck_order_syncs_failure_pair",
+        ),
+        CheckConstraint(
+            "(odoo_sale_order_id IS NULL AND odoo_sale_order_name IS NULL) OR "
+            "(odoo_sale_order_id IS NOT NULL AND odoo_sale_order_name IS NOT NULL AND "
+            "odoo_sale_order_id > 0 AND "
+            "length(btrim(odoo_sale_order_name)) BETWEEN 1 AND 256)",
+            name="ck_order_syncs_odoo_receipt_pair",
+        ),
+        CheckConstraint(
+            "hubspot_company_id IS NULL OR length(btrim(hubspot_company_id)) BETWEEN 1 AND 256",
+            name="ck_order_syncs_hubspot_company_id",
+        ),
+        CheckConstraint(
+            "hubspot_deal_id IS NULL OR length(btrim(hubspot_deal_id)) BETWEEN 1 AND 256",
+            name="ck_order_syncs_hubspot_deal_id",
+        ),
+        CheckConstraint(
+            "hubspot_association_confirmed_at IS NULL OR "
+            "(hubspot_company_id IS NOT NULL AND hubspot_deal_id IS NOT NULL)",
+            name="ck_order_syncs_association_receipt",
+        ),
+        Index(
+            "uq_order_syncs_odoo_sale_order_id",
+            "odoo_sale_order_id",
+            unique=True,
+            postgresql_where=text("odoo_sale_order_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_order_syncs_hubspot_deal_id",
+            "hubspot_deal_id",
+            unique=True,
+            postgresql_where=text("hubspot_deal_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_order_syncs_claim_eligibility",
+            "next_attempt_at",
+            "claim_expires_at",
+        ),
+    )
+
+    order_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    claim_token: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True))
+    claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default=text("0")
+    )
+    retry_generation: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    odoo_sale_order_id: Mapped[int | None] = mapped_column(BigInteger)
+    odoo_sale_order_name: Mapped[str | None] = mapped_column(Text)
+    hubspot_company_id: Mapped[str | None] = mapped_column(Text)
+    hubspot_deal_id: Mapped[str | None] = mapped_column(Text)
+    hubspot_association_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    in_flight_step: Mapped[str | None] = mapped_column(Text)
+    last_failure_step: Mapped[str | None] = mapped_column(Text)
+    last_failure_code: Mapped[str | None] = mapped_column(Text)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -18,6 +18,7 @@ from opsflow.domain import (
     ValidationSeverity,
 )
 from opsflow.extraction.models import Evidence, ExtractedLine, ExtractionDraft
+from opsflow.order_sync.contracts import OrderSync, OrderSyncFailureCode, OrderSyncStep
 from opsflow.persistence.mappers import (
     PersistedExtractionSnapshot,
     audit_event_from_model,
@@ -27,6 +28,8 @@ from opsflow.persistence.mappers import (
     extraction_snapshot_to_model,
     line_to_model,
     order_from_models,
+    order_sync_from_model,
+    order_sync_to_model,
     order_to_model,
     source_document_from_model,
     source_document_to_model,
@@ -35,6 +38,7 @@ from opsflow.persistence.mappers import (
 from opsflow.persistence.models import (
     AuditEventModel,
     ExtractionSnapshotModel,
+    OrderSyncModel,
     SourceDocumentModel,
     ValidationIssueModel,
 )
@@ -482,3 +486,78 @@ def test_extraction_snapshot_payload_builder_does_not_accept_mutable_draft_colle
 
     with pytest.raises(DomainValidationError):
         extraction_draft_to_payload(invalid)
+
+
+def test_order_sync_mapper_round_trips_receipts_and_bounded_codes() -> None:
+    sync = OrderSync(
+        order_id=ORDER_ID,
+        claim_token=None,
+        claim_expires_at=None,
+        attempt_count=3,
+        retry_generation=10_000,
+        next_attempt_at=CREATED_AT,
+        odoo_sale_order_id=123,
+        odoo_sale_order_name="S000123",
+        hubspot_company_id="company-opaque-1",
+        hubspot_deal_id="deal-opaque-2",
+        hubspot_association_confirmed_at=CREATED_AT,
+        in_flight_step=None,
+        last_failure_step=OrderSyncStep.HUBSPOT_ASSOCIATION,
+        last_failure_code=OrderSyncFailureCode.PROVIDER_UNAVAILABLE,
+        last_attempt_at=CREATED_AT,
+        created_at=CREATED_AT,
+        updated_at=CREATED_AT,
+    )
+
+    row = order_sync_to_model(sync)
+
+    assert isinstance(row, OrderSyncModel)
+    assert order_sync_from_model(row) == sync
+
+
+def test_order_sync_mapper_rejects_unbounded_codes_and_invalid_contract_values() -> None:
+    sync = OrderSync(
+        order_id=ORDER_ID,
+        claim_token=None,
+        claim_expires_at=None,
+        attempt_count=0,
+        retry_generation=0,
+        next_attempt_at=CREATED_AT,
+        odoo_sale_order_id=None,
+        odoo_sale_order_name=None,
+        hubspot_company_id=None,
+        hubspot_deal_id=None,
+        hubspot_association_confirmed_at=None,
+        in_flight_step=None,
+        last_failure_step=None,
+        last_failure_code=None,
+        last_attempt_at=None,
+        created_at=CREATED_AT,
+        updated_at=CREATED_AT,
+    )
+    row = order_sync_to_model(sync)
+    row.last_failure_code = "RAW_PROVIDER_ERROR"
+
+    with pytest.raises(DomainValidationError):
+        order_sync_from_model(row)
+
+    with pytest.raises(ValueError):
+        OrderSync(
+            order_id=ORDER_ID,
+            claim_token=None,
+            claim_expires_at=None,
+            attempt_count=4,
+            retry_generation=0,
+            next_attempt_at=CREATED_AT,
+            odoo_sale_order_id=None,
+            odoo_sale_order_name=None,
+            hubspot_company_id=None,
+            hubspot_deal_id=None,
+            hubspot_association_confirmed_at=None,
+            in_flight_step=None,
+            last_failure_step=None,
+            last_failure_code=None,
+            last_attempt_at=None,
+            created_at=CREATED_AT,
+            updated_at=CREATED_AT,
+        )
