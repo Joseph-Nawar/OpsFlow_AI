@@ -45,6 +45,18 @@ def test_odoo_timeout_after_possible_commit_replays_same_opsflow_identity() -> N
     asyncio.run(_assert_lost_response_replays_same_identity())
 
 
+def test_bridge_concurrency_retry_stays_retryable_in_existing_coordinator() -> None:
+    asyncio.run(_assert_concurrency_retry_resumes_same_identity())
+
+
+def test_lost_response_reconciles_when_current_free_qty_is_negative() -> None:
+    asyncio.run(_assert_lost_response_replays_same_identity(negative_stock=True))
+
+
+def test_negative_free_qty_blocks_a_new_order_before_bridge_write() -> None:
+    asyncio.run(_assert_new_order_rejects_negative_free_qty())
+
+
 def test_bridge_resume_preflights_current_price_before_new_remote_order() -> None:
     asyncio.run(_assert_bridge_preflights_current_price_for_new_order())
 
@@ -109,12 +121,15 @@ class _OdooFake(httpx.AsyncBaseTransport):
         self.bridge_calls: list[dict[str, object]] = []
         self.receipts: dict[str, tuple[int, str]] = {}
         self.lose_first_bridge_response = False
+        self.concurrency_retry_first_bridge = False
         self.delay_seconds = 0.0
         self.cancelled = False
         self.fail_next_bridge = False
         self.assert_no_transaction_on_request = False
         self.change_product_price_after_request_count: int | None = None
         self.remove_stock_after_request_count: int | None = None
+        self.negative_stock_after_request_count: int | None = None
+        self.negative_stock_always = False
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.requests_started += 1
@@ -178,6 +193,13 @@ class _OdooFake(httpx.AsyncBaseTransport):
         if request.url.path == "/json/2/sale.order/opsflow_create_or_get_sale_order":
             self.bridge_calls.append(body)
             order_id = str(body["opsflow_order_id"])
+            if self.concurrency_retry_first_bridge:
+                self.concurrency_retry_first_bridge = False
+                return httpx.Response(
+                    200,
+                    json={"outcome": "concurrency_retry"},
+                    request=request,
+                )
             if order_id not in self.receipts:
                 self.receipts[order_id] = (9001, "S009001")
                 if self.lose_first_bridge_response:
@@ -218,6 +240,16 @@ class _OdooFake(httpx.AsyncBaseTransport):
         ):
             assert isinstance(payload, list) and len(payload) == 1
             payload = [{**payload[0], "free_qty": 0.0}]
+        if request.url.path == "/json/2/product.product/search_read" and self.negative_stock_always:
+            assert isinstance(payload, list) and len(payload) == 1
+            payload = [{**payload[0], "free_qty": -2.0}]
+        if (
+            request.url.path == "/json/2/product.product/search_read"
+            and self.negative_stock_after_request_count is not None
+            and self.requests_started > self.negative_stock_after_request_count
+        ):
+            assert isinstance(payload, list) and len(payload) == 1
+            payload = [{**payload[0], "free_qty": -2.0}]
         if payload is None:
             return httpx.Response(404, json={"diagnostic": _SENTINEL}, request=request)
         return httpx.Response(200, json=payload, request=request)
@@ -332,7 +364,7 @@ async def _assert_receipt_persists_before_crm_step() -> None:
         await _dispose(engine, base_sessions, order_id)
 
 
-async def _assert_lost_response_replays_same_identity() -> None:
+async def _assert_lost_response_replays_same_identity(*, negative_stock: bool = False) -> None:
     engine, base_sessions, order_id = await _new_test_state()
     tracking = _TrackingSessionMaker(base_sessions)
     fake = _OdooFake(
@@ -361,7 +393,10 @@ async def _assert_lost_response_replays_same_identity() -> None:
         assert sync.in_flight_step == OrderSyncStep.ODOO_BRIDGE.value
         assert sync.odoo_sale_order_id is None
         assert len(fake.receipts) == 1
-        fake.remove_stock_after_request_count = fake.requests_started
+        if negative_stock:
+            fake.negative_stock_after_request_count = fake.requests_started
+        else:
+            fake.remove_stock_after_request_count = fake.requests_started
 
         async with base_sessions() as session, session.begin():
             await session.execute(
@@ -391,11 +426,106 @@ async def _assert_lost_response_replays_same_identity() -> None:
         assert sync is not None
         assert sync.odoo_sale_order_id == 9001
         assert sync.odoo_sale_order_name == "S009001"
+        if negative_stock:
+            assert sync.last_failure_code != OrderSyncFailureCode.INVENTORY_INSUFFICIENT.value
         assert sync.attempt_count == 1
         assert any(event.event_type == "ORDER_SYNC_FAILED" for event in audit)
         assert all(_SENTINEL not in event.description for event in audit)
     finally:
         await first_session.close()
+        await adapter.aclose()
+        await _dispose(engine, base_sessions, order_id)
+
+
+async def _assert_concurrency_retry_resumes_same_identity() -> None:
+    engine, base_sessions, order_id = await _new_test_state()
+    tracking = _TrackingSessionMaker(base_sessions)
+    fake = _OdooFake(
+        tracking,
+        checkpoint_sessionmaker=base_sessions,
+        checkpoint_order_id=order_id,
+    )
+    fake.concurrency_retry_first_bridge = True
+    adapter = OdooERPAdapter(
+        _runtime_settings(Settings().database_url),
+        transport=fake,
+        sessionmaker=tracking,
+        policy=_runtime_policy(),
+    )
+    first_session = base_sessions()
+    tracking.sessions.append(first_session)
+    try:
+        first = await execute_next_order_sync(first_session, adapter)
+        assert first.kind is ExecuteNextKind.RETRY_WAIT
+        assert first.state is OrderState.SYNCING
+        async with base_sessions() as session:
+            sync = await session.get(OrderSyncModel, order_id)
+            order = await session.get(OrderModel, order_id)
+        assert sync is not None and order is not None
+        assert sync.last_failure_code == OrderSyncFailureCode.PROVIDER_UNAVAILABLE.value
+        assert sync.in_flight_step == OrderSyncStep.ODOO_BRIDGE.value
+        assert sync.odoo_sale_order_id is None
+        assert order.state == OrderState.SYNCING.value
+        assert fake.receipts == {}
+
+        async with base_sessions() as session, session.begin():
+            await session.execute(
+                update(OrderSyncModel)
+                .where(OrderSyncModel.order_id == order_id)
+                .values(next_attempt_at=func.now() - timedelta(seconds=1))
+            )
+        second_session = base_sessions()
+        tracking.sessions.append(second_session)
+        second = await execute_next_order_sync(second_session, adapter)
+        assert second.kind is ExecuteNextKind.NEEDS_REVIEW
+        assert second.state is OrderState.FAILED_RETRYABLE
+        assert len(fake.bridge_calls) == 2
+        assert fake.bridge_calls[0]["opsflow_order_id"] == str(order_id)
+        assert fake.bridge_calls[1]["opsflow_order_id"] == str(order_id)
+        assert len(fake.receipts) == 1
+        async with base_sessions() as session:
+            sync = await session.get(OrderSyncModel, order_id)
+            order = await session.get(OrderModel, order_id)
+        assert sync is not None and order is not None
+        assert sync.odoo_sale_order_id == 9001
+        assert sync.odoo_sale_order_name == "S009001"
+        assert order.state != OrderState.FAILED_FINAL.value
+    finally:
+        await first_session.close()
+        await adapter.aclose()
+        await _dispose(engine, base_sessions, order_id)
+
+
+async def _assert_new_order_rejects_negative_free_qty() -> None:
+    engine, base_sessions, order_id = await _new_test_state()
+    tracking = _TrackingSessionMaker(base_sessions)
+    fake = _OdooFake(
+        tracking,
+        checkpoint_sessionmaker=base_sessions,
+        checkpoint_order_id=order_id,
+    )
+    fake.negative_stock_always = True
+    adapter = OdooERPAdapter(
+        _runtime_settings(Settings().database_url),
+        transport=fake,
+        sessionmaker=tracking,
+        policy=_runtime_policy(),
+    )
+    coordinator_session = base_sessions()
+    tracking.sessions.append(coordinator_session)
+    try:
+        result = await execute_next_order_sync(coordinator_session, adapter)
+        assert result.kind is ExecuteNextKind.NEEDS_REVIEW
+        assert result.state is OrderState.FAILED_RETRYABLE
+        assert fake.bridge_calls == []
+        assert fake.receipts == {}
+        async with base_sessions() as session:
+            sync = await session.get(OrderSyncModel, order_id)
+        assert sync is not None
+        assert sync.last_failure_code == OrderSyncFailureCode.INVENTORY_INSUFFICIENT.value
+        assert sync.in_flight_step == OrderSyncStep.ODOO_LOOKUP.value
+    finally:
+        await coordinator_session.close()
         await adapter.aclose()
         await _dispose(engine, base_sessions, order_id)
 

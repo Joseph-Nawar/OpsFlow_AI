@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from odoo import Command, _, api, fields, models
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 from odoo.tools import float_compare
 from psycopg2 import IntegrityError
 
@@ -124,15 +124,14 @@ class SaleOrder(models.Model):
                 != "sale_order_opsflow_order_id_unique"
             ):
                 raise
-            winner = bridge.search(
-                [("opsflow_order_id", "=", payload["opsflow_order_id"])], limit=2
-            )
-            if len(winner) != 1:
-                return _reconciliation_required()
-            return bridge._opsflow_existing_receipt(winner, payload)
+            # Odoo 19 uses REPEATABLE READ. The conflicting insert proves a
+            # concurrent transaction committed the unique UUID, but this
+            # request's earlier snapshot may not see it. A fresh JSON-2
+            # invocation will reconcile the winner with the same identity.
+            return _concurrency_retry()
 
         if order.state != "sale":
-            return _reconciliation_required()
+            raise UserError(_("The OpsFlow sales order was not confirmed."))
         return _receipt("created", order)
 
     def _opsflow_existing_receipt(self, order, payload):
@@ -438,6 +437,10 @@ def _conflict():
 
 def _reconciliation_required():
     return {"outcome": "reconciliation_required", "failure_code": "RECONCILIATION_REQUIRED"}
+
+
+def _concurrency_retry():
+    return {"outcome": "concurrency_retry"}
 
 
 def _receipt(outcome, order):

@@ -54,7 +54,6 @@ class TestSaleOrderOpsflowBridge(TransactionCase):
         )
         cls.bridge_group = cls.env.ref("opsflow_sale_bridge.group_opsflow_sale_bridge")
         cls.user_group_ids = [
-            cls.env.ref("base.group_user").id,
             cls.env.ref("sales_team.group_sale_salesman").id,
             cls.env.ref("stock.group_stock_user").id,
             cls.bridge_group.id,
@@ -303,6 +302,19 @@ class TestSaleOrderOpsflowBridge(TransactionCase):
             self.env["sale.order"].search([("opsflow_order_id", "=", payload["opsflow_order_id"])])
         )
 
+    def test_nonraising_confirmation_without_sale_state_aborts_new_order(self):
+        payload = self._payload()
+        sale_order_class = type(self.env["sale.order"])
+
+        with (
+            patch.object(sale_order_class, "action_confirm", return_value=None),
+            self.assertRaises(UserError),
+        ):
+            self._bridge(payload)
+        self.assertFalse(
+            self.env["sale.order"].search([("opsflow_order_id", "=", payload["opsflow_order_id"])])
+        )
+
     def test_matching_replay_returns_same_confirmed_order(self):
         payload = self._payload()
         first = self._bridge(payload)
@@ -376,6 +388,10 @@ class TestSaleOrderOpsflowBridge(TransactionCase):
         self.assertEqual(order.warehouse_id, self.warehouse)
 
     def test_method_requires_bridge_group_and_allowed_company(self):
+        self.assertTrue(self.integration_user.has_group("base.group_user"))
+        self.assertTrue(self.integration_user.has_group("sales_team.group_sale_salesman"))
+        self.assertTrue(self.integration_user.has_group("stock.group_stock_user"))
+        self.assertFalse(self.integration_user.has_group("product.group_product_manager"))
         payload = self._payload()
         created = self._bridge(payload)
         order = self.env["sale.order"].browse(created["sale_order_id"])

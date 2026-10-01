@@ -350,9 +350,12 @@ class OdooERPAdapter(BusinessDataProvider):
             sale_ok = _required_bool(record, "sale_ok")
             is_storable = _required_bool(record, "is_storable")
             catalogue_price = _required_decimal(record, "lst_price")
-            available_quantity = _required_decimal(record, "free_qty")
-            if available_quantity < 0:
-                raise _OdooFailure(OrderSyncFailureCode.INVENTORY_INSUFFICIENT)
+            # Odoo can report negative free stock. The shared trusted-data
+            # contract is nonnegative, so retain its create-time meaning as
+            # zero available while allowing existing-identity reconciliation
+            # to continue to the atomic bridge.
+            free_quantity = _required_decimal(record, "free_qty", allow_negative=True)
+            available_quantity = max(free_quantity, Decimal("0"))
             products.append(
                 TrustedProduct(
                     sku=_required_string(record, "default_code"),
@@ -523,7 +526,9 @@ def _relation_id(value: object) -> int | None:
     raise _OdooFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
 
 
-def _required_decimal(record: dict[str, object], field: str) -> Decimal:
+def _required_decimal(
+    record: dict[str, object], field: str, *, allow_negative: bool = False
+) -> Decimal:
     value = record.get(field)
     if type(value) not in (int, float, str) or type(value) is bool:
         raise _OdooFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
@@ -533,7 +538,7 @@ def _required_decimal(record: dict[str, object], field: str) -> Decimal:
         result = Decimal(str(value))
     except InvalidOperation:
         raise _OdooFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE) from None
-    if not result.is_finite() or result < 0:
+    if not result.is_finite() or (result < 0 and not allow_negative):
         raise _OdooFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
     return result
 
@@ -664,6 +669,8 @@ def _bridge_result(value: object, order_id: UUID) -> OrderSyncStepResult:
         "failure_code": OrderSyncFailureCode.RECONCILIATION_REQUIRED.value,
     }:
         return OrderSyncStepFailure(OrderSyncFailureCode.RECONCILIATION_REQUIRED)
+    if value == {"outcome": "concurrency_retry"}:
+        return OrderSyncStepFailure(OrderSyncFailureCode.PROVIDER_UNAVAILABLE)
     if outcome == "rejected":
         if set(value) != {"outcome", "failure_code"}:
             return OrderSyncStepFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)

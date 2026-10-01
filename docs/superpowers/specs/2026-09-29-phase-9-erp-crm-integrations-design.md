@@ -1,7 +1,7 @@
 # Phase 9 — ERP/CRM Contract, Current-API Probe & Design
 
 **Milestone:** M9A — ERP/CRM Contract, Current-API Probe & Design
-**Status:** M9A COMPLETE; M9B COMPLETE (human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`); M9C IN PROGRESS with implementation planning awaiting human review; M9D–M9F NOT STARTED
+**Status:** Phase 9 IN PROGRESS; M9A COMPLETE; M9B COMPLETE (human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`); M9C IN PROGRESS — implementation/remediation/live verification; M9D–M9F NOT STARTED
 **Date:** 2026-09-29
 **Revised:** 2026-09-30
 **Branch base:** Phase 8 merge `528bbf1a3218f25dddcd0893ed601686f99223e3`
@@ -434,7 +434,7 @@ The exact Odoo image digest, account setup screenshots/IDs, and account-specific
 | **M9E — n8n Sync Orchestration + Full Sandbox/Clean-Clone E2E** | Add one sanitized scheduled `opsflow-order-sync` workflow that invokes the OpsFlow execute-next endpoint; document clean reconstruction. | Clean clone runs synthetic approved order to confirmed Odoo + HubSpot Company/Deal/association + `COMPLETED`; replay and partial recovery show no duplicate logical records. | Provider calls from n8n, credentials in workflow, real customer data, cloud hosting. |
 | **M9F — Independent Whole-Phase-9 Audit** | Independently audit contracts, code, migrations, tests, external sandbox evidence, privacy, cost, and docs. | Findings closed with evidence; required scenarios and clean-clone acceptance pass; audit/status documents report commit and tree state. | New feature scope or unapproved architecture changes during audit. |
 
-M9A is COMPLETE following human design approval at `21e1cf4351e4637b074e19023754650db80f0eb3`. M9B is COMPLETE following human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`. M9C is IN PROGRESS for implementation planning and awaits human plan review; M9D–M9F remain NOT STARTED.
+M9A is COMPLETE following human design approval at `21e1cf4351e4637b074e19023754650db80f0eb3`. M9B is COMPLETE following human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`. M9C is IN PROGRESS for implementation, targeted remediation, and live verification, pending targeted independent re-review; M9D–M9F remain NOT STARTED. Phase 9 remains IN PROGRESS.
 
 ## 20. User-owned setup gates and accepted limitations
 

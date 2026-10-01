@@ -11,6 +11,7 @@ import pytest
 from opsflow.settings import Settings
 
 _ROLLBACK_PROBE_ORDER_ID = "00000000-0000-4000-8000-000000000009"
+_NONCONFIRMING_PROBE_ORDER_ID = "00000000-0000-4000-8000-000000000010"
 
 
 def _live_settings() -> tuple[Settings, str, str]:
@@ -42,6 +43,22 @@ def _client(settings: Settings) -> httpx.AsyncClient:
         base_url=settings.odoo_base_url,
         headers={
             "Authorization": f"bearer {settings.odoo_api_key.get_secret_value()}",
+            "X-Odoo-Database": settings.odoo_database,
+        },
+        timeout=httpx.Timeout(20),
+    )
+
+
+def _unauthorized_client(settings: Settings) -> httpx.AsyncClient:
+    api_key = os.environ.get("OPSFLOW_ODOO_M9C_UNAUTHORIZED_API_KEY")
+    if not api_key:
+        pytest.fail("test-only ordinary-user Odoo API key is required")
+    assert settings.odoo_base_url is not None
+    assert settings.odoo_database is not None
+    return httpx.AsyncClient(
+        base_url=settings.odoo_base_url,
+        headers={
+            "Authorization": f"bearer {api_key}",
             "X-Odoo-Database": settings.odoo_database,
         },
         timeout=httpx.Timeout(20),
@@ -256,20 +273,42 @@ def test_json2_concurrent_same_uuid_converges_to_one_order() -> None:
         order_id = str(uuid4())
         async with _client(settings) as first, _client(settings) as second:
             payload = await _make_payload(first, settings, customer_ref, sku, order_id)
+            payload["client_order_ref"] = f"M9C-TEST-RACE:{order_id}"
             first_result, second_result = await asyncio.gather(
                 _call(first, "sale.order", "opsflow_create_or_get_sale_order", **payload),
                 _call(second, "sale.order", "opsflow_create_or_get_sale_order", **payload),
             )
             outcomes = (first_result, second_result)
-            assert all(
-                isinstance(result, dict) and result.get("outcome") in ("created", "replayed")
+            assert all(isinstance(result, dict) for result in outcomes)
+            receipt = next(
+                result
                 for result in outcomes
+                if isinstance(result, dict) and result.get("outcome") == "created"
             )
-            assert outcomes[0]["sale_order_id"] == outcomes[1]["sale_order_id"]
-            assert outcomes[0]["sale_order_name"] == outcomes[1]["sale_order_name"]
+            loser = next(result for result in outcomes if result is not receipt)
+            assert loser == {"outcome": "concurrency_retry"}
             rows = await _read_order(first, order_id)
             assert len(rows) == 1
             assert rows[0]["state"] == "sale"
+            replay = await _call(
+                second,
+                "sale.order",
+                "opsflow_create_or_get_sale_order",
+                **payload,
+            )
+            assert replay["outcome"] == "replayed"
+            assert replay["sale_order_id"] == receipt["sale_order_id"]
+            assert replay["sale_order_name"] == receipt["sale_order_name"]
+            assert (
+                await _call(
+                    first,
+                    "sale.order",
+                    "search_count",
+                    domain=[["opsflow_order_id", "=", order_id]],
+                    context={"active_test": False},
+                )
+                == 1
+            )
 
     asyncio.run(exercise())
 
@@ -298,6 +337,66 @@ def test_json2_confirmation_failure_rolls_back_request_transaction() -> None:
                 "sale.order",
                 "search_count",
                 domain=[["opsflow_order_id", "=", _ROLLBACK_PROBE_ORDER_ID]],
+                context={"active_test": False},
+            )
+            assert count == 0
+
+    asyncio.run(exercise())
+
+
+def test_json2_nonconfirming_success_rolls_back_request_transaction() -> None:
+    settings, customer_ref, sku = _live_settings()
+
+    async def exercise() -> None:
+        async with _client(settings) as client:
+            payload = await _make_payload(
+                client,
+                settings,
+                customer_ref,
+                sku,
+                _NONCONFIRMING_PROBE_ORDER_ID,
+            )
+            response = await client.post(
+                "/json/2/sale.order/opsflow_create_or_get_sale_order", json=payload
+            )
+            assert not response.is_success, "nonconfirming probe must abort the request"
+            del response
+            rows = await _read_order(client, _NONCONFIRMING_PROBE_ORDER_ID)
+            assert rows == []
+            count = await _call(
+                client,
+                "sale.order",
+                "search_count",
+                domain=[["opsflow_order_id", "=", _NONCONFIRMING_PROBE_ORDER_ID]],
+                context={"active_test": False},
+            )
+            assert count == 0
+
+    asyncio.run(exercise())
+
+
+def test_json2_bridge_rejects_ordinary_sales_user_without_bridge_group() -> None:
+    settings, customer_ref, sku = _live_settings()
+
+    async def exercise() -> None:
+        order_id = str(uuid4())
+        async with _client(settings) as authorized, _unauthorized_client(settings) as unauthorized:
+            payload = await _make_payload(authorized, settings, customer_ref, sku, order_id)
+            response = await unauthorized.post(
+                "/json/2/sale.order/opsflow_create_or_get_sale_order",
+                json=payload,
+            )
+            assert response.is_success, "bridge denial is a bounded method outcome"
+            assert response.json() == {
+                "outcome": "rejected",
+                "failure_code": "INTEGRATION_CONFIG",
+            }
+            assert await _read_order(authorized, order_id) == []
+            count = await _call(
+                authorized,
+                "sale.order",
+                "search_count",
+                domain=[["opsflow_order_id", "=", order_id]],
                 context={"active_test": False},
             )
             assert count == 0

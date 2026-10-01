@@ -5,7 +5,7 @@ adapter or the opt-in tests at a shared, production, or customer database. The
 required development path uses Odoo Community in Docker and has no mandatory
 paid service.
 
-## Probe record and current gate
+## Probe record and setup status
 
 The M9C probe used image `odoo:19.0`, reporting version `19.0-20260926`, with a
 separate PostgreSQL container/network and database `opsflow_m9c_disposable`.
@@ -16,19 +16,37 @@ outside the tracked product Compose stack.
 | --- | --- | --- |
 | Odoo version | Verified as `19.0-20260926`. | Disposable server startup output. |
 | JSON-2 route | `POST /json/2/res.company/read` returned a bounded read result. | Read-only probe. |
-| Bearer API-key authentication | Accepted by JSON-2 with the database header. | Ephemeral administrator key, not the integration user. |
+| Bearer API-key authentication | Accepted by JSON-2 with the database header for the dedicated bot and ordinary Sales/Stock test user. | Temporary keys were verified, then replaced keys were revoked. Secret values are not recorded. |
 | Database header | `X-Odoo-Database` selected `opsflow_m9c_disposable`. | Read-only probe. |
-| API documentation | `/doc` redirected to the browser login page; `/doc-bearer/index.json` and authenticated model descriptions were accessible with the API key. | The dedicated bot's visibility remains unverified. |
-| Odoo models and fields | Required customer, product, stock, sales order, order line, pricelist, and warehouse fields were visible in authenticated model descriptions. | Administrator metadata probe; bot ACLs remain a gate. |
-| Bridge addon | Installed in the disposable database. Odoo-native tests exercised the public model method, group guard, final recheck, uniqueness, replay, and confirmation path. | Tests ran inside rollback-isolated Odoo transactions; this is not proof of a JSON-2 write. |
-| Product user group | The approved plan's external ID `product.group_product_user` does not exist in this Odoo 19 build. Installed ACL definitions grant product read through `base.group_user` and `stock.group_stock_user`; `product.group_product_manager` is broader. | **Live write gate remains open.** Do not silently substitute the manager role or create an API-key writer user until the intended least-privilege standard group/access combination is explicitly verified. |
-| JSON-2 bridge create/replay/rollback and concurrent calls | Not run. | Blocked by the integration-user permission gate above. No Odoo business order was written during the probe. |
+| API documentation | `/doc` redirected to the browser login page; `/doc-bearer/index.json` and authenticated model descriptions were accessible with a temporary developer/admin key. | The dedicated bot does not need documentation access. |
+| API documentation authorization | Odoo's `api_doc` controller requires `api_doc.group_allow_doc` for `/doc-bearer`; an ordinary authorized M9C bot without that documentation-only group gets 403. A temporary developer/admin API key can inspect the method and field contracts. | Do not add `api_doc.group_allow_doc` to either integration test user. Verify docs with the developer/admin setup context and verify bot access using fixed JSON-2 calls instead. |
+| Odoo models and fields | Required customer, product, stock, sales order, order line, pricelist, and warehouse fields were visible in developer/admin metadata. The bot read the configured company, warehouse, pricelist, exact synthetic customer/SKU, `lst_price`, and warehouse-scoped `free_qty`. | `/doc-bearer` is restricted to the developer/admin context; direct bot JSON-2 reads were verified separately. |
+| Bridge addon | Installed in the disposable database. A fresh native-test database passed all 13 bridge addon post-install tests. | Native tests exercise the ORM method and ACL logic, not the JSON-2 request transaction boundary. |
+| Integration bot roles | Verified exact membership in `sales_team.group_sale_salesman`, `stock.group_stock_user`, and `opsflow_sale_bridge.group_opsflow_sale_bridge`. The ordinary test user has the first two and lacks the bridge group. Neither user has Product Manager, Sales Manager, Stock Manager, Settings, or Admin membership. | Salesperson implies `base.group_user`; these roles successfully read the needed data and the bot invoked the bridge. Stock User carries meaningful stock permissions, so retain a dedicated integration account and private API key. Do not use `product.group_product_user` or grant `product.group_product_manager`. |
+| JSON-2 bridge create/replay/rollback and concurrent calls | The opt-in suite passed 5 tests against `opsflow_m9c_disposable`. It proved lost-local-receipt replay, forced same-snapshot concurrent UUID race with retryable loser and fresh replay, both confirmation rollback paths, and rejection of the ordinary user without the bridge group. | Synthetic data only. Requests used the real JSON-2 route and a fresh independent read/count for reconciliation, rollback, and authorization assertions. |
 
-The Odoo-native addon tests passed on the disposable database. They created
-synthetic records only within Odoo test transactions, which were rolled back.
-They do not establish the JSON-2 request transaction boundary, real integration
-user permissions, or live provider convergence. The opt-in JSON-2 suite remains
-unrun until the access gate and the rest of the live checklist below pass.
+The setup used Odoo `19.0-20260926`, one company and USD currency, a rule-free
+base pricelist, one synthetic customer, and one synthetic storable variant in
+the configured warehouse. Its template base price was 10 and the variant extra
+was 2; the bot read effective `product.product.lst_price` as 12 and positive
+scoped `free_qty`. The ordinary test user authenticated and read the same
+required model surfaces, but the bridge returned bounded `INTEGRATION_CONFIG`
+without creating or reconciling an order. The authorized bot's fixed JSON-2
+bridge call was exposed and returned the expected bounded validation rejection
+for a deliberately invalid no-write probe.
+
+The native addon suite and the separate opt-in JSON-2 suite both passed. The
+JSON-2 suite exercised real request commits and rollbacks with synthetic data;
+this evidence applies only to the named local disposable database and does not
+authorize pointing the adapter at another Odoo environment.
+
+An additional controlled JSON-2 probe created one synthetic confirmed order,
+discarded its first receipt, lowered only that synthetic variant's stock until
+the configured warehouse reported negative `free_qty`, then replayed the same
+UUID and unchanged payload. The bridge returned the same receipt and an
+independent read/count found one order. The adapter's signed-value parsing and
+M9B reconciliation path are covered separately by provider-free integration
+tests; no production inventory or customer data was involved.
 
 ## Isolated setup
 
@@ -40,15 +58,17 @@ and install `opsflow_sale_bridge_failure_probe` only in the disposable test
 database. The failure probe rejects confirmation only for its reserved
 synthetic UUID.
 
-The tested Odoo-native suite can be run with the Odoo executable inside the
-container, using the disposable database name:
+The focused Odoo-native addon suite can be run with the Odoo executable inside
+the container. Install the bridge and test-support addons in a fresh disposable
+native-test database, then select only the bridge addon tests:
 
 ```bash
 docker exec opsflow-m9c-odoo odoo \
   --config=/etc/odoo/odoo.conf \
-  -d opsflow_m9c_disposable \
-  -u opsflow_sale_bridge \
-  --test-enable --stop-after-init --http-port=18070 --log-level=test
+  -d opsflow_m9c_native \
+  -u opsflow_sale_bridge,opsflow_sale_bridge_failure_probe \
+  --test-enable --test-tags /opsflow_sale_bridge \
+  --stop-after-init --http-port=18070 --log-level=test
 ```
 
 Use a free alternate HTTP port for the one-shot test process because the
@@ -83,31 +103,47 @@ Before any JSON-2 business write, verify against the selected disposable
 database and dedicated bot account:
 
 1. Confirm Odoo 19 Community, `/json/2`, bearer API-key authentication,
-   `X-Odoo-Database`, and authenticated `/doc-bearer` model/method visibility.
+   `X-Odoo-Database`, and `/doc-bearer` model/method visibility using a
+   developer/admin account with Odoo's docs permission. The integration bot
+   does not receive `api_doc.group_allow_doc`; its direct JSON-2 calls are
+   checked separately.
 2. Confirm the bridge addon is installed and
    `sale.order.opsflow_create_or_get_sale_order` is exposed to the dedicated
-   bot. Confirm that the user belongs to
-   `group_opsflow_sale_bridge`, is allowed in the configured company, and has
-   only the ordinary sale, stock, product-read, and company access needed by
-   ORM ACLs and record rules. The missing `product.group_product_user` ID must
-   be resolved with verified least privilege before proceeding.
-3. Verify the configured company, warehouse, one currency, rule-free base
+   bot. Assign only `sales_team.group_sale_salesman`,
+   `stock.group_stock_user`, and `group_opsflow_sale_bridge`; verify the
+   Salesperson role implies `base.group_user` and that these roles provide the
+   required product/partner reads, `lst_price`/`free_qty` access, Sales writes,
+   and company scope under the selected database's ordinary ACLs and record
+   rules. Stock User carries meaningful stock permissions; keep this a
+   dedicated bot with a private API key. Do not add Product Manager, Sales
+   Manager, Stock Manager, Settings, or Admin roles without a concrete ACL
+   failure and an explicit review.
+3. Create a second ordinary Sales/Stock test user with those same standard
+   roles but without `group_opsflow_sale_bridge`. Store only its separate
+   private API key in ignored live-test process configuration as
+   `OPSFLOW_ODOO_M9C_UNAUTHORIZED_API_KEY`; this value is test-only and is not
+   part of OpsFlow production settings. Confirm it can authenticate and reach
+   the method but receives the bounded authorization rejection.
+4. Verify the configured company, warehouse, one currency, rule-free base
    pricelist, product base Sales UoM, effective `product.product.lst_price`,
    and warehouse-scoped `free_qty`. Confirm there are no custom price rules.
-4. Use only synthetic customer/product/order records and enough synthetic
+5. Use only synthetic customer/product/order records and enough synthetic
    stock. Confirm confirmation side effects and UTC commitment-date storage.
-5. Run the JSON-2 opt-in only after the gates above pass and the disposable
+6. Run the JSON-2 opt-in only after the gates above pass and the disposable
    database cleanup path is ready:
 
    ```bash
    OPSFLOW_ODOO_LIVE_TESTS=1 uv run pytest tests/odoo_live/test_phase9_bridge_json2.py -q
    ```
 
-   The suite requires ignored runtime settings plus local synthetic customer
-   reference and SKU values. It checks commit with discarded local receipt and
-   same-identity replay, concurrent same-UUID convergence, and confirmation
-   failure followed by a fresh JSON-2 read proving rollback. It is excluded
-   from ordinary repository test runs unless explicitly enabled.
+   The suite requires ignored runtime settings, local synthetic customer
+   reference and SKU values, and the test-only ordinary-user key. It checks
+   commit with discarded local receipt and same-identity replay, a forced
+   same-snapshot concurrent UUID race followed by fresh retry/replay, both
+   raising and non-raising confirmation rollback through fresh JSON-2 reads,
+   and authorization rejection for the ordinary user without the bridge group.
+   It is excluded from ordinary repository test runs unless explicitly
+   enabled.
 
 After collecting only sanitized version, receipt-presence, replay, and rollback
 evidence, stop and remove only the disposable Odoo/PostgreSQL containers,

@@ -213,6 +213,15 @@ def test_bridge_result_accepts_only_bounded_confirmed_receipts() -> None:
         assert failure.code is OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE
 
 
+def test_bridge_concurrency_race_maps_to_existing_retryable_failure() -> None:
+    order_id = UUID("8c1f50e1-19dc-4a77-99b4-74764713b536")
+
+    result = _bridge_result({"outcome": "concurrency_retry"}, order_id)
+
+    assert isinstance(result, OrderSyncStepFailure)
+    assert result.code is OrderSyncFailureCode.PROVIDER_UNAVAILABLE
+
+
 def test_lookup_maps_exact_partner_and_variant_fields() -> None:
     adapter = OdooERPAdapter(_settings(), transport=httpx.MockTransport(_lookup_handler()))
     request = BusinessDataLookupRequest("CUST-001", None, ("SKU-001",))
@@ -307,6 +316,24 @@ def test_lookup_uses_lst_price_and_free_qty_with_explicit_company_warehouse() ->
         "active_test": False,
     }
     assert all("qty_available" not in body.get("fields", []) for _, body in calls)
+
+
+def test_lookup_parses_negative_free_qty_without_treating_it_as_provider_error() -> None:
+    adapter = OdooERPAdapter(
+        _settings(),
+        transport=httpx.MockTransport(_lookup_handler(product_rows=[_product(free_qty=-2.0)])),
+    )
+    request = BusinessDataLookupRequest("CUST-001", None, ("SKU-001",))
+
+    async def exercise():
+        try:
+            return await adapter._lookup_snapshot(request)
+        finally:
+            await adapter.aclose()
+
+    snapshot = asyncio.run(exercise())
+    assert snapshot.trusted_data.products_by_line[0] is not None
+    assert snapshot.trusted_data.products_by_line[0].available_quantity == Decimal("0")
 
 
 def test_product_variant_effective_price_is_not_recomputed() -> None:
