@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import datetime
 from typing import cast
 
@@ -20,6 +21,7 @@ from opsflow.application.errors import (
 )
 from opsflow.application.orchestration import execute_orchestration_intake
 from opsflow.database import create_engine, create_sessionmaker, database_is_available
+from opsflow.odoo import OdooERPAdapter
 from opsflow.orchestration.composition import build_orchestration_runtime
 from opsflow.orchestration.contracts import (
     OrchestrationIntakeCommand,
@@ -37,6 +39,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        odoo_adapter = getattr(app.state, "odoo_adapter", None)
+        if odoo_adapter is not None:
+            await odoo_adapter.aclose()
         engine = cast(AsyncEngine, app.state.database_engine)
         await engine.dispose()
 
@@ -50,6 +55,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.database_engine = engine
     app.state.database_sessionmaker = create_sessionmaker(engine)
     review_runtime = build_demo_review_runtime()
+    odoo_adapter: OdooERPAdapter | None = None
+    if resolved_settings.odoo_base_url is not None:
+        odoo_adapter = OdooERPAdapter(
+            resolved_settings,
+            sessionmaker=app.state.database_sessionmaker,
+            policy=review_runtime.policy,
+        )
+        review_runtime = replace(review_runtime, provider=odoo_adapter)
     app.state.review_runtime = review_runtime
     orchestration_runtime = build_orchestration_runtime(
         resolved_settings,
@@ -58,8 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.orchestration_runtime = orchestration_runtime
     app.state.review_dev_operators = resolved_settings.review_dev_operators
     app.state.orchestration_token = resolved_settings.orchestration_token
-    # Phase 9 providers are configured in later milestones; fail closed until then.
-    app.state.order_sync_step_executor = None
+    app.state.odoo_adapter = odoo_adapter
+    # Keep execute-next fail-closed unless the complete Odoo adapter is configured.
+    app.state.order_sync_step_executor = odoo_adapter
 
     async def orchestration_intake_handler(
         session: AsyncSession,

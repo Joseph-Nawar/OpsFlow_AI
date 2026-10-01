@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from opsflow.domain import ValidationIssue, ValidationSeverity
+from opsflow.domain import Order, OrderState, ValidationIssue, ValidationSeverity
 from opsflow.validation.models import (
     ApprovalLevel,
     TrustedBusinessData,
@@ -35,6 +35,16 @@ def _decimal_text(value: Decimal) -> str:
 
 def _date_text(value: date) -> str:
     return value.isoformat()
+
+
+def _price_within_tolerance(
+    submitted_price: Decimal,
+    catalogue_price: Decimal,
+    policy: ValidationPolicy,
+) -> bool:
+    difference = abs(submitted_price - catalogue_price)
+    allowance = abs(catalogue_price) * policy.price_tolerance_fraction
+    return difference <= allowance
 
 
 def _add_issue(
@@ -255,9 +265,9 @@ def _append_line_issues(
         ):
             continue
 
-        difference = abs(line.submitted_price - product.catalogue_price)
-        allowance = abs(product.catalogue_price) * policy.price_tolerance_fraction
-        if difference > allowance:
+        if not _price_within_tolerance(line.submitted_price, product.catalogue_price, policy):
+            difference = abs(line.submitted_price - product.catalogue_price)
+            allowance = abs(product.catalogue_price) * policy.price_tolerance_fraction
             _add_issue(
                 issues,
                 "PRICE_OUTSIDE_TOLERANCE",
@@ -274,6 +284,180 @@ def _append_line_issues(
                     f"for line {index}."
                 ),
             )
+
+
+def approved_order_trusted_data_issues(
+    order: Order,
+    data: TrustedBusinessData,
+    policy: ValidationPolicy,
+) -> tuple[ValidationIssue, ...]:
+    """Recheck only trusted customer/product facts for an approved sync order."""
+
+    if order.state not in {OrderState.APPROVED, OrderState.SYNCING}:
+        raise ValueError("trusted-data preflight requires an approved or syncing order")
+    if len(data.products_by_line) != len(order.lines):
+        raise ValueError("trusted products must match the approved order line count")
+
+    issues: list[ValidationIssue] = []
+    customer: TrustedCustomer | None = None
+    if order.customer_reference is None:
+        _add_issue(
+            issues,
+            "CUSTOMER_REQUIRED",
+            "customer_reference",
+            "exact trusted customer reference",
+            None,
+            "An approved order has no trusted customer reference.",
+        )
+    else:
+        matching_customers = tuple(
+            candidate
+            for candidate in data.customer_candidates
+            if candidate.reference == order.customer_reference
+        )
+        if not matching_customers:
+            _add_issue(
+                issues,
+                "UNKNOWN_CUSTOMER",
+                "customer_reference",
+                "one exact trusted customer",
+                order.customer_reference,
+                "No exact trusted customer matched the approved order.",
+            )
+        elif len(matching_customers) > 1:
+            _add_issue(
+                issues,
+                "AMBIGUOUS_CUSTOMER",
+                "customer_reference",
+                "one exact trusted customer",
+                order.customer_reference,
+                "Multiple exact trusted customers matched the approved order.",
+            )
+        else:
+            customer = matching_customers[0]
+            if not customer.active:
+                _add_issue(
+                    issues,
+                    "INACTIVE_CUSTOMER",
+                    "customer_reference",
+                    "active trusted customer",
+                    order.customer_reference,
+                    "The trusted customer is no longer eligible.",
+                )
+
+    if order.currency is None:
+        _add_issue(
+            issues,
+            "CURRENCY_REQUIRED",
+            "currency",
+            "supported order currency",
+            None,
+            "An approved order has no currency.",
+        )
+    elif order.currency not in policy.supported_currencies:
+        _add_issue(
+            issues,
+            "UNSUPPORTED_CURRENCY",
+            "currency",
+            list(policy.supported_currencies),
+            order.currency,
+            "The approved order currency is not supported by policy.",
+        )
+
+    for index, (line, product) in enumerate(zip(order.lines, data.products_by_line, strict=True)):
+        field_prefix = f"lines[{index}]"
+        if line.sku is None:
+            _add_issue(
+                issues,
+                "SKU_REQUIRED",
+                f"{field_prefix}.sku",
+                "non-null SKU",
+                None,
+                "The approved line has no SKU.",
+            )
+            continue
+        if product is None:
+            _add_issue(
+                issues,
+                "UNKNOWN_SKU",
+                f"{field_prefix}.sku",
+                "one exact trusted product",
+                line.sku,
+                "The SKU is no longer present in trusted product data.",
+            )
+            continue
+        if product.sku != line.sku:
+            _add_issue(
+                issues,
+                "UNKNOWN_SKU",
+                f"{field_prefix}.sku",
+                line.sku,
+                product.sku,
+                "The trusted product does not match the approved SKU.",
+            )
+            continue
+        if not product.active:
+            _add_issue(
+                issues,
+                "INACTIVE_SKU",
+                f"{field_prefix}.sku",
+                "active trusted product",
+                line.sku,
+                "The trusted product is no longer eligible.",
+            )
+        if product.available_quantity is None:
+            _add_issue(
+                issues,
+                "INVENTORY_UNAVAILABLE",
+                f"{field_prefix}.quantity",
+                "known trusted available quantity",
+                None,
+                "Trusted inventory availability is unavailable.",
+            )
+        elif line.quantity > product.available_quantity:
+            _add_issue(
+                issues,
+                "INSUFFICIENT_INVENTORY",
+                f"{field_prefix}.quantity",
+                "requested quantity <= trusted available quantity",
+                line.quantity,
+                "Requested quantity exceeds trusted available inventory.",
+            )
+        if order.currency is not None and product.currency != order.currency:
+            _add_issue(
+                issues,
+                "PRODUCT_CURRENCY_MISMATCH",
+                f"{field_prefix}.sku",
+                order.currency,
+                product.currency,
+                "Trusted product currency no longer matches the approved order.",
+            )
+        if product.catalogue_price is None:
+            _add_issue(
+                issues,
+                "CATALOGUE_PRICE_UNAVAILABLE",
+                f"{field_prefix}.submitted_price",
+                "trusted catalogue price",
+                None,
+                "Trusted catalogue price is unavailable.",
+            )
+        elif (
+            line.submitted_price is not None
+            and line.submitted_price >= 0
+            and order.currency in policy.supported_currencies
+            and product.currency == order.currency
+            and not _price_within_tolerance(line.submitted_price, product.catalogue_price, policy)
+        ):
+            _add_issue(
+                issues,
+                "PRICE_OUTSIDE_TOLERANCE",
+                f"{field_prefix}.submitted_price",
+                "absolute difference within configured catalogue-price tolerance",
+                line.submitted_price,
+                "Approved submitted price is outside the current trusted-price tolerance.",
+            )
+
+    return tuple(issues)
 
 
 def _build_validated_data(

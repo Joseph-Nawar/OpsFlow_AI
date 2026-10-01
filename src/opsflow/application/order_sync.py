@@ -655,6 +655,11 @@ async def _read_order_state(session: AsyncSession, order_id: UUID) -> OrderState
 def _order_from_row(row: OrderModel) -> Order:
     return Order(
         id=row.id,
+        customer_reference=row.customer_reference,
+        po_number=row.po_number,
+        order_date=row.order_date,
+        requested_delivery_date=row.requested_delivery_date,
+        currency=row.currency,
         state=OrderState(row.state),
         failure_origin=OrderState(row.failure_origin) if row.failure_origin else None,
     )
