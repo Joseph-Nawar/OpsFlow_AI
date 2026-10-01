@@ -116,3 +116,87 @@ def test_odoo_api_key_is_secret_and_never_rendered() -> None:
     assert key not in str(settings)
     assert settings.odoo_api_key is not None
     assert settings.odoo_api_key.get_secret_value() == key
+
+
+def test_hubspot_settings_are_optional_but_complete_when_present() -> None:
+    defaults = Settings(_env_file=None)
+    assert defaults.hubspot_service_key is None
+    assert defaults.hubspot_pipeline_id is None
+    assert defaults.hubspot_initial_stage_id is None
+    assert defaults.hubspot_portal_currency is None
+    assert defaults.hubspot_expected_portal_id is None
+
+    configured = Settings(
+        _env_file=None,
+        hubspot_service_key="test-hubspot-key",
+        hubspot_pipeline_id="default",
+        hubspot_initial_stage_id="appointmentscheduled",
+        hubspot_portal_currency="USD",
+        hubspot_expected_portal_id=149461984,
+    )
+    assert configured.hubspot_service_key is not None
+    assert configured.hubspot_service_key.get_secret_value() == "test-hubspot-key"
+    assert configured.hubspot_pipeline_id == "default"
+    assert configured.hubspot_initial_stage_id == "appointmentscheduled"
+    assert configured.hubspot_portal_currency == "USD"
+    assert configured.hubspot_expected_portal_id == 149461984
+
+
+def test_hubspot_service_key_is_secret_and_config_is_bounded() -> None:
+    key = "distinctive-hubspot-api-key-sentinel"
+    settings = Settings(
+        _env_file=None,
+        hubspot_service_key=key,
+        hubspot_pipeline_id="default",
+        hubspot_initial_stage_id="appointmentscheduled",
+        hubspot_portal_currency="USD",
+        hubspot_expected_portal_id=149461984,
+    )
+
+    assert key not in repr(settings)
+    assert key not in str(settings)
+    assert settings.hubspot_service_key is not None
+    assert settings.hubspot_service_key.get_secret_value() == key
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"hubspot_service_key": "key"},
+        {"hubspot_pipeline_id": "default"},
+        {"hubspot_initial_stage_id": "appointmentscheduled"},
+        {"hubspot_portal_currency": "USD"},
+        {"hubspot_expected_portal_id": 149461984},
+    ],
+)
+def test_partial_hubspot_configuration_fails_closed(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **overrides)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"hubspot_service_key": " "},
+        {"hubspot_pipeline_id": " "},
+        {"hubspot_pipeline_id": "x" * 129},
+        {"hubspot_initial_stage_id": " "},
+        {"hubspot_initial_stage_id": "x" * 129},
+        {"hubspot_portal_currency": "usd"},
+        {"hubspot_portal_currency": "US1"},
+        {"hubspot_portal_currency": "USDD"},
+        {"hubspot_expected_portal_id": 1},
+        {"hubspot_expected_portal_id": True},
+    ],
+)
+def test_invalid_hubspot_settings_are_rejected(overrides: dict[str, object]) -> None:
+    values: dict[str, object] = {
+        "hubspot_service_key": "test-hubspot-key",
+        "hubspot_pipeline_id": "default",
+        "hubspot_initial_stage_id": "appointmentscheduled",
+        "hubspot_portal_currency": "USD",
+        "hubspot_expected_portal_id": 149461984,
+    }
+    values.update(overrides)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **values)

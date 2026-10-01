@@ -1,12 +1,12 @@
 # Phase 9 — ERP/CRM Contract, Current-API Probe & Design
 
 **Milestone:** M9A — ERP/CRM Contract, Current-API Probe & Design
-**Status:** Phase 9 IN PROGRESS; M9A COMPLETE; M9B COMPLETE (human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`); M9C IN PROGRESS — implementation/remediation/live verification; M9D–M9F NOT STARTED
+**Status:** Phase 9 IN PROGRESS; M9A COMPLETE; M9B COMPLETE (human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`); M9C COMPLETE (human implementation approval at `1ed8508167c75305553db54906bc5e9af5d89870`); M9D IN PROGRESS — Tasks 2–7 implementation and live verification passed; independent review and human completion approval pending; M9E–M9F NOT STARTED
 **Date:** 2026-09-29
 **Revised:** 2026-09-30
 **Branch base:** Phase 8 merge `528bbf1a3218f25dddcd0893ed601686f99223e3`
 
-This document is the approved authoritative Phase 9 design. Provider documentation and the isolated Odoo probe below are research evidence. HubSpot account writes, credentials, and account-specific validation remain untested. M9A is COMPLETE following human design approval at commit `21e1cf4351e4637b074e19023754650db80f0eb3`.
+This document is the approved authoritative Phase 9 design. Provider documentation and the isolated Odoo probe below are research evidence. At M9A design approval, HubSpot account writes, credentials, and account-specific validation were untested; the later M9D Task 1 and synthetic implementation evidence is recorded in the M9D plan and sandbox guide. M9A is COMPLETE following human design approval at commit `21e1cf4351e4637b074e19023754650db80f0eb3`.
 
 **Evidence labels:** VERIFIED means confirmed in authoritative provider documentation or the isolated Odoo probe; DESIGN DECISION means the recommended Phase 9 behavior; ACCEPTED LIMITATION means an explicit scope/capability boundary; LIVE SETUP GATE means a fact that still needs an interactive account or credential check.
 
@@ -198,7 +198,7 @@ A single order needs three CRM mutations: Company upsert, Deal upsert, and one D
 **Company — one per trusted Odoo customer**
 
 - Built-in `name`: trusted Odoo partner name.
-- Custom `opsflow_customer_reference`: immutable unique property (`hasUniqueValue=true`); value comes only from the exact Odoo `res.partner.ref`.
+- Custom `opsflow_customer_reference_v2`: immutable unique Company property (`hasUniqueValue=true`); value comes only from the exact Odoo `res.partner.ref`. This is the human-approved M9D property name verified in the synthetic portal.
 - No email addresses, contacts, Gmail senders, or unrelated business fields.
 
 **Deal — one per OpsFlow order**
@@ -239,7 +239,7 @@ M9B should add the smallest durable table, `order_syncs`, with one row per appro
 | `last_failure_step`, `last_failure_code` | Bounded enums describing the latest failed provider step. No raw error body or stack trace. |
 | `last_attempt_at`, `created_at`, `updated_at` | Recovery scheduling and operational inspection timestamps. |
 
-Add check constraints for paired claim token/expiry, nonnegative counters, and valid bounded failure codes. Add unique indexes for each non-null Odoo sales-order ID and HubSpot Deal ID so two local orders cannot accidentally claim the same order receipt. Do not unique-index `hubspot_company_id`: multiple OpsFlow orders for one trusted customer intentionally share its Company. HubSpot's unique `opsflow_customer_reference` property enforces that external identity. Use the provider's native type where stable (Odoo integer ID) and opaque text for HubSpot IDs. Database status is derived from the existing order state, lease fields, `next_attempt_at`, and receipts; do not create a second sync-state machine.
+Add check constraints for paired claim token/expiry, nonnegative counters, and valid bounded failure codes. Add unique indexes for each non-null Odoo sales-order ID and HubSpot Deal ID so two local orders cannot accidentally claim the same order receipt. Do not unique-index `hubspot_company_id`: multiple OpsFlow orders for one trusted customer intentionally share its Company. HubSpot's unique `opsflow_customer_reference_v2` property enforces that external identity. Use the provider's native type where stable (Odoo integer ID) and opaque text for HubSpot IDs. Database status is derived from the existing order state, lease fields, `next_attempt_at`, and receipts; do not create a second sync-state machine.
 
 Persist receipts and checkpoint timestamps only. Do not store raw Odoo or HubSpot response JSON, credentials, sender/customer email addresses, or provider stack traces. Provider error messages are reduced to a bounded internal code and safe operational note.
 
@@ -332,7 +332,7 @@ Provider-specific status, body, stack trace, and credentials never become domain
 | External mutation | Stable key / guard | After request loss or concurrent duplicate |
 | --- | --- | --- |
 | Odoo sales-order create + confirm | Unique immutable `sale.order.opsflow_order_id` plus one atomic bridge call | Repeat bridge call with the same OpsFlow UUID. Existing row is returned; a concurrent insert collision is resolved by a fresh call. Confirmation and creation roll back together on failure. |
-| HubSpot Company create/update | Unique `opsflow_customer_reference` plus the selected date-versioned upsert contract | Use the M9D-verified poll or safe same-key reconciliation after lost responses. Persist no receipt before terminal `COMPLETE`, exactly one matching success, and a confirmed HubSpot ID; the unique property is the logical-record convergence guard. |
+| HubSpot Company create/update | Unique `opsflow_customer_reference_v2` plus the selected date-versioned upsert contract | Use the M9D-verified poll or safe same-key reconciliation after lost responses. Persist no receipt before terminal `COMPLETE`, exactly one matching success, and a confirmed HubSpot ID; the unique property is the logical-record convergence guard. |
 | HubSpot Deal create/update | Unique `opsflow_order_id` plus the selected date-versioned upsert contract | Use the M9D-verified poll or safe same-key reconciliation after lost responses. Persist no receipt before terminal `COMPLETE`, exactly one matching success, and a confirmed HubSpot ID; the unique property is the logical-record convergence guard. |
 | HubSpot Company–Deal relation | Stable pair of persisted HubSpot IDs plus default-association `PUT` | Repeat the same `PUT`; it targets the same pair and converges on the single required default relationship. |
 
@@ -434,7 +434,7 @@ The exact Odoo image digest, account setup screenshots/IDs, and account-specific
 | **M9E — n8n Sync Orchestration + Full Sandbox/Clean-Clone E2E** | Add one sanitized scheduled `opsflow-order-sync` workflow that invokes the OpsFlow execute-next endpoint; document clean reconstruction. | Clean clone runs synthetic approved order to confirmed Odoo + HubSpot Company/Deal/association + `COMPLETED`; replay and partial recovery show no duplicate logical records. | Provider calls from n8n, credentials in workflow, real customer data, cloud hosting. |
 | **M9F — Independent Whole-Phase-9 Audit** | Independently audit contracts, code, migrations, tests, external sandbox evidence, privacy, cost, and docs. | Findings closed with evidence; required scenarios and clean-clone acceptance pass; audit/status documents report commit and tree state. | New feature scope or unapproved architecture changes during audit. |
 
-M9A is COMPLETE following human design approval at `21e1cf4351e4637b074e19023754650db80f0eb3`. M9B is COMPLETE following human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`. M9C is IN PROGRESS for implementation, targeted remediation, and live verification, pending targeted independent re-review; M9D–M9F remain NOT STARTED. Phase 9 remains IN PROGRESS.
+M9A is COMPLETE following human design approval at `21e1cf4351e4637b074e19023754650db80f0eb3`. M9B is COMPLETE following human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`. M9C is COMPLETE following human implementation approval at `1ed8508167c75305553db54906bc5e9af5d89870`. M9D is IN PROGRESS after Tasks 2–7 implementation and live verification passed; independent review and human completion approval are pending; M9E–M9F remain NOT STARTED. Phase 9 remains IN PROGRESS.
 
 ## 20. User-owned setup gates and accepted limitations
 

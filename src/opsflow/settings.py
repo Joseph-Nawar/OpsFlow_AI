@@ -1,6 +1,7 @@
 """Environment-driven application settings."""
 
 import json
+import re
 from functools import lru_cache
 from typing import Annotated
 from urllib.parse import urlsplit
@@ -69,6 +70,11 @@ class Settings(BaseSettings):
     odoo_company_id: int | None = None
     odoo_warehouse_id: int | None = None
     odoo_pricelist_id: int | None = None
+    hubspot_service_key: SecretStr | None = None
+    hubspot_pipeline_id: str | None = None
+    hubspot_initial_stage_id: str | None = None
+    hubspot_portal_currency: str | None = None
+    hubspot_expected_portal_id: int | None = None
 
     @field_validator("review_base_url", mode="before")
     @classmethod
@@ -151,6 +157,49 @@ class Settings(BaseSettings):
             raise ValueError("Odoo IDs must be positive integers")
         return value
 
+    @field_validator("hubspot_service_key", mode="before")
+    @classmethod
+    def validate_hubspot_service_key(cls, value: object) -> object:
+        if value is None or (type(value) is str and not value.strip()):
+            return None
+        if isinstance(value, SecretStr) and not value.get_secret_value().strip():
+            return None
+        return value
+
+    @field_validator("hubspot_pipeline_id", "hubspot_initial_stage_id", mode="before")
+    @classmethod
+    def validate_hubspot_identifiers(cls, value: object) -> str | None:
+        if value is None or (type(value) is str and not value.strip()):
+            return None
+        if type(value) is not str or value != value.strip() or len(value) > 128:
+            raise ValueError("HubSpot identifiers must be nonblank strings up to 128 characters")
+        return value
+
+    @field_validator("hubspot_portal_currency", mode="before")
+    @classmethod
+    def validate_hubspot_portal_currency(cls, value: object) -> str | None:
+        if value is None or (type(value) is str and not value.strip()):
+            return None
+        if type(value) is not str or re.fullmatch(r"[A-Z]{3}", value, flags=re.ASCII) is None:
+            raise ValueError("HubSpot portal currency must be an uppercase ISO code")
+        return value
+
+    @field_validator("hubspot_expected_portal_id", mode="before")
+    @classmethod
+    def validate_hubspot_expected_portal_id(cls, value: object) -> object:
+        if value is None or (type(value) is str and not value.strip()):
+            return None
+        if type(value) is bool:
+            raise ValueError("HubSpot expected portal ID must match the verified test portal")
+        return value
+
+    @field_validator("hubspot_expected_portal_id")
+    @classmethod
+    def require_verified_hubspot_portal(cls, value: int | None) -> int | None:
+        if value is not None and value != 149461984:
+            raise ValueError("HubSpot expected portal ID must match the verified test portal")
+        return value
+
     @field_validator("review_dev_operators", mode="before")
     @classmethod
     def parse_review_dev_operators(cls, value: object) -> object:
@@ -184,6 +233,17 @@ class Settings(BaseSettings):
             value is None for value in odoo_values
         ):
             raise ValueError("all Odoo settings must be configured together")
+        hubspot_values = (
+            self.hubspot_service_key,
+            self.hubspot_pipeline_id,
+            self.hubspot_initial_stage_id,
+            self.hubspot_portal_currency,
+            self.hubspot_expected_portal_id,
+        )
+        if any(value is not None for value in hubspot_values) and any(
+            value is None for value in hubspot_values
+        ):
+            raise ValueError("all HubSpot settings must be configured together")
         return self
 
     model_config = SettingsConfigDict(
