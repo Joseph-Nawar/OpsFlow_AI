@@ -58,6 +58,122 @@ and install `opsflow_sale_bridge_failure_probe` only in the disposable test
 database. The failure probe rejects confirmation only for its reserved
 synthetic UUID.
 
+### Recreate the local Community service from a clean checkout
+
+The repository includes a sandbox-only Compose file; it is separate from the
+OpsFlow application Compose stack. Copy its blank example, set a fresh local
+PostgreSQL password and a one-time Odoo database-administrator password, and
+keep that file ignored:
+
+```bash
+cp integrations/odoo/.env.m9c-sandbox.example integrations/odoo/.env.m9c-sandbox
+```
+
+Set `M9C_POSTGRES_PASSWORD` and `M9C_ODOO_ADMIN_PASSWORD` in that file. Source
+the ignored values into the local shell without echoing them so the Odoo CLI
+can receive PostgreSQL connection variables for one-shot subcommands:
+
+```bash
+set -a
+. integrations/odoo/.env.m9c-sandbox
+set +a
+```
+
+Start only the isolated Odoo project, choosing a unique Compose project name
+and an unused loopback port:
+
+```bash
+docker compose \
+  --env-file integrations/odoo/.env.m9c-sandbox \
+  -f integrations/odoo/docker-compose.sandbox.yml \
+  -p opsflow-m9c-disposable up -d
+```
+
+The PostgreSQL service has no published host port. Create an explicitly named
+disposable database, then install Sales/Inventory and the bridge addon:
+
+```bash
+docker compose --env-file integrations/odoo/.env.m9c-sandbox \
+  -f integrations/odoo/docker-compose.sandbox.yml -p opsflow-m9c-disposable \
+  exec -T -e PGHOST=db -e "PGUSER=$M9C_POSTGRES_USER" \
+  -e "PGPASSWORD=$M9C_POSTGRES_PASSWORD" odoo \
+  odoo db init opsflow_m9c_disposable --password "$M9C_ODOO_ADMIN_PASSWORD" \
+  --country US
+docker compose --env-file integrations/odoo/.env.m9c-sandbox \
+  -f integrations/odoo/docker-compose.sandbox.yml -p opsflow-m9c-disposable \
+  exec -T -e PGHOST=db -e "PGUSER=$M9C_POSTGRES_USER" \
+  -e "PGPASSWORD=$M9C_POSTGRES_PASSWORD" odoo \
+  odoo module install -c /etc/odoo/odoo.conf -d opsflow_m9c_disposable \
+  sale_stock opsflow_sale_bridge
+```
+
+`odoo db init` uses the CLI subcommand syntax; do not put `--config` before the
+subcommand. The database name must be disposable and must never be a
+shared/customer database. The seed helper is intended for one run per fresh
+database; if its reserved bot already exists, it stops before setup writes so
+it cannot silently generate another API key. Discard/recreate only the
+disposable database before reseeding. The helper
+[`prepare_m9c_sandbox.py`](../../integrations/odoo/prepare_m9c_sandbox.py) runs
+only inside an Odoo superuser shell and rejects database names outside the
+`opsflow_m9c_*` / `opsflow_m9e_*` pattern. It accepts only an explicit
+`OPSFLOW-M9E-CUST-<suffix>` customer reference and
+`OPSFLOW-M9E-SKU-<suffix>` product code. It creates a USD pricelist, trusted
+synthetic customer/product, 100 units of synthetic stock, and a dedicated bot
+with only the approved Salesperson, Stock User, and bridge groups. It writes a
+new API key only to an operator-selected `/tmp` file with mode 600 and never
+prints the key. Example fixture and invocation:
+
+```bash
+python3 - <<'PY'
+import json
+import secrets
+from pathlib import Path
+
+suffix = secrets.token_hex(5).upper()
+Path('/tmp/m9c-fixture.json').write_text(json.dumps({
+    'suffix': suffix,
+    'customer_reference': f'OPSFLOW-M9E-CUST-{suffix}',
+    'sku': f'OPSFLOW-M9E-SKU-{suffix}',
+}))
+PY
+docker compose --env-file integrations/odoo/.env.m9c-sandbox \
+  -f integrations/odoo/docker-compose.sandbox.yml -p opsflow-m9c-disposable \
+  cp /tmp/m9c-fixture.json odoo:/tmp/m9c-fixture.json
+docker compose --env-file integrations/odoo/.env.m9c-sandbox \
+  -f integrations/odoo/docker-compose.sandbox.yml -p opsflow-m9c-disposable \
+  exec -T -e OPSFLOW_M9C_SANDBOX_DATABASE=opsflow_m9c_disposable \
+  -e PGHOST=db -e "PGUSER=$M9C_POSTGRES_USER" \
+  -e "PGPASSWORD=$M9C_POSTGRES_PASSWORD" \
+  -e OPSFLOW_M9C_FIXTURE_PATH=/tmp/m9c-fixture.json \
+  -e OPSFLOW_M9C_API_KEY_PATH=/tmp/m9c-api-key \
+  -e OPSFLOW_M9C_RESULT_PATH=/tmp/m9c-result.json odoo \
+  odoo shell -c /etc/odoo/odoo.conf -d opsflow_m9c_disposable --no-http \
+  < integrations/odoo/prepare_m9c_sandbox.py
+```
+
+Copy the mode-600 API key and non-secret numeric IDs from the container with
+`docker compose cp`:
+
+```bash
+docker compose --env-file integrations/odoo/.env.m9c-sandbox \
+  -f integrations/odoo/docker-compose.sandbox.yml -p opsflow-m9c-disposable \
+  cp odoo:/tmp/m9c-api-key /tmp/m9c-api-key
+docker compose --env-file integrations/odoo/.env.m9c-sandbox \
+  -f integrations/odoo/docker-compose.sandbox.yml -p opsflow-m9c-disposable \
+  cp odoo:/tmp/m9c-result.json /tmp/m9c-result.json
+chmod 600 /tmp/m9c-api-key /tmp/m9c-result.json
+```
+
+Never print the API-key file. Enter its value only in ignored OpsFlow `.env`
+or an equivalent secret environment, and use the numeric result fields for the
+company, warehouse, and pricelist settings. For M9E, attach only the Odoo
+application container to the isolated OpsFlow Compose network using
+`docker network connect --alias odoo <opsflow-project>_default
+<odoo-container-id>`, then set the API URL to `http://odoo:8069`. Do not attach
+the Odoo PostgreSQL container to the OpsFlow network. The integration bot key
+and credentials remain out of n8n. After the sandbox evidence is collected,
+stop/remove only this named disposable Odoo project and its volume.
+
 The focused Odoo-native addon suite can be run with the Odoo executable inside
 the container. Install the bridge and test-support addons in a fresh disposable
 native-test database, then select only the bridge addon tests:

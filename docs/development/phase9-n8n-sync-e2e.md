@@ -158,9 +158,14 @@ Only a future scheduled invocation may call execute-next again. A returned
 
 ## Prepare synthetic Odoo, HubSpot, and review data
 
-Follow the M9C guide for a disposable Odoo 19 Community instance, addon,
+Follow the M9C guide's **Recreate the local Community service from a clean
+checkout** procedure for a disposable Odoo 19 Community instance, addon,
 dedicated least-privilege integration bot, company/warehouse/pricelist, and
-synthetic customer/product/inventory. Follow the M9D guide for the dedicated
+synthetic customer/product/inventory. That procedure uses the tracked
+`integrations/odoo/docker-compose.sandbox.yml` and
+`integrations/odoo/prepare_m9c_sandbox.py` from the candidate checkout; do not
+copy an addon directory or seed script from another developer environment.
+Follow the M9D guide for the dedicated
 HubSpot developer portal, Service Key scopes, portal identity, properties,
 pipeline/stage, and test-record cleanup. Use only synthetic customer and
 product references. For a separate Odoo Compose deployment, attach its

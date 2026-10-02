@@ -16,6 +16,8 @@ env/
 .env
 .env.*
 !.env.example
+!integrations/odoo/.env.m9c-sandbox.example
+integrations/odoo/.env.m9c-sandbox
 *.pem
 *.key
 *.crt

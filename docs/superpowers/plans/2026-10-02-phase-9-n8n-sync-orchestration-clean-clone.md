@@ -684,6 +684,15 @@ verification alone does not close it.
   Phase 9 end-to-end guide.
 - `docs/development/phase9-n8n-sync-e2e.md` — local setup, networking,
   credentials, synthetic scenarios, evidence, cleanup and clean-clone steps.
+- `docs/development/odoo-m9c-sandbox.md` — reproducible disposable Odoo setup
+  used by M9E's literal clean clone, including a sandbox-only Compose file and
+  synthetic bot/customer/product seed helper.
+- `integrations/odoo/docker-compose.sandbox.yml` and
+  `integrations/odoo/prepare_m9c_sandbox.py` — isolated Odoo Community and
+  guarded synthetic setup support; neither is imported by production code.
+- `integrations/odoo/.env.m9c-sandbox.example` and `.gitignore` — blank
+  sandbox configuration template that is tracked while its local populated
+  counterpart remains ignored.
 - `tests/integration/test_phase9_order_sync_api.py` — only if Task 5's
   evidence mapping identifies an uncovered existing API/coordinator contract.
 - `.env.example` — no new secret or provider variable is expected; the current
