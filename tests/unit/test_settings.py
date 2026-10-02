@@ -164,14 +164,22 @@ def test_hubspot_service_key_is_secret_and_config_is_bounded() -> None:
     [
         {"hubspot_service_key": "key"},
         {"hubspot_pipeline_id": "default"},
+        {
+            "hubspot_service_key": "key",
+            "hubspot_pipeline_id": "default",
+        },
         {"hubspot_initial_stage_id": "appointmentscheduled"},
         {"hubspot_portal_currency": "USD"},
         {"hubspot_expected_portal_id": 149461984},
     ],
 )
-def test_partial_hubspot_configuration_fails_closed(overrides: dict[str, object]) -> None:
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, **overrides)
+def test_partial_hubspot_configuration_is_accepted_as_unavailable(
+    overrides: dict[str, object],
+) -> None:
+    settings = Settings(_env_file=None, **overrides)
+
+    for name in overrides:
+        assert getattr(settings, name) is not None
 
 
 @pytest.mark.parametrize(
@@ -186,6 +194,7 @@ def test_partial_hubspot_configuration_fails_closed(overrides: dict[str, object]
         {"hubspot_portal_currency": "US1"},
         {"hubspot_portal_currency": "USDD"},
         {"hubspot_expected_portal_id": 1},
+        {"hubspot_expected_portal_id": " "},
         {"hubspot_expected_portal_id": True},
     ],
 )

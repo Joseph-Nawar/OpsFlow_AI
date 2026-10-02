@@ -103,6 +103,12 @@ uncertain write. Same-key upsert replay returned the same ID.
 
 ### Deal upsert and lookup
 
+The initial Task 1 probe verified the batch-upsert contract below. That
+contract is retained as historical evidence only: the M9D remediation probe
+established that runtime Deal writes must use create-only plus ID-addressed
+update so a replay can never write the initial stage onto an existing Deal.
+The adapter must not use Deal batch upsert.
+
 One logical Deal input used:
 
 ```http
@@ -126,6 +132,29 @@ POST /crm/objects/2026-09/0-3/search
 ```
 
 Use an equality filter on `opsflow_order_id`.
+
+### M9D H1 create/update remediation probe
+
+The controlled remediation probe used fresh synthetic Deals in portal
+`149461984`, with no v3/v4 fallback:
+
+| Operation | Verified method/path | Request | Observed result |
+| --- | --- | --- | --- |
+| Create a Deal | `POST /crm/objects/2026-09/0-3` | `{"properties": {<approved Deal fields>}}`, including `opsflow_order_id`, `pipeline`, and initial `dealstage` | HTTP 201; direct record with opaque `id` and `properties`; no batch status envelope. |
+| Read by provider ID | `GET /crm/objects/2026-09/0-3/{dealId}?properties=...` | Requested stable identity, pipeline, stage, and managed properties | HTTP 200; same `id`, identity, pipeline, stage, and values. |
+| Update an existing Deal | `PATCH /crm/objects/2026-09/0-3/{dealId}` | `{"properties": {<selected mutable managed fields>}}`; omit `dealstage` and do not change `pipeline` | HTTP 200; same `id`; selected fields updated; omitted stage remained unchanged. |
+| Duplicate create | Same create route and same unique `opsflow_order_id` | Create-only body, with no upsert fields | HTTP 400, category `VALIDATION_ERROR`; exact unique-property collision was identifiable. Fresh search returned exactly one record, same ID, and unchanged existing fields. |
+
+The adapter may map only the verified `VALIDATION_ERROR` for the exact
+`opsflow_order_id` uniqueness collision to retryable `PROVIDER_UNAVAILABLE`.
+Other validation errors remain `PROVIDER_REJECTED`. The loser must not search
+inside the failed create request and assume immediate visibility: a fresh M9B
+invocation performs the identity read and then either patches the existing
+initial-stage record without `dealstage`, or returns
+`RECONCILIATION_REQUIRED` for a progressed stage. This also handles a search
+index visibility delay after an uncertain create without an upsert that could
+regress workflow state. The synthetic create/update/duplicate records were
+archived after the probe.
 
 ### Deal-to-Company default association
 
@@ -154,10 +183,19 @@ independently add or remove primary status. Repeating the same PUT returned
 
 ## Observed response and rate behavior
 
-- All successful Company and Deal upserts returned HTTP 200,
-  `status=COMPLETE`, one result, and no item errors. In the implementation live
-  run, the top-level `errors` field was omitted; the parser treats an omitted
-  field as an empty error list and still validates any returned item errors.
+- Successful Company upserts returned HTTP 200, `status=COMPLETE`, one result,
+  and no item errors. In the implementation live run, the top-level `errors`
+  field was omitted; the parser treats an omitted field as an empty error list
+  and still validates any returned item errors.
+- The H1 remediation probe verified Deal create-only as HTTP 201 with a direct
+  record response and ID-addressed update as HTTP 200. These responses do not
+  use the batch `COMPLETE` envelope. A repeated create with the same unique
+  `opsflow_order_id` returned HTTP 400 `VALIDATION_ERROR` and left the existing
+  Deal unchanged. Only that exact unique-property collision is retryable in
+  the adapter; other create validation failures remain bounded rejection.
+- An update containing selected OpsFlow-managed Deal properties but omitting
+  both `dealstage` and `pipeline` returned the same Deal ID. A fresh read
+  confirmed the stage remained unchanged.
 - Association PUT returned HTTP 200 and `status=COMPLETE`.
 - No `PENDING`, `PROCESSING`, or `CANCELED` response was observed. Same-key
   replay returned the existing IDs, so the observed terminal contract requires

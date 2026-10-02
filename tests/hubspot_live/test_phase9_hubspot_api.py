@@ -1,6 +1,7 @@
 """Opt-in HubSpot 2026-09 synthetic account and M9B recovery proof."""
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -44,7 +45,7 @@ _PORTAL_ID = 149461984
 _COMPANY_IDENTITY = "opsflow_customer_reference_v2"
 _DEAL_IDENTITY = "opsflow_order_id"
 _COMPANY_ROUTE = "/crm/objects/2026-09/companies/batch/upsert"
-_DEAL_ROUTE = "/crm/objects/2026-09/0-3/batch/upsert"
+_DEAL_CREATE_ROUTE = "/crm/objects/2026-09/0-3"
 
 
 def test_synthetic_contract_and_m9b_partial_recovery() -> None:
@@ -160,6 +161,59 @@ class _LiveStepProbe:
         return result
 
 
+class _DealStageRaceTransport(httpx.AsyncBaseTransport):
+    """Hold one real existing-Deal search while a second client advances it."""
+
+    def __init__(self, order_id: UUID, provider_id: str) -> None:
+        self.order_id = str(order_id)
+        self.provider_id = provider_id
+        self.search_observed = asyncio.Event()
+        self.release_search = asyncio.Event()
+        self.observed_stage: str | None = None
+        self.update_properties: dict[str, object] | None = None
+        self.events: list[str] = []
+        self._transport = httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.events.append(f"{request.method} {request.url.path}")
+        if request.method == "POST" and request.url.path == "/crm/objects/2026-09/0-3/search":
+            body = json.loads(request.content)
+            identity = body["filterGroups"][0]["filters"][0]["value"]
+            if identity == self.order_id:
+                response = await self._transport.handle_async_request(request)
+                content = await response.aread()
+                status_code = response.status_code
+                content_type = response.headers.get("content-type", "application/json")
+                try:
+                    payload = json.loads(content)
+                    self.observed_stage = payload["results"][0]["properties"]["dealstage"]
+                except (ValueError, KeyError, IndexError, TypeError):
+                    self.observed_stage = None
+                self.events.append(f"search-status={status_code}")
+                await response.aclose()
+                self.search_observed.set()
+                await self.release_search.wait()
+                return httpx.Response(
+                    status_code,
+                    headers={"content-type": content_type},
+                    content=content,
+                    request=request,
+                )
+        if request.method == "PATCH" and request.url.path.endswith(f"/{self.provider_id}"):
+            body = json.loads(request.content)
+            self.update_properties = body.get("properties")
+        try:
+            response = await self._transport.handle_async_request(request)
+        except Exception as exc:
+            self.events.append(f"transport-error={type(exc).__name__}")
+            raise
+        self.events.append(f"response-status={response.status_code}")
+        return response
+
+    async def aclose(self) -> None:
+        await self._transport.aclose()
+
+
 async def _run_synthetic_contract_and_m9b_recovery() -> None:
     key = os.environ.get("OPSFLOW_HUBSPOT_M9D_SERVICE_KEY")
     pipeline_id = os.environ.get("OPSFLOW_HUBSPOT_M9D_PIPELINE_ID")
@@ -179,15 +233,13 @@ async def _run_synthetic_contract_and_m9b_recovery() -> None:
     suffix = uuid4().hex[:10].upper()
     company_reference = f"OPSFLOW-M9D-LIVE-{suffix}"
     company_name = f"OpsFlow M9D Synthetic Company {suffix}"
-    order_a, order_b = uuid4(), uuid4()
-    order_ids = {order_a, order_b}
+    order_a, order_b, order_c, race_order_id = uuid4(), uuid4(), uuid4(), uuid4()
+    order_ids = {order_a, order_b, order_c}
     po_number_a = f"OPSFLOW-M9D-PO-{suffix}-A"
     po_number_b = f"OPSFLOW-M9D-PO-{suffix}-B"
-    deal_name_a = f"PO {po_number_a} - {str(order_a)[:8]}"
-    deal_name_b = f"PO {po_number_b} - {str(order_b)[:8]}"
     trace_company = f"m9d-live-company-{suffix.lower()}"
-    trace_deal_a = f"m9d-live-deal-a-{suffix.lower()}"
-    trace_deal_b = f"m9d-live-deal-b-{suffix.lower()}"
+    probe_order_id = uuid4()
+    race_deal_id: str | None = None
     client = httpx.AsyncClient(
         base_url=HUBSPOT_API_BASE_URL,
         headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
@@ -259,90 +311,93 @@ async def _run_synthetic_contract_and_m9b_recovery() -> None:
             "Company managed-name update was not observed",
         )
 
-        for order_id, po_number, deal_name, trace_deal in (
-            (order_a, po_number_a, deal_name_a, trace_deal_a),
-            (order_b, po_number_b, deal_name_b, trace_deal_b),
-        ):
-            deal_properties = {
-                _DEAL_IDENTITY: str(order_id),
-                "dealname": deal_name,
+        # Verify the new create/update contract independently of M9B. A create
+        # is create-only; the identity property's uniqueness rejects duplicates.
+        probe_properties = {
+            _DEAL_IDENTITY: str(probe_order_id),
+            "dealname": f"OpsFlow M9D Deal Probe {suffix}",
+            "amount": "24.00",
+            "pipeline": pipeline_id,
+            "dealstage": stage_id,
+            "opsflow_currency": currency,
+            "opsflow_po_number": f"OPSFLOW-M9D-PROBE-PO-{suffix}",
+        }
+        probe_deal_id = await _create_deal(client, probe_properties)
+        deal_ids[probe_order_id] = probe_deal_id
+        duplicate = await client.post(
+            _DEAL_CREATE_ROUTE,
+            json={"properties": {**probe_properties, "dealname": f"Duplicate {suffix}"}},
+        )
+        _require(duplicate.status_code == 400, "duplicate Deal create did not fail")
+        duplicate_payload = _json_object(duplicate)
+        _require(
+            duplicate_payload.get("category") == "VALIDATION_ERROR",
+            "duplicate Deal create failure category changed",
+        )
+        probe_after_duplicate = await _wait_for_single_search_result(
+            await _search(client, "0-3", _DEAL_IDENTITY, str(probe_order_id)),
+            client=client,
+            object_type="0-3",
+            identity_property=_DEAL_IDENTITY,
+            identity=str(probe_order_id),
+            provider_id=probe_deal_id,
+        )
+        _require(
+            probe_after_duplicate.get("properties", {}).get("dealname")
+            == probe_properties["dealname"],
+            "duplicate create modified the existing Deal",
+        )
+        _require(
+            probe_after_duplicate.get("properties", {}).get("dealstage") == stage_id,
+            "duplicate create changed the existing Deal stage",
+        )
+        probe_update = await _patch_deal(
+            client,
+            probe_deal_id,
+            {
+                "dealname": f"OpsFlow M9D Deal Probe Updated {suffix}",
+                "amount": "25.00",
+                "opsflow_po_number": f"OPSFLOW-M9D-PROBE-PO-UPDATED-{suffix}",
+            },
+        )
+        _require(
+            _object_properties(probe_update).get("dealname")
+            == f"OpsFlow M9D Deal Probe Updated {suffix}",
+            "selected managed Deal fields were not updated",
+        )
+        probe_after_update = await _read_deal(client, probe_deal_id)
+        _require(
+            _object_properties(probe_after_update).get("dealstage") == stage_id,
+            "omitting dealstage did not preserve the remote stage",
+        )
+
+        # Seed a third order used by the live read/update race proof. Its
+        # synthetic remote Deal is created directly, and the adapter call is
+        # paused after the existing-record read until a second client advances it.
+        race_deal_id = await _create_deal(
+            client,
+            {
+                _DEAL_IDENTITY: str(race_order_id),
+                "dealname": f"OpsFlow M9D Stage Race {suffix}",
                 "amount": "24.00",
                 "pipeline": pipeline_id,
                 "dealstage": stage_id,
                 "opsflow_currency": currency,
-                "opsflow_po_number": po_number,
-            }
-            _require(
-                not _search_results(await _search(client, "0-3", _DEAL_IDENTITY, str(order_id))),
-                "random synthetic Deal UUID already exists",
-            )
-            deal_first = await _upsert(
-                client,
-                _DEAL_ROUTE,
-                identity=str(order_id),
-                identity_property=_DEAL_IDENTITY,
-                properties=deal_properties,
-                trace=trace_deal,
-            )
-            deal_ids[order_id] = deal_first
-            # Do not keep the first Deal response as a local receipt either.
-            del deal_first
-            deal_replay = await _upsert(
-                client,
-                _DEAL_ROUTE,
-                identity=str(order_id),
-                identity_property=_DEAL_IDENTITY,
-                properties=deal_properties,
-                trace=trace_deal,
-            )
-            _require(deal_replay == deal_ids[order_id], "Deal replay changed provider ID")
-            deal_record = await _wait_for_single_search_result(
-                await _search(client, "0-3", _DEAL_IDENTITY, str(order_id)),
-                client=client,
-                object_type="0-3",
-                identity_property=_DEAL_IDENTITY,
-                identity=str(order_id),
-                provider_id=deal_replay,
-            )
-            _require(
-                deal_record.get("properties", {}).get("amount") == "24.00",
-                "Deal amount was not preserved as the approved fixed-point value",
-            )
-            _require(
-                deal_record.get("properties", {}).get("pipeline") == pipeline_id
-                and deal_record.get("properties", {}).get("dealstage") == stage_id
-                and deal_record.get("properties", {}).get("opsflow_currency") == currency,
-                "Deal pipeline, stage, or currency differs from the verified setup",
-            )
-            update_deal_name = f"{deal_name} Updated"
-            deal_update = await _upsert(
-                client,
-                _DEAL_ROUTE,
-                identity=str(order_id),
-                identity_property=_DEAL_IDENTITY,
-                properties={**deal_properties, "dealname": update_deal_name},
-                trace=trace_deal,
-            )
-            _require(deal_update == deal_ids[order_id], "Deal managed-field update changed ID")
-            await _wait_for_single_search_result(
-                await _search(client, "0-3", _DEAL_IDENTITY, str(order_id)),
-                client=client,
-                object_type="0-3",
-                identity_property=_DEAL_IDENTITY,
-                identity=str(order_id),
-                provider_id=deal_ids[order_id],
-            )
-            await _associate_and_confirm(client, deal_ids[order_id], company_id)
-            await _associate_and_confirm(client, deal_ids[order_id], company_id)
+                "opsflow_po_number": f"OPSFLOW-M9D-RACE-PO-{suffix}",
+            },
+        )
+        deal_ids[race_order_id] = race_deal_id
 
         engine, sessions = await _seed_orders(
             database_url,
             (
                 (order_a, company_reference, po_number_a, True),
                 (order_b, company_reference, po_number_b, False),
+                (order_c, company_reference, f"{po_number_b}-C", False),
+                (race_order_id, company_reference, f"{po_number_b}-RACE", False),
             ),
         )
-        seeded_order_ids = order_ids.copy()
+        seeded_order_ids = order_ids | {race_order_id}
         settings = Settings(
             _env_file=None,
             database_url=database_url,
@@ -384,12 +439,15 @@ async def _run_synthetic_contract_and_m9b_recovery() -> None:
         third_a = await _execute(sessions, order_a, executor)
         _require(third_a.kind is ExecuteNextKind.COMPLETED, "Order A did not resume at Deal")
         sync_a = await _read_sync(sessions, order_a)
+        _require(sync_a.hubspot_deal_id is not None, "Order A Deal receipt missing")
+        deal_ids[order_a] = str(sync_a.hubspot_deal_id)
         _require(sync_a.hubspot_company_id == company_id, "Order A Company receipt changed")
         _require(sync_a.hubspot_deal_id == deal_ids[order_a], "Order A Deal receipt mismatch")
         _require(sync_a.hubspot_association_confirmed_at is not None, "Order A association missing")
 
-        # Order B independently proves the Deal receipt boundary before a
-        # controlled association failure, also within its own retry generation.
+        # Order B proves a lost Deal response can be reconciled by a fresh
+        # same-identity invocation. A delayed search-index result may first
+        # produce the approved retryable unique-conflict outcome.
         await _make_eligible(sessions, order_b)
         probe.drop_receipt_once = (order_b, OrderSyncStep.HUBSPOT_DEAL)
         first_b = await _execute(sessions, order_b, executor)
@@ -397,32 +455,97 @@ async def _run_synthetic_contract_and_m9b_recovery() -> None:
         sync_b = await _read_sync(sessions, order_b)
         _require(sync_b.hubspot_company_id == company_id, "Order B Company receipt was not durable")
         _require(sync_b.hubspot_deal_id is None, "Order B Deal receipt survived simulated loss")
-        await _make_eligible(sessions, order_b)
-        probe.fail_before_once = (order_b, OrderSyncStep.HUBSPOT_ASSOCIATION)
-        second_b = await _execute(sessions, order_b, executor)
-        _require(
-            second_b.kind is ExecuteNextKind.RETRY_WAIT,
-            "controlled association failure was not retryable",
-        )
+        second_b = await _resume_after_create_race(sessions, order_b, executor, client)
+        _require(second_b.kind is ExecuteNextKind.COMPLETED, "Order B did not reconcile its Deal")
         sync_b = await _read_sync(sessions, order_b)
-        _require(sync_b.hubspot_company_id == company_id, "Order B Company receipt changed")
-        _require(
-            sync_b.hubspot_deal_id == deal_ids[order_b], "Order B Deal receipt was not durable"
-        )
-        _require(
-            sync_b.hubspot_association_confirmed_at is None,
-            "Order B association was premature",
-        )
-        await _make_eligible(sessions, order_b)
-        third_b = await _execute(sessions, order_b, executor)
-        _require(third_b.kind is ExecuteNextKind.COMPLETED, "Order B did not resume at association")
-        sync_b = await _read_sync(sessions, order_b)
+        deal_ids[order_b] = str(sync_b.hubspot_deal_id)
         _require(sync_b.hubspot_association_confirmed_at is not None, "Order B association missing")
+
+        # Order C proves the durable Deal receipt boundary before a controlled
+        # association failure, independently of the lost-response retry above.
+        await _make_eligible(sessions, order_c)
+        probe.fail_before_once = (order_c, OrderSyncStep.HUBSPOT_ASSOCIATION)
+        first_c = await _execute(sessions, order_c, executor)
+        _require(first_c.kind is ExecuteNextKind.RETRY_WAIT, "association fault was not retryable")
+        sync_c = await _read_sync(sessions, order_c)
+        deal_ids[order_c] = str(sync_c.hubspot_deal_id)
+        _require(sync_c.hubspot_company_id == company_id, "Order C Company receipt changed")
+        _require(sync_c.hubspot_deal_id == deal_ids[order_c], "Order C Deal receipt changed")
+        await _make_eligible(sessions, order_c)
+        final_c = await _execute(sessions, order_c, executor)
+        _require(final_c.kind is ExecuteNextKind.COMPLETED, "Order C did not resume at association")
+        _require(
+            (await _read_sync(sessions, order_c)).hubspot_association_confirmed_at is not None,
+            "Order C association receipt missing",
+        )
+
+        # Complete the controlled existing-read/update race: the adapter has
+        # already observed the initial stage but is paused before it can return
+        # that read to production code. An independent client advances the Deal.
+        await _mark_syncing_with_company(sessions, race_order_id, company_id)
+        race_transport = _DealStageRaceTransport(race_order_id, race_deal_id)
+        race_client = httpx.AsyncClient(
+            base_url=HUBSPOT_API_BASE_URL,
+            headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+            timeout=httpx.Timeout(15.0),
+            transport=race_transport,
+        )
+        race_adapter = HubSpotCRMAdapter(
+            settings,
+            sessionmaker=sessions,
+            business_data_provider=_LiveCustomerProvider(company_reference, company_name),
+            client=race_client,
+        )
+        race_task = asyncio.create_task(
+            race_adapter.execute(race_order_id, OrderSyncStep.HUBSPOT_DEAL)
+        )
+        try:
+            await asyncio.wait_for(race_transport.search_observed.wait(), timeout=20)
+            _require(
+                race_transport.observed_stage == stage_id,
+                "adapter did not read the synthetic Deal at its initial stage",
+            )
+            progressed = await _advance_deal_stage(client, race_deal_id, "qualifiedtobuy")
+            _require(
+                _object_properties(progressed).get("dealstage") == "qualifiedtobuy",
+                "HubSpot did not accept the synthetic progressed stage",
+            )
+            progressed_read = await _read_deal(client, race_deal_id)
+            _require(
+                _object_properties(progressed_read).get("dealstage") == "qualifiedtobuy",
+                "independent read did not observe human-progressed stage",
+            )
+        finally:
+            race_transport.release_search.set()
+        race_result = await race_task
+        race_code = getattr(getattr(race_result, "code", None), "value", None)
+        _require(
+            isinstance(race_result, OrderSyncStepFailure)
+            and race_result.code is OrderSyncFailureCode.RECONCILIATION_REQUIRED,
+            "stage-race execution returned "
+            f"{type(race_result).__name__}:{race_code}; update fields were "
+            f"{sorted(race_transport.update_properties or {})}; "
+            f"provider events={race_transport.events}",
+        )
+        _require(
+            race_transport.update_properties is not None
+            and "dealstage" not in race_transport.update_properties,
+            "existing Deal update included the human-owned stage",
+        )
+        race_final = await _read_deal(client, race_deal_id)
+        _require(
+            _object_properties(race_final).get("dealstage") == "qualifiedtobuy",
+            "OpsFlow regressed the concurrently progressed Deal stage",
+        )
+        await race_adapter.aclose()
         await _require_remote_counts(
             client, company_reference, order_a, company_id, deal_ids[order_a]
         )
         await _require_remote_counts(
             client, company_reference, order_b, company_id, deal_ids[order_b]
+        )
+        await _require_remote_counts(
+            client, company_reference, order_c, company_id, deal_ids[order_c]
         )
         _require(
             [step for oid, step in probe.calls if oid == order_a]
@@ -435,18 +558,24 @@ async def _run_synthetic_contract_and_m9b_recovery() -> None:
             ],
             "Order A did not resume from the first missing durable receipt",
         )
+        order_b_steps = [step for oid, step in probe.calls if oid == order_b]
         _require(
-            [step for oid, step in probe.calls if oid == order_b]
+            order_b_steps.count(OrderSyncStep.HUBSPOT_COMPANY) == 1
+            and order_b_steps.count(OrderSyncStep.HUBSPOT_DEAL) in (2, 3)
+            and order_b_steps.count(OrderSyncStep.HUBSPOT_ASSOCIATION) == 1,
+            "Order B did not resume through stable-identity Deal reconciliation",
+        )
+        _require(
+            [step for oid, step in probe.calls if oid == order_c]
             == [
                 OrderSyncStep.HUBSPOT_COMPANY,
-                OrderSyncStep.HUBSPOT_DEAL,
                 OrderSyncStep.HUBSPOT_DEAL,
                 OrderSyncStep.HUBSPOT_ASSOCIATION,
                 OrderSyncStep.HUBSPOT_ASSOCIATION,
             ],
-            "Order B unexpectedly repeated a durable provider receipt",
+            "Order C unexpectedly repeated a durable Company or Deal receipt",
         )
-        for order_id in (order_a, order_b):
+        for order_id in (order_a, order_b, order_c):
             _require(
                 [step for oid, step in odoo.calls if oid == order_id]
                 == [OrderSyncStep.ODOO_LOOKUP, OrderSyncStep.ODOO_BRIDGE],
@@ -459,7 +588,19 @@ async def _run_synthetic_contract_and_m9b_recovery() -> None:
             await engine.dispose()
         cleanup_company_id = cleanup_company_id or company_id
         if not client.is_closed:
-            for cleanup_deal_id in deal_ids.values():
+            cleanup_deal_ids = set(deal_ids.values())
+            for synthetic_order_id in (*order_ids, race_order_id, probe_order_id):
+                try:
+                    cleanup = await _search(client, "0-3", _DEAL_IDENTITY, str(synthetic_order_id))
+                    cleanup_deal_ids.update(
+                        result["id"]
+                        for result in _search_results(cleanup)
+                        if type(result.get("id")) is str
+                    )
+                except Exception:
+                    # Cleanup continues for every known synthetic provider ID.
+                    pass
+            for cleanup_deal_id in cleanup_deal_ids:
                 await _archive_record(client, "0-3", cleanup_deal_id)
         if cleanup_company_id is not None and not client.is_closed:
             await _archive_record(client, "companies", cleanup_company_id)
@@ -511,6 +652,80 @@ async def _upsert(
     return provider_id
 
 
+async def _create_deal(client: httpx.AsyncClient, properties: dict[str, str]) -> str:
+    response = await client.post(_DEAL_CREATE_ROUTE, json={"properties": properties})
+    _require(response.status_code == 201, "HubSpot Deal create HTTP status was not 201")
+    payload = _json_object(response)
+    provider_id = payload.get("id")
+    result_properties = payload.get("properties")
+    _require(type(provider_id) is str and bool(provider_id), "HubSpot Deal create ID was malformed")
+    _require(type(result_properties) is dict, "HubSpot Deal create properties were malformed")
+    _require(
+        result_properties.get(_DEAL_IDENTITY) == properties[_DEAL_IDENTITY]
+        and result_properties.get("pipeline") == properties["pipeline"]
+        and result_properties.get("dealstage") == properties["dealstage"],
+        "HubSpot Deal create response did not confirm identity and initial workflow state",
+    )
+    return provider_id
+
+
+async def _patch_deal(
+    client: httpx.AsyncClient,
+    provider_id: str,
+    properties: dict[str, str],
+) -> dict[str, object]:
+    _require("dealstage" not in properties, "existing Deal update must omit dealstage")
+    response = await client.patch(
+        f"/crm/objects/2026-09/0-3/{provider_id}",
+        json={"properties": properties},
+    )
+    _require(response.status_code == 200, "HubSpot Deal update HTTP status was not 200")
+    payload = _json_object(response)
+    _require(payload.get("id") == provider_id, "HubSpot Deal update changed provider ID")
+    return payload
+
+
+async def _advance_deal_stage(
+    client: httpx.AsyncClient,
+    provider_id: str,
+    stage_id: str,
+) -> dict[str, object]:
+    """Advance only the synthetic Deal as the concurrent human actor."""
+
+    response = await client.patch(
+        f"/crm/objects/2026-09/0-3/{provider_id}",
+        json={"properties": {"dealstage": stage_id}},
+    )
+    _require(response.status_code == 200, "synthetic human Deal stage advance failed")
+    payload = _json_object(response)
+    _require(payload.get("id") == provider_id, "human stage update changed Deal ID")
+    return payload
+
+
+async def _read_deal(
+    client: httpx.AsyncClient,
+    provider_id: str,
+    properties: tuple[str, ...] = (
+        _DEAL_IDENTITY,
+        "dealname",
+        "amount",
+        "pipeline",
+        "dealstage",
+        "opsflow_currency",
+        "opsflow_po_number",
+    ),
+) -> dict[str, object]:
+    response = await client.get(
+        f"/crm/objects/2026-09/0-3/{provider_id}",
+        params={"properties": ",".join(properties)},
+    )
+    _require(response.status_code == 200, "HubSpot Deal read by ID failed")
+    payload = _json_object(response)
+    _require(payload.get("id") == provider_id, "HubSpot Deal read returned a different ID")
+    _require(type(payload.get("properties")) is dict, "HubSpot Deal read properties were malformed")
+    return payload
+
+
 async def _search(
     client: httpx.AsyncClient,
     object_type: str,
@@ -556,6 +771,12 @@ def _search_results(payload: dict[str, object]) -> list[dict[str, object]]:
     results = payload.get("results")
     _require(type(results) is list, "HubSpot search results were malformed")
     return [item for item in results if type(item) is dict]
+
+
+def _object_properties(payload: dict[str, object]) -> dict[str, object]:
+    properties = payload.get("properties")
+    _require(type(properties) is dict, "HubSpot object properties were malformed")
+    return properties
 
 
 def _require_single_search_result(
@@ -744,6 +965,56 @@ async def _seed_orders(
 async def _execute(sessions: async_sessionmaker[AsyncSession], order_id: UUID, executor: object):
     async with sessions() as session:
         return await execute_next_order_sync(session, executor)
+
+
+async def _resume_after_create_race(
+    sessions: async_sessionmaker[AsyncSession],
+    order_id: UUID,
+    executor: object,
+    client: httpx.AsyncClient,
+):
+    result = None
+    for attempt in range(2):
+        await _make_eligible(sessions, order_id)
+        result = await _execute(sessions, order_id, executor)
+        if result.kind is ExecuteNextKind.COMPLETED:
+            return result
+        if attempt == 1 or result.kind is not ExecuteNextKind.RETRY_WAIT:
+            return result
+        # If create committed but search indexing lagged, the unique-key
+        # conflict is retryable. Wait only in this test harness for a fresh
+        # read to expose the winner before the next bounded M9B invocation.
+        payload = await _search(client, "0-3", _DEAL_IDENTITY, str(order_id))
+        for poll in range(20):
+            results = _search_results(payload)
+            if len(results) == 1:
+                provider_id = results[0].get("id")
+                _require(type(provider_id) is str, "reconciled Deal ID was malformed")
+                _require_single_search_result(
+                    payload,
+                    _DEAL_IDENTITY,
+                    str(order_id),
+                    provider_id,
+                )
+                break
+            _require(not results, "lost-response identity resolved to duplicate Deals")
+            if poll < 19:
+                await asyncio.sleep(0.25)
+                payload = await _search(client, "0-3", _DEAL_IDENTITY, str(order_id))
+        else:
+            pytest.fail("lost-response Deal did not become visible for same-identity replay")
+    return result
+
+
+async def _mark_syncing_with_company(
+    sessions: async_sessionmaker[AsyncSession], order_id: UUID, company_id: str
+) -> None:
+    async with sessions() as session, session.begin():
+        order = await session.get(OrderModel, order_id)
+        sync = await session.get(OrderSyncModel, order_id)
+        _require(order is not None and sync is not None, "race order seed is missing")
+        order.state = OrderState.SYNCING.value
+        sync.hubspot_company_id = company_id
 
 
 async def _make_eligible(sessions: async_sessionmaker[AsyncSession], order_id: UUID) -> None:

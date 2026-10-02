@@ -2,6 +2,8 @@
 
 import asyncio
 
+import pytest
+
 from opsflow.main import create_app
 from opsflow.odoo import OdooERPAdapter
 from opsflow.review.composition import ReviewRuntime
@@ -81,6 +83,44 @@ def test_complete_provider_configuration_composes_fixed_phase9_executor() -> Non
         async def close() -> None:
             await odoo_adapter.aclose()
             await hubspot_adapter.aclose()
+            await app.state.database_engine.dispose()
+
+        asyncio.run(close())
+
+
+@pytest.mark.parametrize(
+    "hubspot_values",
+    [
+        {"hubspot_service_key": "test-hubspot-key"},
+        {
+            "hubspot_service_key": "test-hubspot-key",
+            "hubspot_pipeline_id": "default",
+        },
+    ],
+)
+def test_partial_hubspot_configuration_keeps_sync_executor_unset(
+    hubspot_values: dict[str, str],
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        odoo_base_url="http://odoo.test",
+        odoo_database="opsflow_test",
+        odoo_api_key="test-api-key",
+        odoo_company_id=1,
+        odoo_warehouse_id=2,
+        odoo_pricelist_id=3,
+        **hubspot_values,
+    )
+    app = create_app(settings)
+    odoo_adapter = app.state.odoo_adapter
+    try:
+        assert isinstance(odoo_adapter, OdooERPAdapter)
+        assert app.state.hubspot_adapter is None
+        assert app.state.order_sync_step_executor is None
+    finally:
+
+        async def close() -> None:
+            await odoo_adapter.aclose()
             await app.state.database_engine.dispose()
 
         asyncio.run(close())

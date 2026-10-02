@@ -70,7 +70,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         review_runtime = replace(review_runtime, provider=odoo_adapter)
     hubspot_adapter: HubSpotCRMAdapter | None = None
     order_sync_step_executor: Phase9OrderSyncExecutor | None = None
-    if odoo_adapter is not None and resolved_settings.hubspot_service_key is not None:
+    hubspot_settings_complete = all(
+        value is not None
+        for value in (
+            resolved_settings.hubspot_service_key,
+            resolved_settings.hubspot_pipeline_id,
+            resolved_settings.hubspot_initial_stage_id,
+            resolved_settings.hubspot_portal_currency,
+            resolved_settings.hubspot_expected_portal_id,
+        )
+    )
+    if odoo_adapter is not None and hubspot_settings_complete:
         hubspot_adapter = HubSpotCRMAdapter(
             resolved_settings,
             sessionmaker=app.state.database_sessionmaker,

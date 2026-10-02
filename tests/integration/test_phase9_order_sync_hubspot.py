@@ -62,8 +62,16 @@ def test_lost_hubspot_deal_response_replays_same_identity_and_persists_receipt()
     asyncio.run(_assert_lost_deal_response_replays_same_identity())
 
 
+def test_unique_deal_create_race_is_retryable_not_terminal() -> None:
+    asyncio.run(_assert_unique_deal_create_race_is_retryable_not_terminal())
+
+
 def test_missing_hubspot_configuration_returns_503_before_claim() -> None:
     asyncio.run(_assert_missing_hubspot_settings_fail_closed())
+
+
+def test_partial_hubspot_configuration_returns_503_before_claim() -> None:
+    asyncio.run(_assert_missing_hubspot_settings_fail_closed(partial_hubspot=True))
 
 
 def test_two_hubspot_requests_share_one_m9b_step_allowance(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,6 +133,7 @@ class _HubSpotTransport(httpx.AsyncBaseTransport):
         fail_association_once: bool = False,
         lose_first_company_response: bool = False,
         lose_first_deal_response: bool = False,
+        race_deal_create_once: bool = False,
         delay_seconds: float = 0,
     ) -> None:
         self.sessions = sessions
@@ -134,12 +143,16 @@ class _HubSpotTransport(httpx.AsyncBaseTransport):
         self.fail_association_once = fail_association_once
         self.lose_first_company_response = lose_first_company_response
         self.lose_first_deal_response = lose_first_deal_response
+        self.race_deal_create_once = race_deal_create_once
         self.delay_seconds = delay_seconds
         self.calls: list[tuple[str, str, object | None]] = []
         self.company_ids: dict[str, str] = {}
         self.deal_ids: dict[str, str] = {}
+        self.deal_records: dict[str, dict[str, object]] = {}
         self.company_upserts = 0
-        self.deal_upserts = 0
+        self.deal_writes = 0
+        self.deal_creates = 0
+        self.deal_updates = 0
         self.association_puts = 0
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
@@ -163,19 +176,103 @@ class _HubSpotTransport(httpx.AsyncBaseTransport):
                 raise httpx.ReadTimeout(_SYNTHETIC_PROVIDER_BODY, request=request)
             return _upsert_response(request, item, company_id, HUBSPOT_COMPANY_IDENTITY, reference)
         if request.url.path.endswith("/0-3/search"):
-            return httpx.Response(200, json={"total": 0, "results": []}, request=request)
-        if request.url.path.endswith("/0-3/batch/upsert"):
-            self.deal_upserts += 1
+            identity = body["filterGroups"][0]["filters"][0]["value"]
+            record = self.deal_records.get(identity)
+            if record is None and self.race_deal_create_once:
+                self.race_deal_create_once = False
+                deal_id = self.deal_ids.setdefault(identity, "deal-synthetic-9001")
+                self.deal_records[identity] = {
+                    "id": deal_id,
+                    "properties": {
+                        HUBSPOT_DEAL_IDENTITY: identity,
+                        "dealname": "Concurrent synthetic winner",
+                        "amount": "1.00",
+                        "pipeline": "default",
+                        "dealstage": "appointmentscheduled",
+                        "opsflow_currency": "USD",
+                        "opsflow_po_number": "CONCURRENT-SYNTHETIC-WINNER",
+                    },
+                }
+                return httpx.Response(200, json={"total": 0, "results": []}, request=request)
+            if record is None:
+                return httpx.Response(200, json={"total": 0, "results": []}, request=request)
+            properties = record["properties"]
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "results": [
+                        {
+                            "id": record["id"],
+                            "properties": {
+                                HUBSPOT_DEAL_IDENTITY: identity,
+                                "pipeline": properties["pipeline"],
+                                "dealstage": properties["dealstage"],
+                            },
+                        }
+                    ],
+                },
+                request=request,
+            )
+        if request.method == "POST" and request.url.path == "/crm/objects/2026-09/0-3":
+            self.deal_writes += 1
+            self.deal_creates += 1
             if self.fail_deal_once:
                 self.fail_deal_once = False
                 return httpx.Response(500, text=_SYNTHETIC_PROVIDER_BODY, request=request)
-            item = body["inputs"][0]
-            identity = item["id"]
+            properties = body["properties"]
+            identity = properties[HUBSPOT_DEAL_IDENTITY]
+            if identity in self.deal_records:
+                return httpx.Response(
+                    400,
+                    json={
+                        "category": "VALIDATION_ERROR",
+                        "message": (
+                            "Cannot set PropertyValueCoordinates{propertyName=opsflow_order_id, "
+                            f"value={identity}}} on 9001. 9001 already has that value."
+                        ),
+                    },
+                    request=request,
+                )
             deal_id = self.deal_ids.setdefault(identity, "deal-synthetic-9001")
+            self.deal_records[identity] = {"id": deal_id, "properties": dict(properties)}
             if self.lose_first_deal_response:
                 self.lose_first_deal_response = False
                 raise httpx.ReadTimeout(_SYNTHETIC_PROVIDER_BODY, request=request)
-            return _upsert_response(request, item, deal_id, HUBSPOT_DEAL_IDENTITY, identity)
+            return httpx.Response(
+                201,
+                json={"id": deal_id, "properties": dict(properties)},
+                request=request,
+            )
+        if request.method == "PATCH" and "/crm/objects/2026-09/0-3/" in request.url.path:
+            self.deal_writes += 1
+            self.deal_updates += 1
+            deal_id = request.url.path.rsplit("/", 1)[-1]
+            record = next(item for item in self.deal_records.values() if item["id"] == deal_id)
+            properties = body["properties"]
+            assert "dealstage" not in properties
+            record["properties"].update(properties)
+            return httpx.Response(
+                200,
+                json={"id": deal_id, "properties": dict(properties)},
+                request=request,
+            )
+        if request.method == "GET" and "/crm/objects/2026-09/0-3/" in request.url.path:
+            deal_id = request.url.path.rsplit("/", 1)[-1]
+            record = next(item for item in self.deal_records.values() if item["id"] == deal_id)
+            properties = record["properties"]
+            return httpx.Response(
+                200,
+                json={
+                    "id": deal_id,
+                    "properties": {
+                        HUBSPOT_DEAL_IDENTITY: properties[HUBSPOT_DEAL_IDENTITY],
+                        "pipeline": properties["pipeline"],
+                        "dealstage": properties["dealstage"],
+                    },
+                },
+                request=request,
+            )
         if request.method == "PUT" and "/associations/default/company/" in request.url.path:
             self.association_puts += 1
             if self.fail_association_once:
@@ -333,7 +430,8 @@ async def _assert_receipt_boundaries_and_resume(caplog: pytest.LogCaptureFixture
         assert sync.hubspot_company_id == "company-synthetic-9001"
         assert sync.hubspot_deal_id is None
         assert sync.in_flight_step == OrderSyncStep.HUBSPOT_DEAL.value
-        assert transport.company_upserts == 1 and transport.deal_upserts == 1
+        assert transport.company_upserts == 1 and transport.deal_writes == 1
+        assert transport.deal_creates == 1 and transport.deal_updates == 0
 
         await _make_eligible(base_sessions, order_id)
         second_session = base_sessions()
@@ -348,7 +446,8 @@ async def _assert_receipt_boundaries_and_resume(caplog: pytest.LogCaptureFixture
         assert sync.hubspot_deal_id == "deal-synthetic-9001"
         assert sync.hubspot_association_confirmed_at is None
         assert sync.in_flight_step == OrderSyncStep.HUBSPOT_ASSOCIATION.value
-        assert transport.company_upserts == 1 and transport.deal_upserts == 2
+        assert transport.company_upserts == 1 and transport.deal_writes == 2
+        assert transport.deal_creates == 2 and transport.deal_updates == 0
         assert transport.association_puts == 1
 
         await _make_eligible(base_sessions, order_id)
@@ -357,7 +456,7 @@ async def _assert_receipt_boundaries_and_resume(caplog: pytest.LogCaptureFixture
         third = await execute_next_order_sync(third_session, executor)
         await third_session.close()
         assert third.kind is ExecuteNextKind.COMPLETED
-        assert transport.company_upserts == 1 and transport.deal_upserts == 2
+        assert transport.company_upserts == 1 and transport.deal_writes == 2
         assert transport.association_puts == 2
         assert odoo.calls == [OrderSyncStep.ODOO_LOOKUP, OrderSyncStep.ODOO_BRIDGE]
         async with base_sessions() as session:
@@ -452,7 +551,8 @@ async def _assert_lost_deal_response_replays_same_identity() -> None:
         await second_session.close()
         assert second.kind is ExecuteNextKind.COMPLETED
         assert transport.company_upserts == 1
-        assert transport.deal_upserts == 2
+        assert transport.deal_writes == 2
+        assert transport.deal_creates == 1 and transport.deal_updates == 1
         assert transport.deal_ids == {str(order_id): "deal-synthetic-9001"}
         assert odoo.calls == [OrderSyncStep.ODOO_LOOKUP, OrderSyncStep.ODOO_BRIDGE]
         async with base_sessions() as session:
@@ -466,11 +566,61 @@ async def _assert_lost_deal_response_replays_same_identity() -> None:
         await _dispose(engine, base_sessions, order_id)
 
 
-async def _assert_missing_hubspot_settings_fail_closed() -> None:
+async def _assert_unique_deal_create_race_is_retryable_not_terminal() -> None:
+    engine, base_sessions, order_id = await _new_state()
+    tracking = _TrackingSessionMaker(base_sessions)
+    transport = _HubSpotTransport(
+        tracking,
+        order_id=order_id,
+        checkpoint_sessions=base_sessions,
+        race_deal_create_once=True,
+    )
+    hubspot = _adapter(tracking, transport, Settings().database_url)
+    odoo = _OdooStepFake(order_id)
+    executor = Phase9OrderSyncExecutor(odoo=odoo, hubspot=hubspot)
+    first_session = base_sessions()
+    tracking.sessions.append(first_session)
+    try:
+        first = await execute_next_order_sync(first_session, executor)
+        await first_session.close()
+        assert first.kind is ExecuteNextKind.RETRY_WAIT
+        async with base_sessions() as session:
+            sync = await session.get(OrderSyncModel, order_id)
+            order = await session.get(OrderModel, order_id)
+        assert sync is not None and sync.hubspot_deal_id is None
+        assert sync.last_failure_code == OrderSyncFailureCode.PROVIDER_UNAVAILABLE.value
+        assert order is not None and order.state == OrderState.SYNCING.value
+        assert len(transport.deal_records) == 1
+        assert transport.deal_creates == 1 and transport.deal_updates == 0
+
+        await _make_eligible(base_sessions, order_id)
+        second_session = base_sessions()
+        tracking.sessions.append(second_session)
+        second = await execute_next_order_sync(second_session, executor)
+        await second_session.close()
+        assert second.kind is ExecuteNextKind.COMPLETED
+        async with base_sessions() as session:
+            sync = await session.get(OrderSyncModel, order_id)
+            order = await session.get(OrderModel, order_id)
+        assert sync is not None and sync.hubspot_deal_id == "deal-synthetic-9001"
+        assert sync.hubspot_association_confirmed_at is not None
+        assert order is not None and order.state == OrderState.COMPLETED.value
+        assert len(transport.deal_records) == 1
+        assert transport.deal_creates == 1 and transport.deal_updates == 1
+        assert transport.company_upserts == 1
+        assert odoo.calls == [OrderSyncStep.ODOO_LOOKUP, OrderSyncStep.ODOO_BRIDGE]
+    finally:
+        await first_session.close()
+        await hubspot.aclose()
+        await _dispose(engine, base_sessions, order_id)
+
+
+async def _assert_missing_hubspot_settings_fail_closed(*, partial_hubspot: bool = False) -> None:
     engine, base_sessions, order_id = await _new_state()
     # Odoo-only app composition intentionally has no Phase 9 executor.
     from opsflow.main import create_app
 
+    partial_settings = {"hubspot_service_key": _SERVICE_KEY_SENTINEL} if partial_hubspot else {}
     app_settings = Settings(
         _env_file=None,
         database_url=Settings().database_url,
@@ -481,6 +631,7 @@ async def _assert_missing_hubspot_settings_fail_closed() -> None:
         odoo_warehouse_id=2,
         odoo_pricelist_id=3,
         orchestration_token="synthetic-m9d-orchestration-token",
+        **partial_settings,
     )
     app = create_app(app_settings)
     try:

@@ -359,6 +359,65 @@ def test_wrong_portal_fails_before_company_write(monkeypatch: pytest.MonkeyPatch
     assert requests[0].url.path == "/integrations/v1/me"
 
 
+@pytest.mark.parametrize(
+    ("identity_response", "expected_code", "expected_retry_after"),
+    [
+        ("timeout", OrderSyncFailureCode.PROVIDER_UNAVAILABLE, None),
+        ("server_error", OrderSyncFailureCode.PROVIDER_UNAVAILABLE, None),
+        (
+            "rate_limit",
+            OrderSyncFailureCode.PROVIDER_RATE_LIMIT,
+            timedelta(seconds=42),
+        ),
+        ("unauthorized", OrderSyncFailureCode.INTEGRATION_CONFIG, None),
+        ("forbidden", OrderSyncFailureCode.INTEGRATION_CONFIG, None),
+        ("wrong_portal", OrderSyncFailureCode.INTEGRATION_CONFIG, None),
+        ("malformed_success", OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE, None),
+    ],
+)
+def test_account_identity_failure_preserves_bounded_classification(
+    monkeypatch: pytest.MonkeyPatch,
+    identity_response: str,
+    expected_code: OrderSyncFailureCode,
+    expected_retry_after: timedelta | None,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if identity_response == "timeout":
+            raise httpx.ReadTimeout("identity timeout sentinel")
+        if identity_response == "server_error":
+            return httpx.Response(503, json={"message": "provider detail sentinel"})
+        if identity_response == "rate_limit":
+            return httpx.Response(
+                429,
+                headers={"Retry-After": "42"},
+                json={"message": "provider detail sentinel"},
+            )
+        if identity_response == "unauthorized":
+            return httpx.Response(401, json={"message": "provider detail sentinel"})
+        if identity_response == "forbidden":
+            return httpx.Response(403, json={"message": "provider detail sentinel"})
+        if identity_response == "wrong_portal":
+            return httpx.Response(200, json={"portalId": 999999999})
+        return httpx.Response(200, json={"portalId": []})
+
+    order = _order()
+    adapter, _sessions = _adapter(monkeypatch, order=order, handler=handle)
+
+    async def exercise() -> object:
+        try:
+            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_COMPANY)
+        finally:
+            await adapter.aclose()
+
+    result = asyncio.run(exercise())
+
+    assert result == OrderSyncStepFailure(expected_code, expected_retry_after)
+    assert [request.url.path for request in requests] == ["/integrations/v1/me"]
+
+
 def test_deal_create_uses_exact_decimal_amount_and_initial_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -370,11 +429,12 @@ def test_deal_create_uses_exact_decimal_amount_and_initial_stage(
             return _identity_response()
         if request.url.path.endswith("/search"):
             return httpx.Response(200, json={"total": 0, "results": []})
-        return _upsert_response(
-            request,
-            provider_id="524327563504",
-            identity_name=DEAL_PROPERTY,
-            identity=str(order.id),
+        assert request.method == "POST"
+        assert request.url.path == "/crm/objects/2026-09/0-3"
+        properties = _json(request)["properties"]
+        return httpx.Response(
+            201,
+            json={"id": "524327563504", "properties": properties},
         )
 
     order = _order()
@@ -397,21 +457,19 @@ def test_deal_create_uses_exact_decimal_amount_and_initial_stage(
     assert [request.url.path for request in requests] == [
         "/integrations/v1/me",
         "/crm/objects/2026-09/0-3/search",
-        "/crm/objects/2026-09/0-3/batch/upsert",
+        "/crm/objects/2026-09/0-3",
     ]
     body = _json(requests[2])
-    item = body["inputs"][0]
-    assert len(body["inputs"]) == 1
-    assert item["id"] == str(order.id)
-    assert item["idProperty"] == DEAL_PROPERTY
-    assert item["properties"] == {
-        DEAL_PROPERTY: str(order.id),
-        "dealname": "PO PO-SYNTHETIC-9 - 749c6773",
-        "amount": "24.00",
-        "pipeline": "default",
-        "dealstage": "appointmentscheduled",
-        "opsflow_currency": "USD",
-        "opsflow_po_number": "PO-SYNTHETIC-9",
+    assert body == {
+        "properties": {
+            DEAL_PROPERTY: str(order.id),
+            "dealname": "PO PO-SYNTHETIC-9 - 749c6773",
+            "amount": "24.00",
+            "pipeline": "default",
+            "dealstage": "appointmentscheduled",
+            "opsflow_currency": "USD",
+            "opsflow_po_number": "PO-SYNTHETIC-9",
+        }
     }
 
 
@@ -460,6 +518,203 @@ def test_deal_stage_progression_is_not_reset_during_replay(
     assert result == OrderSyncStepFailure(OrderSyncFailureCode.RECONCILIATION_REQUIRED)
     assert [request.method for request in requests] == ["GET", "POST"]
     assert requests[-1].url.path.endswith("/search")
+
+
+def test_deal_update_omits_stage_when_human_progresses_after_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+    record_id = "deal-race-winner-1"
+    remote = {"stage": "appointmentscheduled"}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/integrations/v1/me":
+            return _identity_response()
+        if request.url.path.endswith("/search"):
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "results": [
+                        {
+                            "id": record_id,
+                            "properties": {
+                                DEAL_PROPERTY: str(order.id),
+                                "pipeline": "default",
+                                "dealstage": "appointmentscheduled",
+                            },
+                        }
+                    ],
+                },
+            )
+        if request.method == "PATCH":
+            remote["stage"] = "qualifiedtobuy"
+            properties = _json(request)["properties"]
+            if "dealstage" in properties:
+                remote["stage"] = properties["dealstage"]
+            return httpx.Response(
+                200,
+                json={"id": record_id, "properties": properties},
+            )
+        if request.method == "GET" and request.url.path.endswith(record_id):
+            return httpx.Response(
+                200,
+                json={
+                    "id": record_id,
+                    "properties": {
+                        DEAL_PROPERTY: str(order.id),
+                        "pipeline": "default",
+                        "dealstage": remote["stage"],
+                    },
+                },
+            )
+        if request.url.path.endswith("/batch/upsert"):
+            # Reproduce a human advancing the Deal after the search. The old
+            # upsert then writes appointmentscheduled back over that progress.
+            remote["stage"] = "qualifiedtobuy"
+            item = _json(request)["inputs"][0]
+            properties = item["properties"]
+            if "dealstage" in properties:
+                remote["stage"] = properties["dealstage"]
+            return _upsert_response(
+                request,
+                provider_id=record_id,
+                identity_name=DEAL_PROPERTY,
+                identity=str(order.id),
+            )
+        return httpx.Response(500)
+
+    order = _order()
+    adapter, _sessions = _adapter(
+        monkeypatch,
+        order=order,
+        sync=_sync(order.id, company_id="company-1"),
+        handler=handle,
+    )
+
+    async def exercise() -> object:
+        try:
+            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+        finally:
+            await adapter.aclose()
+
+    result = asyncio.run(exercise())
+
+    assert result == OrderSyncStepFailure(OrderSyncFailureCode.RECONCILIATION_REQUIRED)
+    write_request = next(
+        request
+        for request in requests
+        if request.method in {"PATCH", "POST"}
+        and request.url.path != "/integrations/v1/me"
+        and not request.url.path.endswith("/search")
+    )
+    assert write_request.method == "PATCH"
+    assert "dealstage" not in _json(write_request)["properties"]
+    assert remote["stage"] == "qualifiedtobuy"
+
+
+def test_deal_create_unique_race_retries_then_updates_existing_without_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+    record_id = "deal-create-race-winner-1"
+    remote: dict[str, object] | None = None
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        nonlocal remote
+        requests.append(request)
+        if request.url.path == "/integrations/v1/me":
+            return _identity_response()
+        if request.url.path.endswith("/search"):
+            if remote is None:
+                # Another actor commits after this request's empty lookup.
+                remote = {
+                    "id": record_id,
+                    "properties": {
+                        DEAL_PROPERTY: str(order.id),
+                        "dealname": "Concurrent winner Deal",
+                        "amount": "1.00",
+                        "pipeline": "default",
+                        "dealstage": "appointmentscheduled",
+                        "opsflow_currency": "USD",
+                        "opsflow_po_number": "CONCURRENT-WINNER",
+                    },
+                }
+                return httpx.Response(200, json={"total": 0, "results": []})
+            return httpx.Response(200, json={"total": 1, "results": [remote]})
+        if request.method == "POST" and request.url.path == "/crm/objects/2026-09/0-3":
+            assert remote is not None
+            return httpx.Response(
+                400,
+                json={
+                    "category": "VALIDATION_ERROR",
+                    "message": (
+                        "Cannot set PropertyValueCoordinates{propertyName=opsflow_order_id, "
+                        f"value={order.id}}} on {record_id}. {record_id} already has that value."
+                    ),
+                    "status": "error",
+                },
+            )
+        if request.method == "PATCH" and request.url.path.endswith(f"/{record_id}"):
+            assert remote is not None
+            properties = _json(request)["properties"]
+            assert "dealstage" not in properties
+            remote["properties"].update(properties)
+            return httpx.Response(
+                200,
+                json={"id": record_id, "properties": properties},
+            )
+        if request.method == "GET" and request.url.path.endswith(f"/{record_id}"):
+            assert remote is not None
+            return httpx.Response(200, json=remote)
+        if request.url.path.endswith("/batch/upsert"):
+            # The old implementation reaches this route and updates the winner
+            # instead of receiving a create-only unique conflict.
+            assert remote is not None
+            item = _json(request)["inputs"][0]
+            remote["properties"].update(item["properties"])
+            return _upsert_response(
+                request,
+                provider_id=record_id,
+                identity_name=DEAL_PROPERTY,
+                identity=str(order.id),
+            )
+        return httpx.Response(500)
+
+    order = _order()
+    adapter, _sessions = _adapter(
+        monkeypatch,
+        order=order,
+        sync=_sync(order.id, company_id="company-1"),
+        handler=handle,
+    )
+
+    async def exercise() -> tuple[object, object]:
+        try:
+            first = await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+            first_remote = json.loads(json.dumps(remote))
+            second = await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+            return first, (second, first_remote)
+        finally:
+            await adapter.aclose()
+
+    first, second_and_snapshot = asyncio.run(exercise())
+    second, first_remote = second_and_snapshot
+
+    assert first == OrderSyncStepFailure(OrderSyncFailureCode.PROVIDER_UNAVAILABLE)
+    assert second == HubSpotDealReceipt(record_id)
+    assert first_remote["properties"]["dealname"] == "Concurrent winner Deal"
+    assert remote is not None and remote["id"] == record_id
+    assert remote["properties"]["dealstage"] == "appointmentscheduled"
+    assert (
+        sum(
+            request.method == "POST" and request.url.path == "/crm/objects/2026-09/0-3"
+            for request in requests
+        )
+        == 1
+    )
+    assert not any(request.url.path.endswith("/batch/upsert") for request in requests)
 
 
 def test_existing_deal_in_another_pipeline_is_not_rewritten(
@@ -585,21 +840,18 @@ def test_nonterminal_or_canceled_upsert_never_returns_receipt(
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/integrations/v1/me":
             return _identity_response()
-        if request.url.path.endswith("/search"):
-            return httpx.Response(200, json={"total": 0, "results": []})
         return httpx.Response(200, json={"status": status, "results": [], "errors": []})
 
     order = _order()
     adapter, _sessions = _adapter(
         monkeypatch,
         order=order,
-        sync=_sync(order.id, company_id="450254569667"),
         handler=handle,
     )
 
     async def exercise() -> object:
         try:
-            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_COMPANY)
         finally:
             await adapter.aclose()
 
@@ -612,8 +864,6 @@ def test_http_207_requires_one_intended_success_without_item_error(
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/integrations/v1/me":
             return _identity_response()
-        if request.url.path.endswith("/search"):
-            return httpx.Response(200, json={"total": 0, "results": []})
         item = _json(request)["inputs"][0]
         return httpx.Response(
             207,
@@ -622,7 +872,7 @@ def test_http_207_requires_one_intended_success_without_item_error(
                 "results": [
                     {
                         "id": "524327563504",
-                        "properties": {DEAL_PROPERTY: str(order.id)},
+                        "properties": {COMPANY_PROPERTY: "CUST-001"},
                         "objectWriteTraceId": item["objectWriteTraceId"],
                     }
                 ],
@@ -634,13 +884,12 @@ def test_http_207_requires_one_intended_success_without_item_error(
     adapter, _sessions = _adapter(
         monkeypatch,
         order=order,
-        sync=_sync(order.id, company_id="450254569667"),
         handler=handle,
     )
 
     async def exercise() -> object:
         try:
-            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_COMPANY)
         finally:
             await adapter.aclose()
 
@@ -707,12 +956,10 @@ def test_upsert_rejects_uncorrelated_or_wrong_identity_result(
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/integrations/v1/me":
             return _identity_response()
-        if request.url.path.endswith("/search"):
-            return httpx.Response(200, json={"total": 0, "results": []})
         item = _json(request)["inputs"][0]
         result = {
             "id": "524327563504",
-            "properties": {DEAL_PROPERTY: str(order.id)},
+            "properties": {COMPANY_PROPERTY: "CUST-001"},
             "objectWriteTraceId": item["objectWriteTraceId"],
         }
         result.update(result_changes)
@@ -722,13 +969,12 @@ def test_upsert_rejects_uncorrelated_or_wrong_identity_result(
     adapter, _sessions = _adapter(
         monkeypatch,
         order=order,
-        sync=_sync(order.id, company_id="450254569667"),
         handler=handle,
     )
 
     async def exercise() -> object:
         try:
-            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_COMPANY)
         finally:
             await adapter.aclose()
 
@@ -739,12 +985,10 @@ def test_upsert_rejects_multiple_intended_results(monkeypatch: pytest.MonkeyPatc
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/integrations/v1/me":
             return _identity_response()
-        if request.url.path.endswith("/search"):
-            return httpx.Response(200, json={"total": 0, "results": []})
         item = _json(request)["inputs"][0]
         result = {
             "id": "deal-opaque-1",
-            "properties": {DEAL_PROPERTY: str(order.id)},
+            "properties": {COMPANY_PROPERTY: "CUST-001"},
             "objectWriteTraceId": item["objectWriteTraceId"],
         }
         return httpx.Response(
@@ -756,13 +1000,12 @@ def test_upsert_rejects_multiple_intended_results(monkeypatch: pytest.MonkeyPatc
     adapter, _sessions = _adapter(
         monkeypatch,
         order=order,
-        sync=_sync(order.id, company_id="450254569667"),
         handler=handle,
     )
 
     async def exercise() -> object:
         try:
-            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_COMPANY)
         finally:
             await adapter.aclose()
 
@@ -775,8 +1018,6 @@ def test_207_correlated_item_error_prevents_receipt(monkeypatch: pytest.MonkeyPa
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/integrations/v1/me":
             return _identity_response()
-        if request.url.path.endswith("/search"):
-            return httpx.Response(200, json={"total": 0, "results": []})
         item = _json(request)["inputs"][0]
         return httpx.Response(
             207,
@@ -785,7 +1026,7 @@ def test_207_correlated_item_error_prevents_receipt(monkeypatch: pytest.MonkeyPa
                 "results": [
                     {
                         "id": "524327563504",
-                        "properties": {DEAL_PROPERTY: str(order.id)},
+                        "properties": {COMPANY_PROPERTY: "CUST-001"},
                         "objectWriteTraceId": item["objectWriteTraceId"],
                     }
                 ],
@@ -802,13 +1043,12 @@ def test_207_correlated_item_error_prevents_receipt(monkeypatch: pytest.MonkeyPa
     adapter, _sessions = _adapter(
         monkeypatch,
         order=order,
-        sync=_sync(order.id, company_id="450254569667"),
         handler=handle,
     )
 
     async def exercise() -> object:
         try:
-            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_COMPANY)
         finally:
             await adapter.aclose()
 
@@ -821,8 +1061,6 @@ def test_http_207_single_correlated_success_returns_receipt(
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/integrations/v1/me":
             return _identity_response()
-        if request.url.path.endswith("/search"):
-            return httpx.Response(200, json={"total": 0, "results": []})
         item = _json(request)["inputs"][0]
         return httpx.Response(
             207,
@@ -831,7 +1069,7 @@ def test_http_207_single_correlated_success_returns_receipt(
                 "results": [
                     {
                         "id": "deal-opaque-207",
-                        "properties": {DEAL_PROPERTY: str(order.id)},
+                        "properties": {COMPANY_PROPERTY: "CUST-001"},
                         "objectWriteTraceId": item["objectWriteTraceId"],
                     }
                 ],
@@ -843,17 +1081,16 @@ def test_http_207_single_correlated_success_returns_receipt(
     adapter, _sessions = _adapter(
         monkeypatch,
         order=order,
-        sync=_sync(order.id, company_id="450254569667"),
         handler=handle,
     )
 
     async def exercise() -> object:
         try:
-            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_DEAL)
+            return await adapter.execute(order.id, OrderSyncStep.HUBSPOT_COMPANY)
         finally:
             await adapter.aclose()
 
-    assert asyncio.run(exercise()) == HubSpotDealReceipt("deal-opaque-207")
+    assert asyncio.run(exercise()) == HubSpotCompanyReceipt("deal-opaque-207")
 
 
 @pytest.mark.parametrize(

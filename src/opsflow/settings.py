@@ -160,16 +160,18 @@ class Settings(BaseSettings):
     @field_validator("hubspot_service_key", mode="before")
     @classmethod
     def validate_hubspot_service_key(cls, value: object) -> object:
-        if value is None or (type(value) is str and not value.strip()):
+        if value is None or value == "":
             return None
+        if type(value) is str and not value.strip():
+            raise ValueError("HubSpot Service Key must be nonblank")
         if isinstance(value, SecretStr) and not value.get_secret_value().strip():
-            return None
+            raise ValueError("HubSpot Service Key must be nonblank")
         return value
 
     @field_validator("hubspot_pipeline_id", "hubspot_initial_stage_id", mode="before")
     @classmethod
     def validate_hubspot_identifiers(cls, value: object) -> str | None:
-        if value is None or (type(value) is str and not value.strip()):
+        if value is None or value == "":
             return None
         if type(value) is not str or value != value.strip() or len(value) > 128:
             raise ValueError("HubSpot identifiers must be nonblank strings up to 128 characters")
@@ -178,7 +180,7 @@ class Settings(BaseSettings):
     @field_validator("hubspot_portal_currency", mode="before")
     @classmethod
     def validate_hubspot_portal_currency(cls, value: object) -> str | None:
-        if value is None or (type(value) is str and not value.strip()):
+        if value is None or value == "":
             return None
         if type(value) is not str or re.fullmatch(r"[A-Z]{3}", value, flags=re.ASCII) is None:
             raise ValueError("HubSpot portal currency must be an uppercase ISO code")
@@ -187,9 +189,13 @@ class Settings(BaseSettings):
     @field_validator("hubspot_expected_portal_id", mode="before")
     @classmethod
     def validate_hubspot_expected_portal_id(cls, value: object) -> object:
-        if value is None or (type(value) is str and not value.strip()):
+        if value is None or value == "":
             return None
         if type(value) is bool:
+            raise ValueError("HubSpot expected portal ID must match the verified test portal")
+        if type(value) is str and (
+            value != value.strip() or not value.isascii() or not value.isdigit()
+        ):
             raise ValueError("HubSpot expected portal ID must match the verified test portal")
         return value
 
@@ -233,17 +239,6 @@ class Settings(BaseSettings):
             value is None for value in odoo_values
         ):
             raise ValueError("all Odoo settings must be configured together")
-        hubspot_values = (
-            self.hubspot_service_key,
-            self.hubspot_pipeline_id,
-            self.hubspot_initial_stage_id,
-            self.hubspot_portal_currency,
-            self.hubspot_expected_portal_id,
-        )
-        if any(value is not None for value in hubspot_values) and any(
-            value is None for value in hubspot_values
-        ):
-            raise ValueError("all HubSpot settings must be configured together")
         return self
 
     model_config = SettingsConfigDict(

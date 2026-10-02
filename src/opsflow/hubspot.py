@@ -150,19 +150,20 @@ class HubSpotCRMAdapter:
             )
 
     async def _verify_account(self) -> None:
+        response = await self._request("GET", "/integrations/v1/me")
         try:
-            response = await self._request("GET", "/integrations/v1/me")
             payload = _json_object(response)
             portal_id = payload.get("portalId")
-            expected = self._settings.hubspot_expected_portal_id
             if type(portal_id) is str and portal_id.isascii() and portal_id.isdigit():
                 portal_id = int(portal_id)
-            if type(portal_id) is not int or portal_id != expected:
-                raise _HubSpotFailure(OrderSyncFailureCode.INTEGRATION_CONFIG)
         except _HubSpotFailure:
-            raise _HubSpotFailure(OrderSyncFailureCode.INTEGRATION_CONFIG) from None
+            raise
         except (ValueError, TypeError):
-            raise _HubSpotFailure(OrderSyncFailureCode.INTEGRATION_CONFIG) from None
+            raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE) from None
+        if type(portal_id) is not int or portal_id <= 0:
+            raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
+        if portal_id != self._settings.hubspot_expected_portal_id:
+            raise _HubSpotFailure(OrderSyncFailureCode.INTEGRATION_CONFIG)
 
     async def _upsert_company(self, order: Order) -> HubSpotCompanyReceipt:
         reference = order.customer_reference
@@ -221,22 +222,73 @@ class HubSpotCRMAdapter:
             "opsflow_currency": portal_currency,
             "opsflow_po_number": order.po_number or "",
         }
-        await self._check_existing_deal_stage(order.id, pipeline_id, stage_id)
-        result_id = await self._upsert(
-            object_path="0-3",
-            identity_property=HUBSPOT_DEAL_IDENTITY,
-            identity=str(order.id),
-            properties=properties,
-            trace=_trace_id(order.id, OrderSyncStep.HUBSPOT_DEAL),
-        )
-        return HubSpotDealReceipt(result_id)
+        existing_id = await self._find_existing_deal(order.id, pipeline_id, stage_id)
+        if existing_id is None:
+            response = await self._request(
+                "POST",
+                f"/crm/objects/{HUBSPOT_API_VERSION}/0-3",
+                json={"properties": properties},
+                allow_201=True,
+                allow_400_validation_error=True,
+            )
+            if response.status_code == 400:
+                if _is_deal_identity_conflict(response, str(order.id)):
+                    # Search may lag or another create may win after our read.
+                    # A fresh M9B attempt will read the stable identity again.
+                    raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_UNAVAILABLE)
+                raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_REJECTED)
+            payload = _json_object(response)
+            result_id = _provider_id(payload.get("id"))
+            result_properties = _object(payload.get("properties"))
+            if (
+                result_id is None
+                or result_properties.get(HUBSPOT_DEAL_IDENTITY) != str(order.id)
+                or result_properties.get("pipeline") != pipeline_id
+                or result_properties.get("dealstage") != stage_id
+            ):
+                raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
+            return HubSpotDealReceipt(result_id)
 
-    async def _check_existing_deal_stage(
+        response = await self._request(
+            "PATCH",
+            f"/crm/objects/{HUBSPOT_API_VERSION}/0-3/{existing_id}",
+            json={
+                "properties": {
+                    HUBSPOT_DEAL_IDENTITY: str(order.id),
+                    "dealname": properties["dealname"],
+                    "amount": amount,
+                    "opsflow_currency": portal_currency,
+                    "opsflow_po_number": order.po_number or "",
+                }
+            },
+        )
+        update_result = _json_object(response)
+        if _provider_id(update_result.get("id")) != existing_id:
+            raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
+        current = await self._request(
+            "GET",
+            f"/crm/objects/{HUBSPOT_API_VERSION}/0-3/{existing_id}",
+            params={"properties": f"{HUBSPOT_DEAL_IDENTITY},pipeline,dealstage"},
+        )
+        current_payload = _json_object(current)
+        current_properties = _object(current_payload.get("properties"))
+        if _provider_id(current_payload.get("id")) != existing_id or current_properties.get(
+            HUBSPOT_DEAL_IDENTITY
+        ) != str(order.id):
+            raise _HubSpotFailure(OrderSyncFailureCode.RECONCILIATION_REQUIRED)
+        if (
+            current_properties.get("pipeline") != pipeline_id
+            or current_properties.get("dealstage") != stage_id
+        ):
+            raise _HubSpotFailure(OrderSyncFailureCode.RECONCILIATION_REQUIRED)
+        return HubSpotDealReceipt(existing_id)
+
+    async def _find_existing_deal(
         self,
         order_id: UUID,
         expected_pipeline: str,
         expected_stage: str,
-    ) -> None:
+    ) -> str | None:
         response = await self._request(
             "POST",
             f"/crm/objects/{HUBSPOT_API_VERSION}/0-3/search",
@@ -262,7 +314,7 @@ class HubSpotCRMAdapter:
         if type(results) is not list or type(total) is not int:
             raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
         if total == 0 and not results:
-            return
+            return None
         if total != 1 or len(results) != 1:
             raise _HubSpotFailure(OrderSyncFailureCode.RECONCILIATION_REQUIRED)
         record = _object(results[0])
@@ -277,6 +329,7 @@ class HubSpotCRMAdapter:
             raise _HubSpotFailure(OrderSyncFailureCode.RECONCILIATION_REQUIRED)
         if properties["pipeline"] != expected_pipeline or properties["dealstage"] != expected_stage:
             raise _HubSpotFailure(OrderSyncFailureCode.RECONCILIATION_REQUIRED)
+        return record_id
 
     async def _upsert(
         self,
@@ -346,17 +399,23 @@ class HubSpotCRMAdapter:
         path: str,
         *,
         json: object | None = None,
+        params: dict[str, str] | None = None,
         allow_207: bool = False,
+        allow_201: bool = False,
+        allow_400_validation_error: bool = False,
     ) -> httpx.Response:
         try:
             response = await self._client.request(
                 method,
                 path,
                 json=json,
+                params=params,
                 timeout=httpx.Timeout(_HUBSPOT_REQUEST_TIMEOUT_SECONDS),
             )
         except httpx.TransportError:
             raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_UNAVAILABLE) from None
+        if response.status_code == 400 and allow_400_validation_error:
+            return response
         if response.status_code in (401, 403, 404, 422):
             raise _HubSpotFailure(OrderSyncFailureCode.INTEGRATION_CONFIG)
         if response.status_code == 429:
@@ -368,7 +427,9 @@ class HubSpotCRMAdapter:
             raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_REJECTED)
         if response.status_code == 207 and not allow_207:
             raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
-        if response.status_code not in (200, 207):
+        if response.status_code not in (200, 207) and not (
+            allow_201 and response.status_code == 201
+        ):
             raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
         return response
 
@@ -448,6 +509,24 @@ def _parse_upsert_response(
     ):
         raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE)
     return result_id
+
+
+def _is_deal_identity_conflict(response: httpx.Response, identity: str) -> bool:
+    """Recognize the live-verified unique-property create rejection only."""
+
+    try:
+        payload = _json_object(response)
+    except (ValueError, TypeError):
+        raise _HubSpotFailure(OrderSyncFailureCode.PROVIDER_INVALID_RESPONSE) from None
+    message = payload.get("message")
+    identity_clause = f"propertyName={HUBSPOT_DEAL_IDENTITY}, value={identity}}}"
+    return (
+        payload.get("category") == "VALIDATION_ERROR"
+        and type(message) is str
+        and message.startswith("Cannot set PropertyValueCoordinates{")
+        and identity_clause in message
+        and message.endswith("already has that value.")
+    )
 
 
 def _item_error_code(errors: list[object], trace: str) -> OrderSyncFailureCode:
