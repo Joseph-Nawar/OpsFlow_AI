@@ -174,6 +174,96 @@ API's local `OPSFLOW_ODOO_BASE_URL` to that alias (for example
 `http://opsflow-odoo:8069`). Verify connectivity from the API container before
 allowing business writes. Do not join a shared/customer Odoo network.
 
+### Match the no-Gemini Phase 7 fixture to Odoo
+
+With Gemini unconfigured, the existing Phase 7 deterministic extractor emits
+the synthetic pair `CUST-001` / `SKU-001` at USD 10. The M9C seed helper also
+creates its own separately named random-reference customer and product for
+M9C live tests; those records do not satisfy the Phase 7 order's exact Odoo
+lookup. Keep the M9C records and provision this additional fixture in the
+fresh M9E disposable Odoo database before creating an OpsFlow order. Run the
+following Odoo shell setup as the disposable database administrator after
+the M9C helper has created the company, USD currency, and warehouse. The
+database-name guard prevents running it against a shared database. If either
+reference already belongs to a different record, the command stops rather
+than changing it.
+
+```sh
+set -a
+. integrations/odoo/.env.m9c-sandbox
+set +a
+M9E_ODOO_DATABASE=opsflow_m9e_clean_clone
+M9E_ODOO_PROJECT=opsflow-m9e-clean
+docker compose --env-file integrations/odoo/.env.m9c-sandbox \
+  -f integrations/odoo/docker-compose.sandbox.yml -p "$M9E_ODOO_PROJECT" \
+  exec -T -e PGHOST=db -e "PGUSER=$M9C_POSTGRES_USER" \
+  -e "PGPASSWORD=$M9C_POSTGRES_PASSWORD" \
+  -e "OPSFLOW_M9E_DATABASE=$M9E_ODOO_DATABASE" odoo \
+  odoo shell -c /etc/odoo/odoo.conf -d "$M9E_ODOO_DATABASE" --no-http <<'PY'
+import os, re
+
+database = os.environ.get("OPSFLOW_M9E_DATABASE", "")
+if env.cr.dbname != database or not re.fullmatch(r"opsflow_m9e_[a-z0-9_]+", database):
+    raise RuntimeError("M9E fixture setup requires its named disposable Odoo database")
+company = env.company.sudo()
+usd = env.ref("base.USD").sudo()
+warehouse = env["stock.warehouse"].sudo().search(
+    [("company_id", "=", company.id)], limit=1
+)
+if company.currency_id != usd or not warehouse:
+    raise RuntimeError("M9E fixture requires the configured USD company and warehouse")
+
+partners = env["res.partner"].sudo().search([("ref", "=", "CUST-001")], limit=2)
+if len(partners) > 1:
+    raise RuntimeError("CUST-001 is duplicated in the disposable database")
+partner = partners[:1]
+if partner:
+    if (partner.name != "Acme Industries" or partner.company_id != company
+            or not partner.active or not partner.is_company or partner.customer_rank < 1):
+        raise RuntimeError("CUST-001 is occupied by an unexpected customer")
+else:
+    partner = env["res.partner"].sudo().create({
+        "name": "Acme Industries", "ref": "CUST-001", "is_company": True,
+        "customer_rank": 1, "company_id": company.id, "active": True,
+    })
+
+products = env["product.product"].sudo().search([("default_code", "=", "SKU-001")], limit=2)
+if len(products) > 1:
+    raise RuntimeError("SKU-001 is duplicated in the disposable database")
+product = products[:1]
+if product:
+    if (product.name != "Widget" or product.company_id != company
+            or not product.active or not product.sale_ok or not product.is_storable
+            or round(product.lst_price, 2) != 10.00):
+        raise RuntimeError("SKU-001 is occupied by an unexpected product")
+else:
+    template = env["product.template"].sudo().create({
+        "name": "Widget", "type": "consu", "is_storable": True,
+        "sale_ok": True, "list_price": 10.0, "company_id": company.id,
+    })
+    product = template.product_variant_id.sudo()
+    product.write({"default_code": "SKU-001"})
+location = warehouse.lot_stock_id
+available = product.with_context(location=location.id).qty_available
+delta = 100.0 - available
+if delta:
+    env["stock.quant"].sudo()._update_available_quantity(product, location, delta)
+print("M9E synthetic fixture ready: CUST-001 / SKU-001 / USD 10 / 100 units")
+PY
+```
+
+The fixture matches the existing fake extraction payload; it does not alter
+the n8n Phase 9 workflow, OpsFlow validation policy, or live M9C adapter.
+Use the existing review contract to correct its sample's out-of-date order
+and requested-delivery dates before approval, if current date validation
+routes that deterministic sample to review.
+
+For importing and triggering the separate upstream Phase 7 intake workflow,
+follow the [n8n workflow guide](../../workflows/n8n/README.md#opsflow-sandbox-intake-workflow)
+and reuse the same local `OpsFlow Orchestration` credential. This intake
+workflow is only synthetic input setup; the M9E order-sync workflow remains
+the sole Phase 9 execution path.
+
 If creating orders through the review UI, start the frontend from this
 checkout:
 
