@@ -248,6 +248,7 @@ available = product.with_context(location=location.id).qty_available
 delta = 100.0 - available
 if delta:
     env["stock.quant"].sudo()._update_available_quantity(product, location, delta)
+env.cr.commit()
 print("M9E synthetic fixture ready: CUST-001 / SKU-001 / USD 10 / 100 units")
 PY
 ```
