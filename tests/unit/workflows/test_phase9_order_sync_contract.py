@@ -42,11 +42,8 @@ SAFE_OUTPUT_FIELDS = {
 def _load_workflow() -> dict[str, Any]:
     with WORKFLOW_PATH.open(encoding="utf-8") as workflow_file:
         exported = json.load(workflow_file)
-    assert isinstance(exported, list)
-    assert len(exported) == 1
-    workflow = exported[0]
-    assert isinstance(workflow, dict)
-    return workflow
+    assert isinstance(exported, dict), "n8n UI import requires one workflow object"
+    return exported
 
 
 def _nodes_by_type(workflow: dict[str, Any], node_type: str) -> list[dict[str, Any]]:
