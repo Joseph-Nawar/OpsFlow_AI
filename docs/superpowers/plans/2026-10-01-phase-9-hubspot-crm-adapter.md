@@ -10,7 +10,7 @@
 
 **Spec:** [Approved Phase 9 design](../specs/2026-09-29-phase-9-erp-crm-integrations-design.md), especially Sections 3, 7–18 and the M9D milestone row. Reuse the [M9B implementation plan](2026-09-30-phase-9-durable-sync-state-claiming-recovery.md), [approved M9C implementation plan](2026-09-30-phase-9-odoo-trusted-data-idempotent-erp-adapter.md), [system overview](../../architecture/system-overview.md), [roadmap](../../roadmap/project-roadmap.md), and [development guide](../../development/development-guide.md).
 
-**Status:** M9A, M9B, and M9C are `COMPLETE`. M9D Task 1 passed human review; Tasks 2–7 are implemented and verified, pending independent and human completion review. M9E–M9F remain `NOT STARTED`.
+**Status:** M9A–M9D are `COMPLETE`; M9D received human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`. M9E is `IN PROGRESS`; M9F remains `NOT STARTED`; Phase 9 remains `IN PROGRESS`.
 
 ## Global Constraints
 
@@ -200,7 +200,7 @@ The existing executor signature remains `execute(order_id: UUID, step: OrderSync
 - [ ] Run live tests only after Task 1 gates pass: `uv run pytest tests/hubspot_live/test_phase9_hubspot_api.py -q --no-cov` with explicit opt-in test environment variables. Never report unrun live checks as passing.
 - [ ] No M9D migration is authorized by this plan. If Task 1 demonstrates an unavoidable need for persisted provider operation state, stop and seek separate human approval plus a plan revision before any schema implementation; only that separately approved plan may define migration verification.
 - [ ] Run `make check`, `make test-integration`, `uv run alembic upgrade head`, `uv run alembic current`, `git diff --check`, and the pinned Gitleaks command documented in the development guide. Use fresh isolated PostgreSQL test databases where required; leave the shared development database intact.
-- [ ] Inspect the full diff for secrets, raw provider diagnostics, unapproved API paths, provider calls outside Python, extra entities, altered M9B state/lease/retry/deadline semantics, or M9E/M9F work. M9D remains `IN PROGRESS` until independent and human completion review passes.
+- [ ] Inspect the full diff for secrets, raw provider diagnostics, unapproved API paths, provider calls outside Python, extra entities, altered M9B state/lease/retry/deadline semantics, or M9E/M9F work. This implementation plan's recorded status was superseded by human completion approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`.
 
 ## M9D Implementation Progress Record
 
@@ -210,7 +210,7 @@ The existing executor signature remains `execute(order_id: UUID, step: OrderSync
 - The remediation opt-in suite passed on an isolated OpsFlow PostgreSQL database. It reverified Company create/replay/managed-name update, Deal create/unique-conflict/update, and association create/replay/type 341. A test-only barrier paused an existing-Deal identity read while a separate client advanced the synthetic stage to `qualifiedtobuy`; the adapter's PATCH omitted `dealstage`, its post-update read returned `RECONCILIATION_REQUIRED`, and an independent final read confirmed the advanced stage remained. Company receipt loss plus a controlled Deal failure resumed at Deal; Deal receipt loss reconciled through its stable UUID; a separate order's durable Deal receipt survived an injected association failure and resumed at association. The suite archived its synthetic Company/Deals and deleted its isolated OpsFlow order rows.
 - The first live-suite attempts exposed two test-harness issues, not production behavior: the actual `COMPLETE` upsert envelope omitted a top-level `errors` field, which is now treated as no errors; and a multi-order harness reused one fake Odoo sale-order ID, which violated M9B's existing uniqueness constraint. Focused regressions cover both, and the harness now uses separate IDs and two orders so each retry generation stays below M9B's three automatic-event limit.
 - The original Company/Deal batch-upsert probes returned HTTP 200 and `status=COMPLETE`, one correlated result and an echoed trace. The H1 remediation Deal create/update contract is recorded above. The association result uses nested `from`, `to`, and `associationSpec` fields; it included directed type 341 and reverse type 342. The live suite independently read the type-341 relation and safely replayed the association. No 207, 429, `Retry-After`, `PENDING`, `PROCESSING`, or `CANCELED` response was induced; deterministic provider-free tests remain the evidence for those cases.
-- No migration or provider-operation persistence was added. M9D remains `IN PROGRESS`, pending independent review and human completion approval.
+- No migration or provider-operation persistence was added. M9D is `COMPLETE` following targeted independent re-review and human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`.
 
 ## Failure and Recovery Contract
 
@@ -276,4 +276,4 @@ The approved spec's M9D milestone criterion is:
 
 ## Remaining Live Evidence
 
-Task 1 account, scope, schema, portal-rule, pipeline/stage, currency, and date-based route gates passed human review. The refreshed ignored local runtime credential passed both direct and adapter-path `GET /integrations/v1/me` checks for portal `149461984`. The opt-in synthetic suite passed and archived its records. No live 207, 429/`Retry-After`, `PENDING`, `PROCESSING`, or `CANCELED` outcome was induced; those remain covered by provider-free tests. The suite exercised same-key recovery after discarded Company and Deal responses, and both durable receipt boundaries through the real M9B coordinator. M9D remains `IN PROGRESS` pending independent review and human completion approval.
+Task 1 account, scope, schema, portal-rule, pipeline/stage, currency, and date-based route gates passed human review. The refreshed ignored local runtime credential passed both direct and adapter-path `GET /integrations/v1/me` checks for portal `149461984`. The opt-in synthetic suite passed and archived its records. No live 207, 429/`Retry-After`, `PENDING`, `PROCESSING`, or `CANCELED` outcome was induced; those remain covered by provider-free tests. The suite exercised same-key recovery after discarded Company and Deal responses, and both durable receipt boundaries through the real M9B coordinator. M9D received targeted independent re-review and human completion approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`.

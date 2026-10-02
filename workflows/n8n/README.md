@@ -1,5 +1,30 @@
 # OpsFlow sandbox intake workflow
 
+## Phase 9 order-sync scheduler
+
+The [Phase 9 order-sync workflow](opsflow-order-sync.json) is a separate,
+inactive n8n `2.40.5` artifact. It calls only
+`POST /v1/orchestration/order-sync/execute-next` once per five-minute
+scheduled execution. It has a 240000 ms request timeout, exposes HTTP status
+and response body for bounded routing, and has no n8n retry loop. M9B owns
+claims, provider steps, retries, and receipts.
+
+To import and bind the portable workflow, follow the
+[Phase 9 n8n sandbox guide](../../docs/development/phase9-n8n-sync-e2e.md).
+The HTTP Request node uses the pinned runtime's `Bearer Auth` credential type
+(`httpBearerAuth`); create the local credential named `OpsFlow Orchestration`
+after import and select it on the node. The committed JSON contains only the
+credential name reference, not a local credential ID or token. n8n receives
+no Odoo or HubSpot configuration.
+
+The minimal Compose runtime and the full synthetic Odoo-to-HubSpot E2E,
+approval-boundary, recovery, cleanup, and literal clean-clone procedures are
+documented in that guide. M9C and M9D provider prerequisites remain in their
+[Odoo sandbox guide](../../docs/development/odoo-m9c-sandbox.md) and
+[HubSpot sandbox guide](../../docs/development/hubspot-m9d-sandbox.md).
+
+---
+
 This workflow is authored and exported from n8n `2.40.5` (`n8nio/n8n:2.40.5`).
 Start the local stack with:
 

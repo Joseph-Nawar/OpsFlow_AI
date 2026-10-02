@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: opsflow
       POSTGRES_PASSWORD: opsflow
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -26,13 +26,39 @@ services:
       OPSFLOW_ORCHESTRATION_TOKEN: ${OPSFLOW_ORCHESTRATION_TOKEN:-}
       OPSFLOW_REVIEW_DEV_OPERATORS: ${OPSFLOW_REVIEW_DEV_OPERATORS:-}
       OPSFLOW_REVIEW_BASE_URL: ${OPSFLOW_REVIEW_BASE_URL:-http://localhost:5173}
+      OPSFLOW_ODOO_BASE_URL: ${OPSFLOW_ODOO_BASE_URL:-}
+      OPSFLOW_ODOO_DATABASE: ${OPSFLOW_ODOO_DATABASE:-}
+      OPSFLOW_ODOO_API_KEY: ${OPSFLOW_ODOO_API_KEY:-}
+      OPSFLOW_ODOO_COMPANY_ID: ${OPSFLOW_ODOO_COMPANY_ID:-}
+      OPSFLOW_ODOO_WAREHOUSE_ID: ${OPSFLOW_ODOO_WAREHOUSE_ID:-}
+      OPSFLOW_ODOO_PRICELIST_ID: ${OPSFLOW_ODOO_PRICELIST_ID:-}
+      OPSFLOW_HUBSPOT_SERVICE_KEY: ${OPSFLOW_HUBSPOT_SERVICE_KEY:-}
+      OPSFLOW_HUBSPOT_PIPELINE_ID: ${OPSFLOW_HUBSPOT_PIPELINE_ID:-}
+      OPSFLOW_HUBSPOT_INITIAL_STAGE_ID: ${OPSFLOW_HUBSPOT_INITIAL_STAGE_ID:-}
+      OPSFLOW_HUBSPOT_PORTAL_CURRENCY: ${OPSFLOW_HUBSPOT_PORTAL_CURRENCY:-}
+      OPSFLOW_HUBSPOT_EXPECTED_PORTAL_ID: ${OPSFLOW_HUBSPOT_EXPECTED_PORTAL_ID:-}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
   n8n:
     image: n8nio/n8n:2.40.5
     ports:
-      - "5678:5678"
+      - "127.0.0.1:5678:5678"
+    depends_on:
+      api:
+        condition: service_healthy
     environment:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
     volumes:

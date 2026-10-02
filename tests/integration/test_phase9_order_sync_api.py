@@ -127,7 +127,13 @@ async def _assert_missing_executor_does_not_claim() -> None:
                 transport=httpx.ASGITransport(app=app), base_url="http://testserver"
             ) as client,
         ):
+            readiness = await client.get("/ready")
             response = await client.post(EXECUTE_PATH, headers=AUTH)
+        assert readiness.status_code == 200
+        assert readiness.json() == {
+            "status": "ready",
+            "checks": {"database": "ok"},
+        }
         assert response.status_code == 503
         assert response.json() == {
             "detail": {
