@@ -35,17 +35,20 @@ cp .env.example .env
 Set a unique random `OPSFLOW_ORCHESTRATION_TOKEN` locally. Set all six Odoo
 values from the dedicated disposable M9C setup and all five HubSpot values
 from the synthetic M9D portal. Set an `OPSFLOW_REVIEW_DEV_OPERATORS` JSON
-array with a separate local review credential, for example:
+array with two distinct local operators, for example:
 
 ```dotenv
-OPSFLOW_REVIEW_DEV_OPERATORS='[{"token":"<local-random-review-token>","actor":"m9e-reviewer","role":"APPROVER"}]'
+OPSFLOW_REVIEW_DEV_OPERATORS='[{"token":"<local-random-reviewer-token>","actor":"m9e-reviewer","role":"REVIEWER"},{"token":"<different-local-random-approver-token>","actor":"m9e-approver","role":"APPROVER"}]'
 ```
 
-Replace the placeholder locally with a unique random value. Keep every
-credential only in ignored
-`.env` or the local credential UI; never commit or share its value. The
-orchestration token is for n8n-to-API execution; the approver credential is
-for the human review UI. Neither is an Odoo or HubSpot credential.
+Replace both placeholders locally with different unique random values. Keep
+every credential only in ignored `.env` or the local credential UI; never
+commit or share a value. The `REVIEWER` credential is for review, revalidation,
+and correcting stale sample/order values. The separate `APPROVER` credential
+is for the approval action after review is complete. They remain distinct
+application roles even when one person operates both during the demo. The
+orchestration token is only for n8n-to-API execution. None of these credentials
+is an Odoo or HubSpot credential.
 
 An incomplete or absent optional provider configuration does not make the API
 unready. `/ready` checks API/database readiness only. In this configuration,
@@ -135,6 +138,16 @@ claim/fencing remains safe if a manual or delayed invocation overlaps; no n8n
 lock is needed. A later schedule tick is the only normal retry opportunity.
 n8n does not loop, wait, retry, calculate a retry time, or choose a provider
 step.
+
+Successful execution-data retention remains disabled to avoid storing the raw
+HTTP response. In n8n `2.40.5`, a completed execution whose success data is
+discarded can leave a soft-deleted database row with stale `running`/unfinished
+columns. A row marked deleted and absent from n8n's execution list is not an
+active run; do not use that raw database row as the workflow outcome. Use the
+sanitized terminal branch result when running manually and the durable OpsFlow
+order-sync state/receipts for completion evidence. Do not enable full success
+data retention just to preserve an execution-history row: the HTTP node output
+contains response headers and body.
 
 Use **Test Workflow** while inactive, first with no eligible order. It should
 finish with a bounded `no_work` result. If provider settings are intentionally
@@ -273,14 +286,18 @@ npm --prefix web ci
 npm --prefix web run dev -- --host 127.0.0.1
 ```
 
-Open `http://127.0.0.1:5173`, use the dedicated local development operator
-configured as `APPROVER`, and submit the existing synthetic intake fixture
-through the Phase 7 sandbox-intake workflow and
+Use the Phase 7 sandbox-intake workflow with the local `OpsFlow Orchestration`
+credential to submit the existing synthetic intake fixture and
 [`fixtures/phase7/synthetic-order.txt`](../../fixtures/phase7/synthetic-order.txt).
-Use a fresh event ID. Follow the existing review contract and UI to inspect
-the resulting `READY_FOR_APPROVAL` order. No direct database seeding of an
-approved order is permitted. n8n cannot approve or synchronize an order with
-no approved sync intent.
+Use a fresh event ID. Open `http://127.0.0.1:5173` and authenticate the review
+UI with the local development `REVIEWER` credential. Inspect the resulting
+order and correct any stale order/requested-delivery dates, then use **Save &
+revalidate**. Confirm the order reaches `READY_FOR_APPROVAL`. Sign out or
+switch credentials, authenticate the UI with the distinct `APPROVER`
+credential, and perform the existing approval action. These remain separate
+application roles even if one person operates both. No direct database seeding
+of an approved order is permitted. n8n cannot approve or synchronize an order
+with no approved sync intent.
 
 ## End-to-end acceptance runs
 
@@ -295,9 +312,10 @@ or synthetic input upstream is acceptable.
 Create a separate unapproved `READY_FOR_APPROVAL` synthetic order. Invoke the
 order-sync workflow once. It should return `no_work`; confirm no sync intent,
 Odoo order, HubSpot Deal, or association exists for that order. Then approve
-through the existing authorized OpsFlow review contract. Only OpsFlow creates
-the durable sync intent. Invoke the same thin workflow again; n8n supplies no
-order ID and cannot override approval.
+with the separate `APPROVER` credential through the existing authorized
+OpsFlow review contract. Only OpsFlow creates the durable sync intent. Invoke
+the same thin workflow again; n8n supplies no order ID and cannot override
+approval.
 
 ### Successful order
 
