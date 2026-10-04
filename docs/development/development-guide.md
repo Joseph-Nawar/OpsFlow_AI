@@ -15,7 +15,7 @@ and independent whole-phase audit. Phase 9 is `IN PROGRESS`: M9A and M9B are
 `8f1a25c55f627c3920465e95ffc954434d3aad74`. M9C is `COMPLETE` following human
 implementation approval at `1ed8508167c75305553db54906bc5e9af5d89870`. M9D is `COMPLETE` following
 human implementation approval at
-`9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`; M9E is `COMPLETE`, human-approved at `8b1f6941f2070017724346c4acb93d1d16cfa492`; M9F is `NOT STARTED`. The [Phase 0 audit record](../audits/phase-0-audit.md) through
+`9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`; M9E is `COMPLETE`, human-approved at `8b1f6941f2070017724346c4acb93d1d16cfa492`; M9F is `IN PROGRESS`. The [Phase 0 audit record](../audits/phase-0-audit.md) through
 the [Phase 8 audit record](../audits/phase-8-audit.md) preserve closeout
 evidence.
 Commands below distinguish historical verified checks from current or
@@ -56,7 +56,7 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
-Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7–8 `workflows/n8n/` area now exist. Phase 8 is `COMPLETE` (M8A–M8F `COMPLETE`); Phase 9 is `IN PROGRESS` (M9A and M9B `COMPLETE`; M9B human approved at `8f1a25c55f627c3920465e95ffc954434d3aad74`; M9C `COMPLETE`, human approved at `1ed8508167c75305553db54906bc5e9af5d89870`; M9D `COMPLETE` (human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`); M9E `COMPLETE`, human-approved at `8b1f6941f2070017724346c4acb93d1d16cfa492`; M9F `NOT STARTED`). Other future areas remain absent until an applicable milestone requires them.
+Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7–8 `workflows/n8n/` area now exist. Phase 8 is `COMPLETE` (M8A–M8F `COMPLETE`); Phase 9 is `IN PROGRESS` (M9A and M9B `COMPLETE`; M9B human approved at `8f1a25c55f627c3920465e95ffc954434d3aad74`; M9C `COMPLETE`, human approved at `1ed8508167c75305553db54906bc5e9af5d89870`; M9D `COMPLETE` (human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`); M9E `COMPLETE`, human-approved at `8b1f6941f2070017724346c4acb93d1d16cfa492`; M9F `IN PROGRESS`). Other future areas remain absent until an applicable milestone requires them.
 
 ## Historical verified M0B/M0C backend commands
 

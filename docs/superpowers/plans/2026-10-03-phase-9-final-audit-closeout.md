@@ -38,7 +38,7 @@
 
 - Phase 9 is `IN PROGRESS`.
 - M9A, M9B, M9C, M9D, and M9E are `COMPLETE`; M9E has human-approved completion at `8b1f6941f2070017724346c4acb93d1d16cfa492`.
-- M9F is `NOT STARTED`. Creating this plan does not begin the audit.
+- M9F is `IN PROGRESS`; the independent audit is under way at the frozen candidate SHA.
 - M9F's canonical scope is **Independent Whole-Phase-9 Audit**: independently audit contracts, code, migrations, tests, external sandbox evidence, privacy, cost, and documentation; close findings with evidence; pass required scenarios and clean-clone acceptance; report the audited commit and tree state.
 - The Phase 9 design and roadmap agree on that scope. No scope conflict was found.
 
@@ -294,31 +294,34 @@ The audit treats milestone closeouts as claims. Record an evidence source for ev
 
 ## Phase 9 Final Acceptance Matrix
 
-At M9F start, initialize each row as `PENDING`. Change it only when the stated direct evidence exists. A required row left `PENDING` prevents Phase 9 closeout.
+This matrix was initialized at M9F start and is now populated from direct
+evidence. Detailed evidence and limitations are recorded in
+[`docs/audits/phase-9-audit.md`](../../audits/phase-9-audit.md). A required
+row left `PENDING` prevents Phase 9 closeout.
 
 | Criterion | Minimum evidence required | Status |
 | --- | --- | --- |
-| Approval gate | Preapproval execute-next and concurrent/repeated calls yield no claim or provider write; atomic approval and durable intent pass | PENDING |
-| Exactly-once logical Odoo order | UUID bridge uniqueness, forced race/lost-response recovery, independent live count equals one | PENDING |
-| Exactly-once logical HubSpot Company | v2 identity only; replay keeps one matching Company and receipt | PENDING |
-| Exactly-once logical HubSpot Deal | order UUID identity, create-only and safe existing-ID update; replay count equals one | PENDING |
-| Intended association | persisted Company/Deal IDs, confirmed default/type-341 association, no unintended association | PENDING |
-| Durable partial recovery | first missing receipt resumes; earlier completed provider work does not repeat | PENDING |
-| Fencing and concurrency | one eligible claim, stale worker rejected, concurrent execute-next cannot double-own or persist stale receipt | PENDING |
-| Bounded retries | failure taxonomy, deadlines, lease, due times, attempts/generation, explicit human Retry and clean yield all match M9B | PENDING |
-| Provider failure mapping | unavailable, rate-limited, pending, rejected, invalid, configuration, identity conflict, reconciliation, and inventory cases map safely | PENDING |
-| Account guard | wrong portal/invalid credentials/transient identity failures stop before business writes | PENDING |
-| Human Deal-stage preservation | current-stage race is rechecked; existing update omits `dealstage` and `pipeline`; progressed stage is not overwritten | PENDING |
-| Thin n8n | one five-minute trigger/call, bounded observation only, no loops or retries/provider URLs/business decisions | PENDING |
-| Clean-clone reproducibility | literal clean checkout at recorded immutable SHA reconstructs from committed instructions and fresh state | PENDING |
-| Secret isolation | Gitleaks/history and changed-content scans clean; runtime names and artifacts show no secret crossing | PENDING |
-| Live end-to-end success | synthetic approved order completes through n8n/OpsFlow/Odoo/HubSpot with all receipts and bounded IDs | PENDING |
-| Idempotent replay | repeated schedule call leaves each provider identity/count and durable state unchanged | PENDING |
-| Unavailable inventory | no Odoo sale order or downstream Deal/association; authoritative outcome and manual retry semantics verified | PENDING |
-| Outage recovery | one synthetic provider outage is recorded; due scheduled call recovers under M9B ownership without duplicates | PENDING |
-| `$0` mandatory infrastructure | committed setup requires no paid service; optional paid alternatives are called optional | PENDING |
-| No unsupported claims | every report/roadmap statement links to evidence; fakes, prior runs, and live runs are labeled accurately | PENDING |
-| Fresh verification | focused Phase 9 tests, `make test-integration`, `make check`, fresh Alembic upgrade/current, workflow/Compose/docs/security checks pass | PENDING |
+| Approval gate | Preapproval execute-next and concurrent/repeated calls yield no claim or provider write; atomic approval and durable intent pass | PASS |
+| Exactly-once logical Odoo order | UUID bridge uniqueness, forced race/lost-response recovery, independent live count equals one | PASS |
+| Exactly-once logical HubSpot Company | v2 identity only; replay keeps one matching Company and receipt | PASS |
+| Exactly-once logical HubSpot Deal | order UUID identity, create-only and safe existing-ID update; replay count equals one | PASS |
+| Intended association | persisted Company/Deal IDs, confirmed default/type-341 association, no unintended association | PASS |
+| Durable partial recovery | first missing receipt resumes; earlier completed provider work does not repeat | PASS |
+| Fencing and concurrency | one eligible claim, stale worker rejected, concurrent execute-next cannot double-own or persist stale receipt | PASS |
+| Bounded retries | failure taxonomy, deadlines, lease, due times, attempts/generation, explicit human Retry and clean yield all match M9B | PASS |
+| Provider failure mapping | unavailable, rate-limited, pending, rejected, invalid, configuration, identity conflict, reconciliation, and inventory cases map safely | PASS |
+| Account guard | wrong portal/invalid credentials/transient identity failures stop before business writes | PASS |
+| Human Deal-stage preservation | current-stage race is rechecked; existing update omits `dealstage` and `pipeline`; progressed stage is not overwritten | PASS |
+| Thin n8n | one five-minute trigger/call, bounded observation only, no loops or retries/provider URLs/business decisions | PASS |
+| Clean-clone reproducibility | literal clean checkout at recorded immutable SHA reconstructs from committed instructions and fresh state | FAIL |
+| Secret isolation | Gitleaks/history and changed-content scans clean; runtime names and artifacts show no secret crossing | PASS |
+| Live end-to-end success | synthetic approved order completes through n8n/OpsFlow/Odoo/HubSpot with all receipts and bounded IDs | PASS |
+| Idempotent replay | repeated schedule call leaves each provider identity/count and durable state unchanged | PASS |
+| Unavailable inventory | no Odoo sale order or downstream Deal/association; authoritative outcome and manual retry semantics verified | PASS |
+| Outage recovery | one synthetic provider outage is recorded; due scheduled call recovers under M9B ownership without duplicates | PASS |
+| `$0` mandatory infrastructure | committed setup requires no paid service; optional paid alternatives are called optional | PASS |
+| No unsupported claims | every report/roadmap statement links to evidence; fakes, prior runs, and live runs are labeled accurately | PASS |
+| Fresh verification | focused Phase 9 tests, `make test-integration`, `make check`, fresh Alembic upgrade/current, workflow/Compose/docs/security checks pass | PASS |
 
 ### Closeout Rule
 
@@ -326,7 +329,7 @@ M9F and Phase 9 may be marked `COMPLETE` only when every required row is `PASS`,
 
 ## Expected M9F Deliverables
 
-- This audit plan (presently planning-only; it does not create audit evidence or start M9F).
+- This execution plan for M9F (now active; audit evidence is recorded in `docs/audits/phase-9-audit.md`).
 - `docs/audits/phase-9-audit.md` with traceability, finding log, all 33 audit dimensions, completed PASS/FAIL/PENDING matrix, clean-clone and live evidence, fresh commands/results, known limitations, cost/security notes, and closeout decision.
 - A coherent status/roadmap update only after M9F passes and the human approves closeout.
 
