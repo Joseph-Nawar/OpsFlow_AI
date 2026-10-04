@@ -1,10 +1,10 @@
 # Phase 9 — M9E n8n Sync Orchestration + Full Sandbox/Clean-Clone E2E
 
-**Status:** Human-approved implementation in progress; M9E remains IN PROGRESS pending independent review.
+**Status:** M9E is human-approved COMPLETE at `8b1f6941f2070017724346c4acb93d1d16cfa492`; Phase 9 remains IN PROGRESS and M9F remains NOT STARTED.
 
 **Planning baseline:** `phase/9-erp-crm-integrations` at
 `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`. M9D is human-approved COMPLETE
-at that SHA. Phase 9 remains IN PROGRESS; M9E is IN PROGRESS and M9F remains NOT STARTED.
+at that SHA. M9E later received human-approved independent completion at `8b1f6941f2070017724346c4acb93d1d16cfa492`; Phase 9 remains IN PROGRESS and M9F remains NOT STARTED.
 
 **Goal:** Add one reproducible scheduled n8n workflow for the existing OpsFlow
 order-sync API and prove, from a literal clean repository checkout, that a
@@ -656,9 +656,7 @@ recorded committed candidate SHA with fresh n8n/OpsFlow/Odoo state, no inherited
 developer files or caches, and the complete E2E/recovery proof. A second
 Compose project in the original checkout is intermediate evidence only. The
 implementation commit contains no runtime secrets or local n8n credential ID;
-all required tests pass and the M9E acceptance matrix is reviewable. M9E
-remains IN PROGRESS until independent audit/human approval; implementation
-verification alone does not close it.
+all required tests pass and the M9E acceptance matrix is reviewable. M9E was marked COMPLETE after independent review and human approval at `8b1f6941f2070017724346c4acb93d1d16cfa492`; implementation verification alone did not close it.
 
 ## Expected file boundary
 
@@ -769,10 +767,8 @@ provider frameworks, or schema/migration changes.
 
 ## Git boundary and completion rule
 
-The planning/status update is documentation-only and remains uncommitted for
-human review. After plan approval, M9E implementation should begin from the
-then-approved branch HEAD, preserve the M9D commit history, and make one
-coherent implementation commit for Compose/workflow/tests plus a focused docs
-commit only if repository convention or review size warrants it. Do not mark
-M9E COMPLETE from implementer verification alone. M9F remains NOT STARTED until
-M9E is independently reviewed and human-approved.
+At M9E plan approval, its status update was documentation-only and left
+uncommitted for human review. The implementation later followed the approved
+branch and M9D history, and independent review plus human approval marked M9E
+`COMPLETE` at `8b1f6941f2070017724346c4acb93d1d16cfa492`. M9F remains
+`NOT STARTED`; Phase 9 remains `IN PROGRESS` pending the independent M9F audit.
