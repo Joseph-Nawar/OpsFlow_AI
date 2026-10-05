@@ -1,5 +1,11 @@
 # Phase 9 Final Independent Audit and Closeout Plan
 
+**Final status:** M9F `COMPLETE`; Phase 9 `COMPLETE`. Final human approval of the technical candidate: `b96364d11da37b61fd6c8bc75c651918cf596ac7`.
+
+**Final human approval status:** `COMPLETE`.
+
+**Audit provenance:** Immutable audit baseline `b93001e3bcfb4ae72ebeb4a8fab40ed926b8e27`; original audit report commit `df77e620d0217232f5280d79ab60231e5de1baac`; final approved remediation SHA `b96364d11da37b61fd6c8bc75c651918cf596ac7`.
+
 > **For the future audit owner:** Perform the audit sequentially in a fresh review context. This plan authorizes inspection and verification only; production changes require a concrete finding and human-approved remediation.
 
 **Goal:** Independently determine whether the implemented Phase 9 path satisfies its approved ERP/CRM design end to end, safely and reproducibly, then record evidence and close Phase 9 only if every required gate passes.
@@ -34,7 +40,7 @@
 
 ---
 
-## Status and Scope Baseline
+## Historical Status and Scope Baseline (at audit start)
 
 - Phase 9 is `IN PROGRESS`.
 - M9A, M9B, M9C, M9D, and M9E are `COMPLETE`; M9E has human-approved completion at `8b1f6941f2070017724346c4acb93d1d16cfa492`.
@@ -292,10 +298,9 @@ The audit treats milestone closeouts as claims. Record an evidence source for ev
 | 32 | Focused suites, full integration/check, fresh Alembic upgrade/current, links, Gitleaks, diff check | `Makefile`, `pyproject.toml`, CI, migrations | 3, 5 |
 | 33 | Final acceptance matrix; no unresolved C/H/M and no required PENDING before close | `docs/audits/phase-9-audit.md` and direct evidence links | 6, 8 |
 
-## Phase 9 Final Acceptance Matrix
+## Historical Phase 9 Acceptance Matrix (initial M9F evidence before remediation and re-review)
 
-This matrix was initialized at M9F start and is now populated from direct
-evidence. Detailed evidence and limitations are recorded in
+This matrix records the initial M9F assessment at the immutable baseline and is preserved as historical evidence. The final disposition and post-remediation acceptance matrix are recorded in [the Phase 9 audit](../../audits/phase-9-audit.md). Detailed evidence and limitations are recorded in
 [`docs/audits/phase-9-audit.md`](../../audits/phase-9-audit.md). A required
 row left `PENDING` prevents Phase 9 closeout.
 
@@ -334,3 +339,8 @@ M9F and Phase 9 may be marked `COMPLETE` only when every required row is `PASS`,
 - A coherent status/roadmap update only after M9F passes and the human approves closeout.
 
 No new architecture document, test-only framework, provider abstraction, or production feature is planned. If remediation is authorized, its focused code/test changes and commits become additional audit evidence and require targeted independent re-review.
+
+
+## Final M9F and Phase 9 Status
+
+M9F and Phase 9 are `COMPLETE` following human approval of technical candidate `b96364d11da37b61fd6c8bc75c651918cf596ac7`. The immutable audit baseline was `b93001e3bcfb4ae72ebeb4a8fab40ed926b8e27`; the original audit report commit was `df77e620d0217232f5280d79ab60231e5de1baac`. The independent targeted re-review disposition is in [the Phase 9 audit](../../audits/phase-9-audit.md). The audit plan above remains a record of its original scope and procedure.

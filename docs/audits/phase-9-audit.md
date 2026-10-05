@@ -1,5 +1,7 @@
 # Phase 9 Independent Audit and Closeout Assessment
 
+> The assessment-status fields, findings, matrices, and FAIL verdict in the original assessment below are the historical M9F result at the immutable audit baseline. The final remediation and independent targeted re-review disposition is appended at the end of this report and supersedes that initial status without erasing it.
+
 - **Audit date:** 2026-10-04
 - **Assessment status:** Partial
 - **Phase status:** IN PROGRESS
@@ -84,7 +86,7 @@ the exact documented commands from a fresh clone. Keep API-key and result
 files private. This medium finding is unresolved. No guide change was made
 during M9F.
 
-## Requirement-to-evidence traceability
+## Initial M9F Requirement-to-Evidence Traceability (historical at the immutable baseline)
 
 Status is about the Phase 9 requirement, not whether a prior milestone is
 labelled complete. E1–E9 are detailed in the evidence record below.
@@ -125,7 +127,7 @@ labelled complete. E1–E9 are detailed in the evidence record below.
 | 32 | Focused/full verification, migration, workflow, Compose, docs, and security checks | PASS | E2, E4, E5, E9 |
 | 33 | Complete matrix and eligibility for Phase 9 closeout | FAIL | This report; two unresolved findings and clean-clone failure prevent closeout |
 
-## Phase 9 acceptance matrix
+## Initial Phase 9 Acceptance Matrix (historical at the immutable baseline)
 
 | Criterion | Status | Evidence and limitation |
 | --- | --- | --- |
@@ -358,7 +360,7 @@ The exact hygiene commands and results were:
 - npm --prefix web explain brace-expansion showed a development-only dependency path through minimatch and ESLint; rg found no brace-expansion reference in web/dist.
 - git check-ignore -v .env integrations/odoo/.env.m9c-sandbox confirmed both local configuration files are ignored. Tracked environment files are examples only.
 
-## Closeout decision
+## Initial Closeout Decision (historical at the immutable baseline)
 
 The valid distinct-token approval path, provider adapters, n8n scheduling,
 live Odoo/HubSpot write path, replay, inventory failure, and scheduled outage
@@ -378,7 +380,9 @@ Final verdict: FAIL — Phase 9 requires remediation
 
 ---
 
-## Targeted remediation status — pending independent re-review
+## Historical Targeted Remediation Status — Awaiting Independent Re-review at Candidate `b96364d11da37b61fd6c8bc75c651918cf596ac7`
+
+This section records the interim state after implementation evidence was committed and before the independent targeted re-review. Its pending-review statements are historical and are superseded by the final disposition below.
 
 The findings and FAIL verdict above are the original M9F result and remain
 unchanged. The targeted remediation candidates below have implementation and
@@ -422,3 +426,72 @@ Admin, or API-doc group. The Odoo-native suite passed 13 tests and the
 disposable JSON-2 suite passed 5 tests.
 
 **Review status:** Pending independent targeted re-review.
+
+---
+
+## Final Remediation and Independent Targeted Re-review Disposition
+
+**Final re-review result:** PASS — M9F remediation closes the final Phase 9 audit findings.
+
+The independent targeted re-review was performed against remediation evidence/status SHA `b96364d11da37b61fd6c8bc75c651918cf596ac7`. It found no Critical, High, Medium, or Low findings in remediation scope. The human-approved technical candidate is this same SHA. The historical initial FAIL verdict and its evidence above remain preserved as the original M9F result.
+
+### Original findings and remediation
+
+| Finding | Original severity and description | Remediation candidate | Re-review disposition |
+| --- | --- | --- | --- |
+| M9F-01 | HIGH — orchestration credential could overlap with a human approval credential | `38b11fc000e461ff4d9dd5d7d40b26c37613c963` | PASS — orchestration token cannot equal REVIEWER, APPROVER, or ELEVATED_APPROVER; dangerous overlap fails before application composition; distinct-token human and machine authorization remains intact. |
+| M9F-02 | MEDIUM — Odoo clean-clone fixture required an undocumented permission change | `e06246c903b3eebe5f9e56daf7ce082ccb1d9877` | PASS — literal clean clone works under restrictive `umask 077`; the synthetic fixture has sufficient non-sensitive permissions, generated API-key/result files remain restrictive, and least-privilege bot access remains intact. |
+
+### Verified closure summary
+
+- M9F-01 rejects machine-token equality with each configured human review/approval credential before application composition. A distinct orchestration bearer can execute-next but cannot review or approve; REVIEWER review/revalidation and APPROVER approval remain intact.
+- M9F-02 was verified from a literal clean checkout at the remediation evidence SHA under `umask 077`. The Odoo 19 disposable environment starts, the addon loads, and the documented fixture/helper runs without an undocumented permission command. The synthetic fixture is non-sensitive and uses the sufficient `0644` mode; generated API-key and result files remain `0600`. Odoo-native addon and disposable JSON-2/live checks passed, and the least-privilege bot setup remains intact.
+- Focused and full verification recorded at the remediation evidence SHA passed. The re-review found no regression in the orchestration, reviewer, approver, Odoo, or Phase 9 path checks.
+
+The repository-health note remains unchanged: one High advisory in transitive development-only `brace-expansion@5.0.9`, reached through frontend lint/tooling, absent from the production-only audit and production bundle, unchanged by Phase 9, and not a Phase 9 blocker.
+
+### Final Phase 9 acceptance matrix
+
+All required criteria are PASS after remediation and independent targeted re-review. The initial matrices above remain historical records of the original assessment; no required FAIL or PENDING status remains after this final disposition.
+
+| # | Required criterion | Final status | Evidence / closure |
+| --- | --- | --- | --- |
+| 1 | M9A–M9E traceability, ownership, implementation, automated/live evidence, and limitations | PASS | E1–E7; original evidence map retained. |
+| 2 | Approval intent, atomicity, eligibility, and no writes before approval | PASS | E2, E3, E6; approval gate evidence retained. |
+| 3 | One durable sync lifecycle with no competing queues or receipts | PASS | E1; M9B coordinator and composition review retained. |
+| 4 | Claims, fencing, lease recovery, and provider I/O outside database transactions | PASS | E1, E2; PostgreSQL concurrency and stale-claim evidence retained. |
+| 5 | Failure taxonomy, retry limits, generation ownership, human Retry, and clean yield | PASS | E1, E2, E7; bounded retry and recovery evidence retained. |
+| 6 | Aggregate deadline, receipt reserve, provider timeout, lease, and schedule | PASS | E1, E2, E6; implementation and observed cadence evidence retained. |
+| 7 | Ordered receipts, resume from first missing receipt, and stale-claim rejection | PASS | E2, E5, E6; partial recovery and durable receipt evidence retained. |
+| 8 | Odoo stable identity, races, lost response, confirmation, ACL, and trusted data | PASS | E4, E6, E7; native and JSON-2 evidence retained. |
+| 9 | Exclusive HubSpot v2 customer identity | PASS | E1, E5, E6; adapter and independent identity evidence retained. |
+| 10 | Deal updates preserve human-progressed stage | PASS | E1, E5; stage-race evidence retained. |
+| 11 | Lost-response recovery for Odoo, Company, Deal, and association | PASS | E2, E4–E6; stable-identity replay evidence retained. |
+| 12 | Strict provider response, item-error, trace, cardinality, and association validation | PASS | E1, E2, E5; provider contract evidence retained. |
+| 13 | HubSpot portal/account guard before writes | PASS | E1, E2, E5; identity and pre-write guard evidence retained. |
+| 14 | Provider credentials and orchestration bearer remain in intended stores | PASS | E6, E9; secret isolation evidence retained. |
+| 15 | Thin n8n with one scheduled call, bounded branches, and success-data privacy | PASS | E1, E2, E6; workflow and runtime evidence retained. |
+| 16 | Literal Odoo clean-clone reconstruction at the remediation candidate | PASS | M9F-02 re-review at `b96364d11da37b61fd6c8bc75c651918cf596ac7`: clean checkout, restrictive umask, addon/helper, Odoo-native tests, and disposable JSON-2/live checks verified. |
+| 17 | Approved n8n → OpsFlow → Odoo → HubSpot success path | PASS | E6; synthetic end-to-end evidence retained. |
+| 18 | Replay preserves one logical order, Company, Deal, association, and durable state | PASS | E5, E6; stable-identity replay evidence retained. |
+| 19 | Unavailable inventory creates no external order or downstream CRM records | PASS | E2, E7; synthetic inventory-failure evidence retained. |
+| 20 | Outage recovery follows M9B ownership without duplicate logical records | PASS | E7; scheduled recovery evidence retained. |
+| 21 | REVIEWER, APPROVER, ELEVATED_APPROVER, and orchestration role separation | PASS | M9F-01 re-review at `b96364d11da37b61fd6c8bc75c651918cf596ac7`: overlap rejected before composition; distinct-token authorization intact. |
+| 22 | Missing/partial/malformed configuration, wrong portal, invalid credential, and preclaim behavior | PASS | E2, E6; configuration and boundary evidence retained. |
+| 23 | Minimal authenticated execute-next API without ID or step override | PASS | E1, E2; route and API evidence retained. |
+| 24 | Durable approval, claim, failure, receipt, completion, Retry, and bounded diagnostics | PASS | E1, E2, E6, E7; persistence and audit evidence retained. |
+| 25 | Migration/schema justification and fresh database upgrade | PASS | E1, E2, E9; isolated migration evidence retained. |
+| 26 | Provider-free default tests and explicit live opt-ins | PASS | E2, E4, E5; automated and guarded live-suite evidence retained. |
+| 27 | Full-history and changed-content secret hygiene | PASS | E9; pinned scan and repository hygiene evidence retained. |
+| 28 | Unchanged development-only `brace-expansion@5.0.9` advisory and production exposure | PASS | E9; advisory is dev-only, absent from production audit/bundle, unchanged, and not a Phase 9 blocker. |
+| 29 | `$0` mandatory local infrastructure cost | PASS | E9; local infrastructure and optional-service evidence retained. |
+| 30 | Durable documentation agrees on status, roles, cadence, retry, and cost | PASS | Final status documents updated at this closeout; report preserves initial history and final disposition. |
+| 31 | No unsupported speculative Phase 9 complexity | PASS | E1; scope review evidence retained. |
+| 32 | Focused/full verification, migration, workflow, Compose, docs, and security checks | PASS | E2, E4, E5, E9 and targeted re-review verification at the approved technical candidate. |
+| 33 | Complete final matrix and eligibility for Phase 9 closeout | PASS | All rows in this final matrix PASS; independent targeted re-review reports no Critical, High, Medium, or Low findings in remediation scope; human approval recorded at `b96364d11da37b61fd6c8bc75c651918cf596ac7`. |
+
+### Final audit disposition
+
+**Final Phase 9 verdict:** PASS — Phase 9 complete after remediation and independent targeted re-review
+
+M9A, M9B, M9C, M9D, M9E, and M9F are `COMPLETE`. Phase 9 is `COMPLETE`. M9F and Phase 9 technical approval is recorded against `b96364d11da37b61fd6c8bc75c651918cf596ac7`. The original audit baseline and original FAIL remain historical; this is the final disposition after remediation and independent targeted re-review.

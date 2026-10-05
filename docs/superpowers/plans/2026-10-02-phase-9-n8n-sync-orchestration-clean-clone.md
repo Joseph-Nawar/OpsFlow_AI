@@ -1,10 +1,11 @@
 # Phase 9 — M9E n8n Sync Orchestration + Full Sandbox/Clean-Clone E2E
 
-**Status:** M9E is human-approved COMPLETE at `8b1f6941f2070017724346c4acb93d1d16cfa492`; Phase 9 remains IN PROGRESS and M9F remains NOT STARTED.
+**Historical status at M9E approval:** M9E was human-approved COMPLETE at `8b1f6941f2070017724346c4acb93d1d16cfa492`; Phase 9 remained IN PROGRESS and M9F remained NOT STARTED at that time.
 
 **Planning baseline:** `phase/9-erp-crm-integrations` at
 `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`. M9D is human-approved COMPLETE
-at that SHA. M9E later received human-approved independent completion at `8b1f6941f2070017724346c4acb93d1d16cfa492`; Phase 9 remains IN PROGRESS and M9F remains NOT STARTED.
+at that SHA. At M9E approval, M9E received human-approved independent completion at
+`8b1f6941f2070017724346c4acb93d1d16cfa492`; Phase 9 remained IN PROGRESS and M9F remained NOT STARTED.
 
 **Goal:** Add one reproducible scheduled n8n workflow for the existing OpsFlow
 order-sync API and prove, from a literal clean repository checkout, that a
@@ -770,5 +771,6 @@ provider frameworks, or schema/migration changes.
 At M9E plan approval, its status update was documentation-only and left
 uncommitted for human review. The implementation later followed the approved
 branch and M9D history, and independent review plus human approval marked M9E
-`COMPLETE` at `8b1f6941f2070017724346c4acb93d1d16cfa492`. M9F remains
-`NOT STARTED`; Phase 9 remains `IN PROGRESS` pending the independent M9F audit.
+`COMPLETE` at `8b1f6941f2070017724346c4acb93d1d16cfa492`. At that M9E
+closeout point M9F was `NOT STARTED` and Phase 9 was `IN PROGRESS`, pending the
+independent M9F audit.

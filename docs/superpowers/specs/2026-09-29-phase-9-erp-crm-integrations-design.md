@@ -1,7 +1,7 @@
 # Phase 9 — ERP/CRM Contract, Current-API Probe & Design
 
 **Milestone:** M9A — ERP/CRM Contract, Current-API Probe & Design
-**Status:** Phase 9 IN PROGRESS; M9A COMPLETE; M9B COMPLETE (human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`); M9C COMPLETE (human implementation approval at `1ed8508167c75305553db54906bc5e9af5d89870`); M9D COMPLETE — human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`; M9E COMPLETE (human-approved completion at `8b1f6941f2070017724346c4acb93d1d16cfa492`); M9F IN PROGRESS
+**Status:** Phase 9 `COMPLETE`; M9A, M9B, M9C, M9D, M9E, and M9F `COMPLETE`. M9F and Phase 9 technical approval: `b96364d11da37b61fd6c8bc75c651918cf596ac7`.
 **Date:** 2026-09-29
 **Revised:** 2026-09-30
 **Branch base:** Phase 8 merge `528bbf1a3218f25dddcd0893ed601686f99223e3`
@@ -434,7 +434,7 @@ The exact Odoo image digest, account setup screenshots/IDs, and account-specific
 | **M9E — n8n Sync Orchestration + Full Sandbox/Clean-Clone E2E** | Add one sanitized scheduled `opsflow-order-sync` workflow that invokes the OpsFlow execute-next endpoint; document clean reconstruction. | Clean clone runs synthetic approved order to confirmed Odoo + HubSpot Company/Deal/association + `COMPLETED`; replay and partial recovery show no duplicate logical records. | Provider calls from n8n, credentials in workflow, real customer data, cloud hosting. |
 | **M9F — Independent Whole-Phase-9 Audit** | Independently audit contracts, code, migrations, tests, external sandbox evidence, privacy, cost, and docs. | Findings closed with evidence; required scenarios and clean-clone acceptance pass; audit/status documents report commit and tree state. | New feature scope or unapproved architecture changes during audit. |
 
-M9A is COMPLETE following human design approval at `21e1cf4351e4637b074e19023754650db80f0eb3`. M9B is COMPLETE following human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`. M9C is COMPLETE following human implementation approval at `1ed8508167c75305553db54906bc5e9af5d89870`. M9D is COMPLETE following human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`. M9E is COMPLETE with human-approved completion at `8b1f6941f2070017724346c4acb93d1d16cfa492`; M9F is IN PROGRESS. Phase 9 remains IN PROGRESS.
+M9A is COMPLETE following human design approval at `21e1cf4351e4637b074e19023754650db80f0eb3`. M9B is COMPLETE following human implementation approval at `8f1a25c55f627c3920465e95ffc954434d3aad74`. M9C is COMPLETE following human implementation approval at `1ed8508167c75305553db54906bc5e9af5d89870`. M9D is COMPLETE following human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`. M9E is COMPLETE with human-approved completion at `8b1f6941f2070017724346c4acb93d1d16cfa492`. M9F and Phase 9 are COMPLETE following human technical approval at `b96364d11da37b61fd6c8bc75c651918cf596ac7`.
 
 ## 20. User-owned setup gates and accepted limitations
 

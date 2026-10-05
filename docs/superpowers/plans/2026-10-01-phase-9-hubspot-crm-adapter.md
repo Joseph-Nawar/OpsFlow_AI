@@ -10,7 +10,7 @@
 
 **Spec:** [Approved Phase 9 design](../specs/2026-09-29-phase-9-erp-crm-integrations-design.md), especially Sections 3, 7–18 and the M9D milestone row. Reuse the [M9B implementation plan](2026-09-30-phase-9-durable-sync-state-claiming-recovery.md), [approved M9C implementation plan](2026-09-30-phase-9-odoo-trusted-data-idempotent-erp-adapter.md), [system overview](../../architecture/system-overview.md), [roadmap](../../roadmap/project-roadmap.md), and [development guide](../../development/development-guide.md).
 
-**Status:** M9A–M9D are `COMPLETE`; M9D received human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`. M9E is `IN PROGRESS`; M9F remains `NOT STARTED`; Phase 9 remains `IN PROGRESS`.
+**Historical status at M9D plan creation:** M9A–M9D were `COMPLETE`; M9D received human implementation approval at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`. M9E was `IN PROGRESS`; M9F was `NOT STARTED`; Phase 9 was `IN PROGRESS`.
 
 ## Global Constraints
 
