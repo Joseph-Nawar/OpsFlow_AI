@@ -375,3 +375,50 @@ After approved remediation, restart the affected audit evidence at the new
 candidate SHA. Do not mark either status COMPLETE from this report.
 
 Final verdict: FAIL — Phase 9 requires remediation
+
+---
+
+## Targeted remediation status — pending independent re-review
+
+The findings and FAIL verdict above are the original M9F result and remain
+unchanged. The targeted remediation candidates below have implementation and
+verification evidence. Both findings remain pending independent targeted
+re-review. M9A–M9E remain `COMPLETE`; M9F and Phase 9 remain `IN PROGRESS`.
+
+### M9F-01 — candidate `38b11fc000e461ff4d9dd5d7d40b26c37613c963`
+
+Settings now rejects orchestration-token equality with each configured
+`REVIEWER`, `APPROVER`, and `ELEVATED_APPROVER` token in
+`review_dev_operators`. It compares parsed secret bytes with
+`hmac.compare_digest`; validation errors identify the conflicting settings
+without including values. No human-human uniqueness rule or role was added.
+
+The pre-fix regression run failed to raise for all three role collisions. The
+sanitized baseline probe showed settings acceptance, resolved the shared
+bearer as `APPROVER`, and passed `require_approval`. Post-fix settings and
+auth tests passed (89); the Phase 6/9 API authorization set passed (129).
+The distinct orchestration bearer completed execute-next and received 401 on
+review detail and approval routes.
+
+**Review status:** Pending independent targeted re-review.
+
+### M9F-02 — candidate `e06246c903b3eebe5f9e56daf7ce082ccb1d9877`
+
+In a literal clone at the audit SHA, the documented fixture was host mode
+`0600` under `umask 077`; Compose staged `/tmp/m9c-fixture.json` as UID:GID
+`501:0`, mode `0600`. The Odoo shell ran as UID:GID `100:101`, and
+`prepare_m9c_sandbox.py` failed at `fixture_path.read_text()` with
+`PermissionError`. Running
+`docker compose ... exec -T --user root odoo chmod 644 /tmp/m9c-fixture.json`
+allowed the helper to complete. The synthetic fixture contains no credential.
+
+The guide now sets mode `0644` in the fixture creation snippet. The generated
+API key and result remain mode `0600`. In a separate literal clone at this
+candidate SHA, Odoo 19.0-20260926 started, `sale_stock` and
+`opsflow_sale_bridge` loaded, and the documented helper completed under
+`umask 077` without a manual container permission command. The dedicated bot
+had Salesperson, Stock User, and bridge access, with no manager, Settings,
+Admin, or API-doc group. The Odoo-native suite passed 13 tests and the
+disposable JSON-2 suite passed 5 tests.
+
+**Review status:** Pending independent targeted re-review.
