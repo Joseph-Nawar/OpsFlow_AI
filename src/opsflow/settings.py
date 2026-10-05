@@ -1,6 +1,8 @@
 """Environment-driven application settings."""
 
+import hmac
 import json
+import re
 from functools import lru_cache
 from typing import Annotated
 from urllib.parse import urlsplit
@@ -63,6 +65,17 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: float | None = None
     review_base_url: str = "http://localhost:5173"
     review_dev_operators: Annotated[tuple[DevelopmentOperatorConfig, ...], NoDecode] = ()
+    odoo_base_url: str | None = None
+    odoo_database: str | None = None
+    odoo_api_key: SecretStr | None = None
+    odoo_company_id: int | None = None
+    odoo_warehouse_id: int | None = None
+    odoo_pricelist_id: int | None = None
+    hubspot_service_key: SecretStr | None = None
+    hubspot_pipeline_id: str | None = None
+    hubspot_initial_stage_id: str | None = None
+    hubspot_portal_currency: str | None = None
+    hubspot_expected_portal_id: int | None = None
 
     @field_validator("review_base_url", mode="before")
     @classmethod
@@ -81,6 +94,118 @@ class Settings(BaseSettings):
         except ValidationError as error:
             raise ValueError("review base URL must be an absolute HTTP or HTTPS URL") from error
         return str(parsed).rstrip("/")
+
+    @field_validator("odoo_base_url", mode="before")
+    @classmethod
+    def validate_odoo_base_url(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if type(value) is str and not value.strip():
+            return None
+        if type(value) is not str or not value.strip() or value != value.strip():
+            raise ValueError("Odoo base URL must be a nonblank absolute HTTP or HTTPS URL")
+        if len(value) > 2_048:
+            raise ValueError("Odoo base URL must be at most 2,048 characters")
+        components = urlsplit(value)
+        if "@" in components.netloc or "?" in value or "#" in value:
+            raise ValueError("Odoo base URL cannot contain credentials, query, or fragment")
+        if components.path not in ("", "/"):
+            raise ValueError("Odoo base URL must not contain a path")
+        try:
+            parsed = TypeAdapter(AnyHttpUrl).validate_python(value)
+        except ValidationError as error:
+            raise ValueError("Odoo base URL must be an absolute HTTP or HTTPS URL") from error
+        return str(parsed).rstrip("/")
+
+    @field_validator("odoo_database", mode="before")
+    @classmethod
+    def validate_odoo_database(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if type(value) is str and not value.strip():
+            return None
+        if (
+            type(value) is not str
+            or not value.strip()
+            or value != value.strip()
+            or len(value) > 128
+        ):
+            raise ValueError("Odoo database must be a nonblank name of at most 128 characters")
+        return value
+
+    @field_validator("odoo_api_key", mode="before")
+    @classmethod
+    def validate_odoo_api_key(cls, value: object) -> object:
+        if value is None or (type(value) is str and not value.strip()):
+            return None
+        if isinstance(value, SecretStr) and not value.get_secret_value().strip():
+            return None
+        return value
+
+    @field_validator("odoo_company_id", "odoo_warehouse_id", "odoo_pricelist_id", mode="before")
+    @classmethod
+    def reject_boolean_odoo_ids(cls, value: object) -> object:
+        if type(value) is str and not value.strip():
+            return None
+        if type(value) is bool:
+            raise ValueError("Odoo IDs must be positive integers")
+        return value
+
+    @field_validator("odoo_company_id", "odoo_warehouse_id", "odoo_pricelist_id")
+    @classmethod
+    def require_positive_odoo_ids(cls, value: int | None) -> int | None:
+        if value is not None and value <= 0:
+            raise ValueError("Odoo IDs must be positive integers")
+        return value
+
+    @field_validator("hubspot_service_key", mode="before")
+    @classmethod
+    def validate_hubspot_service_key(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        if type(value) is str and not value.strip():
+            raise ValueError("HubSpot Service Key must be nonblank")
+        if isinstance(value, SecretStr) and not value.get_secret_value().strip():
+            raise ValueError("HubSpot Service Key must be nonblank")
+        return value
+
+    @field_validator("hubspot_pipeline_id", "hubspot_initial_stage_id", mode="before")
+    @classmethod
+    def validate_hubspot_identifiers(cls, value: object) -> str | None:
+        if value is None or value == "":
+            return None
+        if type(value) is not str or value != value.strip() or len(value) > 128:
+            raise ValueError("HubSpot identifiers must be nonblank strings up to 128 characters")
+        return value
+
+    @field_validator("hubspot_portal_currency", mode="before")
+    @classmethod
+    def validate_hubspot_portal_currency(cls, value: object) -> str | None:
+        if value is None or value == "":
+            return None
+        if type(value) is not str or re.fullmatch(r"[A-Z]{3}", value, flags=re.ASCII) is None:
+            raise ValueError("HubSpot portal currency must be an uppercase ISO code")
+        return value
+
+    @field_validator("hubspot_expected_portal_id", mode="before")
+    @classmethod
+    def validate_hubspot_expected_portal_id(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        if type(value) is bool:
+            raise ValueError("HubSpot expected portal ID must match the verified test portal")
+        if type(value) is str and (
+            value != value.strip() or not value.isascii() or not value.isdigit()
+        ):
+            raise ValueError("HubSpot expected portal ID must match the verified test portal")
+        return value
+
+    @field_validator("hubspot_expected_portal_id")
+    @classmethod
+    def require_verified_hubspot_portal(cls, value: int | None) -> int | None:
+        if value is not None and value != 149461984:
+            raise ValueError("HubSpot expected portal ID must match the verified test portal")
+        return value
 
     @field_validator("review_dev_operators", mode="before")
     @classmethod
@@ -103,6 +228,36 @@ class Settings(BaseSettings):
         tokens = tuple(operator.token.get_secret_value() for operator in self.review_dev_operators)
         if len(set(tokens)) != len(tokens):
             raise ValueError("review development operator tokens must be unique")
+        if self.orchestration_token is not None:
+            orchestration_bytes = self.orchestration_token.get_secret_value().encode("utf-8")
+            if any(
+                hmac.compare_digest(
+                    orchestration_bytes,
+                    operator.token.get_secret_value().encode("utf-8"),
+                )
+                for operator in self.review_dev_operators
+                if operator.role
+                in (
+                    OperatorRole.REVIEWER,
+                    OperatorRole.APPROVER,
+                    OperatorRole.ELEVATED_APPROVER,
+                )
+            ):
+                raise ValueError(
+                    "orchestration_token must differ from every review_dev_operators token"
+                )
+        odoo_values = (
+            self.odoo_base_url,
+            self.odoo_database,
+            self.odoo_api_key,
+            self.odoo_company_id,
+            self.odoo_warehouse_id,
+            self.odoo_pricelist_id,
+        )
+        if any(value is not None for value in odoo_values) and any(
+            value is None for value in odoo_values
+        ):
+            raise ValueError("all Odoo settings must be configured together")
         return self
 
     model_config = SettingsConfigDict(

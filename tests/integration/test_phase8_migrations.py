@@ -26,6 +26,7 @@ from opsflow.persistence.models import (
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
 PHASE_8_REVISION = "0005_phase8_notification_deliveries"
+CURRENT_HEAD_REVISION = "0006_phase9_order_syncs"
 _NOW = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
 
 
@@ -43,7 +44,7 @@ def test_clean_upgrade_and_notification_schema_constraints(
 ) -> None:
     _run_alembic(migration_test_database_url, "downgrade", "base")
     _run_alembic(migration_test_database_url, "upgrade", "head")
-    assert PHASE_8_REVISION in _run_alembic(migration_test_database_url, "current")
+    assert CURRENT_HEAD_REVISION in _run_alembic(migration_test_database_url, "current")
     asyncio.run(_assert_schema_and_constraints(migration_test_database_url))
 
 
@@ -61,7 +62,7 @@ def test_phase8_downgrade_and_reupgrade_preserve_phase6_rows(
     assert asyncio.run(_revision_exists(migration_test_database_url, revision_id))
 
     _run_alembic(migration_test_database_url, "upgrade", "head")
-    assert PHASE_8_REVISION in _run_alembic(migration_test_database_url, "current")
+    assert CURRENT_HEAD_REVISION in _run_alembic(migration_test_database_url, "current")
     assert asyncio.run(_revision_exists(migration_test_database_url, revision_id))
 
 

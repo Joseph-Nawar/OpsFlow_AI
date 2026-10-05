@@ -13,6 +13,10 @@ from opsflow.application.errors import (
     OrderNotFoundError,
     ReviewPersistenceConflictError,
 )
+from opsflow.application.order_sync import (
+    create_order_sync_intent,
+    reset_order_sync_for_retry,
+)
 from opsflow.domain import AuditEvent, Order, OrderState, ValidationSeverity
 from opsflow.notifications.contracts import NotificationChannel, NotificationKind
 from opsflow.notifications.service import create_notification_intent
@@ -83,6 +87,7 @@ async def approve_order(
                 description="Order approved by operator.",
             )
             await insert_audit_event(session, event)
+            await create_order_sync_intent(session, order_id, recorded_at)
             await create_notification_intent(
                 session,
                 order=final_order,
@@ -181,8 +186,11 @@ async def retry_order(
                 raise InvalidReviewStateError()
             require_retry(operator)
 
+            sync_retry = persisted.order.failure_origin is OrderState.SYNCING
             final_order = persisted.order.retry()
             await update_order_snapshot(session, final_order)
+            if sync_retry and not await reset_order_sync_for_retry(session, order_id):
+                raise ReviewPersistenceConflictError()
             events = (
                 AuditEvent(
                     id=uuid4(),

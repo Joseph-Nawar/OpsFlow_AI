@@ -27,6 +27,7 @@ from opsflow.notifications.contracts import (
     NotificationKind,
     NotificationStatus,
 )
+from opsflow.order_sync.contracts import OrderSync, OrderSyncFailureCode, OrderSyncStep
 from opsflow.review import ReviewRevision
 from opsflow.review.serialization import (
     review_changes_from_payload,
@@ -41,6 +42,7 @@ from .models import (
     NotificationDeliveryModel,
     OrderLineModel,
     OrderModel,
+    OrderSyncModel,
     ReviewRevisionModel,
     SourceDocumentModel,
     ValidationIssueModel,
@@ -274,6 +276,72 @@ def notification_delivery_to_model(
         created_at=delivery.created_at,
         updated_at=delivery.updated_at,
     )
+
+
+def order_sync_to_model(sync: OrderSync) -> OrderSyncModel:
+    """Map one validated order-sync contract to a persistence row."""
+
+    if not isinstance(sync, OrderSync):
+        raise DomainValidationError("sync must be an OrderSync")
+    return OrderSyncModel(
+        order_id=sync.order_id,
+        claim_token=sync.claim_token,
+        claim_expires_at=sync.claim_expires_at,
+        attempt_count=sync.attempt_count,
+        retry_generation=sync.retry_generation,
+        next_attempt_at=sync.next_attempt_at,
+        odoo_sale_order_id=sync.odoo_sale_order_id,
+        odoo_sale_order_name=sync.odoo_sale_order_name,
+        hubspot_company_id=sync.hubspot_company_id,
+        hubspot_deal_id=sync.hubspot_deal_id,
+        hubspot_association_confirmed_at=sync.hubspot_association_confirmed_at,
+        in_flight_step=sync.in_flight_step.value if sync.in_flight_step is not None else None,
+        last_failure_step=(
+            sync.last_failure_step.value if sync.last_failure_step is not None else None
+        ),
+        last_failure_code=(
+            sync.last_failure_code.value if sync.last_failure_code is not None else None
+        ),
+        last_attempt_at=sync.last_attempt_at,
+        created_at=sync.created_at,
+        updated_at=sync.updated_at,
+    )
+
+
+def order_sync_from_model(row: OrderSyncModel) -> OrderSync:
+    """Reconstruct and validate the bounded order-sync contract from one ORM row."""
+
+    if not isinstance(row, OrderSyncModel):
+        raise DomainValidationError("row must be an OrderSyncModel")
+    try:
+        in_flight_step = OrderSyncStep(row.in_flight_step) if row.in_flight_step else None
+        last_failure_step = OrderSyncStep(row.last_failure_step) if row.last_failure_step else None
+        last_failure_code = (
+            OrderSyncFailureCode(row.last_failure_code) if row.last_failure_code else None
+        )
+        return OrderSync(
+            order_id=row.order_id,
+            claim_token=row.claim_token,
+            claim_expires_at=row.claim_expires_at,
+            attempt_count=row.attempt_count,
+            retry_generation=row.retry_generation,
+            next_attempt_at=row.next_attempt_at,
+            odoo_sale_order_id=row.odoo_sale_order_id,
+            odoo_sale_order_name=row.odoo_sale_order_name,
+            hubspot_company_id=row.hubspot_company_id,
+            hubspot_deal_id=row.hubspot_deal_id,
+            hubspot_association_confirmed_at=row.hubspot_association_confirmed_at,
+            in_flight_step=in_flight_step,
+            last_failure_step=last_failure_step,
+            last_failure_code=last_failure_code,
+            last_attempt_at=row.last_attempt_at,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+    except (TypeError, ValueError) as error:
+        raise DomainValidationError(
+            "persisted order-sync row violates the Phase 9 contract"
+        ) from error
 
 
 def notification_delivery_from_model(

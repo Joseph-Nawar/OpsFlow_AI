@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import datetime
 from typing import cast
 
@@ -20,12 +21,15 @@ from opsflow.application.errors import (
 )
 from opsflow.application.orchestration import execute_orchestration_intake
 from opsflow.database import create_engine, create_sessionmaker, database_is_available
+from opsflow.hubspot import HubSpotCRMAdapter
+from opsflow.odoo import OdooERPAdapter
 from opsflow.orchestration.composition import build_orchestration_runtime
 from opsflow.orchestration.contracts import (
     OrchestrationIntakeCommand,
     OrchestrationIntakeHandler,
     OrchestrationIntakeResult,
 )
+from opsflow.order_sync.executor import Phase9OrderSyncExecutor
 from opsflow.review.composition import build_demo_review_runtime
 from opsflow.settings import Settings, get_settings
 
@@ -37,6 +41,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        odoo_adapter = getattr(app.state, "odoo_adapter", None)
+        if odoo_adapter is not None:
+            await odoo_adapter.aclose()
+        hubspot_adapter = getattr(app.state, "hubspot_adapter", None)
+        if hubspot_adapter is not None:
+            await hubspot_adapter.aclose()
         engine = cast(AsyncEngine, app.state.database_engine)
         await engine.dispose()
 
@@ -50,6 +60,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.database_engine = engine
     app.state.database_sessionmaker = create_sessionmaker(engine)
     review_runtime = build_demo_review_runtime()
+    odoo_adapter: OdooERPAdapter | None = None
+    if resolved_settings.odoo_base_url is not None:
+        odoo_adapter = OdooERPAdapter(
+            resolved_settings,
+            sessionmaker=app.state.database_sessionmaker,
+            policy=review_runtime.policy,
+        )
+        review_runtime = replace(review_runtime, provider=odoo_adapter)
+    hubspot_adapter: HubSpotCRMAdapter | None = None
+    order_sync_step_executor: Phase9OrderSyncExecutor | None = None
+    hubspot_settings_complete = all(
+        value is not None
+        for value in (
+            resolved_settings.hubspot_service_key,
+            resolved_settings.hubspot_pipeline_id,
+            resolved_settings.hubspot_initial_stage_id,
+            resolved_settings.hubspot_portal_currency,
+            resolved_settings.hubspot_expected_portal_id,
+        )
+    )
+    if odoo_adapter is not None and hubspot_settings_complete:
+        hubspot_adapter = HubSpotCRMAdapter(
+            resolved_settings,
+            sessionmaker=app.state.database_sessionmaker,
+            business_data_provider=odoo_adapter,
+        )
+        order_sync_step_executor = Phase9OrderSyncExecutor(
+            odoo=odoo_adapter,
+            hubspot=hubspot_adapter,
+        )
     app.state.review_runtime = review_runtime
     orchestration_runtime = build_orchestration_runtime(
         resolved_settings,
@@ -58,6 +98,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.orchestration_runtime = orchestration_runtime
     app.state.review_dev_operators = resolved_settings.review_dev_operators
     app.state.orchestration_token = resolved_settings.orchestration_token
+    app.state.odoo_adapter = odoo_adapter
+    app.state.hubspot_adapter = hubspot_adapter
+    # Execute-next requires both complete provider adapters and uses the same M9B seam.
+    app.state.order_sync_step_executor = order_sync_step_executor
 
     async def orchestration_intake_handler(
         session: AsyncSession,

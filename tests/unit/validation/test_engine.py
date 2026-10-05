@@ -1,11 +1,13 @@
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 
-from opsflow.domain import SourceDocumentType, ValidationSeverity
+from opsflow.domain import Order, OrderLine, OrderState, SourceDocumentType, ValidationSeverity
 from opsflow.extraction import ExtractedLine, ExtractionDraft
-from opsflow.validation.engine import validate
+from opsflow.review.composition import build_demo_review_runtime
+from opsflow.validation.engine import approved_order_trusted_data_issues, validate
 from opsflow.validation.models import (
     ApprovalLevel,
     TrustedBusinessData,
@@ -539,3 +541,93 @@ def test_equal_five_inputs_produce_equal_complete_results() -> None:
     assert first.approval_level is second.approval_level
     assert first.route is second.route
     assert first.validated_order_data == second.validated_order_data
+
+
+def _approved_sync_order(
+    *,
+    submitted_price: Decimal = Decimal("10"),
+    currency: str = "USD",
+) -> Order:
+    return Order(
+        id=uuid4(),
+        customer_reference="CUST-001",
+        po_number="PO-1001",
+        order_date=date(2026, 9, 1),
+        requested_delivery_date=date(2026, 9, 20),
+        currency=currency,
+        lines=(
+            OrderLine(
+                id=uuid4(),
+                sku="SKU-001",
+                description="Approved widget",
+                quantity=Decimal("2"),
+                submitted_price=submitted_price,
+                trusted_catalogue_price=Decimal("10"),
+            ),
+        ),
+        state=OrderState.SYNCING,
+    )
+
+
+def test_preflight_rejects_missing_or_inactive_customer_and_product() -> None:
+    sync_policy = build_demo_review_runtime().policy
+    order = _approved_sync_order()
+
+    cases = (
+        (TrustedBusinessData((), (product(),)), "UNKNOWN_CUSTOMER"),
+        (
+            TrustedBusinessData((customer(active=False),), (product(),)),
+            "INACTIVE_CUSTOMER",
+        ),
+        (TrustedBusinessData((customer(),), (None,)), "UNKNOWN_SKU"),
+        (
+            TrustedBusinessData((customer(),), (product(active=False),)),
+            "INACTIVE_SKU",
+        ),
+    )
+    for trusted_data, expected_code in cases:
+        issues = approved_order_trusted_data_issues(order, trusted_data, sync_policy)
+        assert expected_code in {item.rule_code for item in issues}
+
+
+def test_preflight_rejects_currency_price_and_inventory_mismatch() -> None:
+    sync_policy = build_demo_review_runtime().policy
+    order = _approved_sync_order()
+    cases = (
+        (product(currency="EUR"), "PRODUCT_CURRENCY_MISMATCH"),
+        (product(catalogue_price=Decimal("20")), "PRICE_OUTSIDE_TOLERANCE"),
+        (product(available_quantity=Decimal("1")), "INSUFFICIENT_INVENTORY"),
+    )
+
+    for trusted_product, expected_code in cases:
+        data = TrustedBusinessData((customer(),), (trusted_product,))
+        issues = approved_order_trusted_data_issues(order, data, sync_policy)
+        assert expected_code in {item.rule_code for item in issues}
+
+
+def test_preflight_reuses_existing_five_percent_policy() -> None:
+    sync_policy = build_demo_review_runtime().policy
+    data = business_data()
+
+    within = approved_order_trusted_data_issues(
+        _approved_sync_order(submitted_price=Decimal("10.5")), data, sync_policy
+    )
+    outside = approved_order_trusted_data_issues(
+        _approved_sync_order(submitted_price=Decimal("10.51")), data, sync_policy
+    )
+
+    assert "PRICE_OUTSIDE_TOLERANCE" not in {item.rule_code for item in within}
+    assert "PRICE_OUTSIDE_TOLERANCE" in {item.rule_code for item in outside}
+
+
+def test_sync_preflight_does_not_rerun_intake_routing_or_mutate_order() -> None:
+    sync_policy = build_demo_review_runtime().policy
+    order = _approved_sync_order()
+    trusted_data = business_data()
+
+    issues = approved_order_trusted_data_issues(order, trusted_data, sync_policy)
+
+    assert issues == ()
+    assert order.state is OrderState.SYNCING
+    assert order.po_number == "PO-1001"
+    assert order.requested_delivery_date == date(2026, 9, 20)

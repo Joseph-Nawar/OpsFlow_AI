@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${M9C_POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${M9C_POSTGRES_PASSWORD:?set M9C_POSTGRES_PASSWORD in the ignored Odoo sandbox env file}
+    volumes:
+      - sandbox-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${M9C_POSTGRES_USER:-odoo} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  odoo:
+    image: odoo:19.0
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST: db
+      USER: ${M9C_POSTGRES_USER:-odoo}
+      PASSWORD: ${M9C_POSTGRES_PASSWORD:?set M9C_POSTGRES_PASSWORD in the ignored Odoo sandbox env file}
+    ports:
+      - "127.0.0.1:${M9C_ODOO_PORT:-18069}:8069"
+    volumes:
+      - .:/mnt/extra-addons:ro
+
+volumes:
+  sandbox-postgres-data:

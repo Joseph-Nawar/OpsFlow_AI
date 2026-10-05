@@ -43,6 +43,7 @@ async def _assert_schema() -> None:
                 | PHASE_5_TABLES
                 | PHASE_6_TABLES
                 | PHASE_8_TABLES
+                | {"order_syncs"}
                 | {"alembic_version"}
             )
 

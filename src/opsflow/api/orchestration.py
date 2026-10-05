@@ -1,4 +1,4 @@
-"""Authenticated HTTP boundary for orchestration intake."""
+"""Authenticated HTTP boundary for orchestration intake and order synchronization."""
 
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
@@ -18,6 +18,7 @@ from fastapi import (
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
+from sqlalchemy.exc import SQLAlchemyError
 
 from opsflow.application.errors import (
     IdempotencyConflictError,
@@ -25,6 +26,12 @@ from opsflow.application.errors import (
     SourceOwnershipError,
 )
 from opsflow.application.orchestration import OrchestrationUnavailableError
+from opsflow.application.order_sync import (
+    OrderSyncExecutionDeadlineExceeded,
+    OrderSyncNotFoundError,
+    OrderSyncStepPreconditionError,
+    execute_next_order_sync,
+)
 from opsflow.documents.errors import (
     DocumentLimitError,
     DocumentValidationError,
@@ -38,8 +45,9 @@ from opsflow.orchestration.contracts import (
     OrchestrationIntakeResult,
 )
 from opsflow.orchestration.transport import build_intake_command
+from opsflow.order_sync.contracts import OrderSyncStepExecutor
 
-from .orchestration_schemas import OrchestrationIntakeResponse
+from .orchestration_schemas import OrchestrationIntakeResponse, OrderSyncExecutionResponse
 from .orders import SessionDependency
 
 _PHASE7_COMPLETED_STATES = frozenset(
@@ -135,6 +143,41 @@ async def create_orchestration_intake_endpoint(
     )
 
 
+@router.post(
+    "/order-sync/execute-next",
+    response_model=OrderSyncExecutionResponse,
+    responses={
+        401: {"description": "Orchestration service authentication is required."},
+        503: {"description": "Order synchronization is unavailable."},
+    },
+)
+async def execute_next_order_sync_endpoint(
+    request: Request,
+    actor: OrchestrationActorDependency,
+    session: SessionDependency,
+) -> OrderSyncExecutionResponse:
+    """Execute one durable order-sync progression through the configured backend seam."""
+
+    del actor
+    executor = cast(OrderSyncStepExecutor | None, request.app.state.order_sync_step_executor)
+    if executor is None:
+        raise _order_sync_unavailable()
+    try:
+        result = await execute_next_order_sync(session, executor)
+    except (
+        SQLAlchemyError,
+        OrderSyncExecutionDeadlineExceeded,
+        OrderSyncNotFoundError,
+        OrderSyncStepPreconditionError,
+    ) as error:
+        raise _order_sync_unavailable() from error
+    return OrderSyncExecutionResponse(
+        result=result.kind,
+        order_id=result.order_id,
+        state=result.state,
+    )
+
+
 def _status_for_result(result: OrchestrationIntakeResult) -> int:
     if result.execution is IntakeExecution.STANDING_DOWN:
         if result.state in {OrderState.PROCESSING, OrderState.EXTRACTED}:
@@ -183,5 +226,15 @@ def _orchestration_unavailable() -> HTTPException:
         detail={
             "code": "ORCHESTRATION_UNAVAILABLE",
             "message": "Orchestration intake is currently unavailable.",
+        },
+    )
+
+
+def _order_sync_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "code": "ORDER_SYNC_UNAVAILABLE",
+            "message": "Order synchronization is currently unavailable.",
         },
     )

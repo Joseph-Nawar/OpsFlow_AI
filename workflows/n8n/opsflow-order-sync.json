@@ -1,0 +1,949 @@
+{
+  "id": "m9eOrderSync1",
+  "active": false,
+  "name": "OpsFlow Order Sync",
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "5bdfbb5e-b1ed-53d9-b4a2-97ef3f379a09",
+      "name": "Schedule Every Five Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "method": "POST",
+        "url": "http://api:8000/v1/orchestration/order-sync/execute-next",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 240000
+        }
+      },
+      "id": "3639d7af-eb81-5741-8591-b12a60475761",
+      "name": "Execute Next Sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "onError": "continueErrorOutput",
+      "retryOnFail": false,
+      "position": [
+        280,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "name": "OpsFlow Orchestration"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "outputKey": "Completed",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 200,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.body.result }}",
+                    "rightValue": "completed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "Worked",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 200,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.body.result }}",
+                    "rightValue": "worked",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "Yielded",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 200,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.body.result }}",
+                    "rightValue": "yielded",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "No Work",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 200,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.body.result }}",
+                    "rightValue": "no_work",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "Retry Wait",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 200,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.body.result }}",
+                    "rightValue": "retry_wait",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "Needs Review",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 200,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.body.result }}",
+                    "rightValue": "needs_review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "HTTP 401",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 401,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "HTTP 503",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 503,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unknown Outcome"
+        }
+      },
+      "id": "d130dd68-1712-5b71-955f-112a86dfec9a",
+      "name": "Route Execute-Next Outcome",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "94947b54-cf63-5bcf-889e-40085aeb15ad",
+              "name": "outcome",
+              "value": "completed",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "ca8d0398-d5e1-55ef-bc32-7a1f00caa3fd",
+      "name": "Completed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5ec00535-756b-5a3b-8245-95af426fa0f6",
+              "name": "outcome",
+              "value": "worked",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "c85fe9b6-ba53-5857-84e2-51335a75bc2e",
+      "name": "Worked",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "13ba7065-d026-5edc-83d2-885bfd3fd5cb",
+              "name": "outcome",
+              "value": "yielded",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "8e266361-7e94-5bf6-8c46-c49ad6dca832",
+      "name": "Yielded",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "677866ca-53c0-5bcd-aabf-df137c3f1fd9",
+              "name": "outcome",
+              "value": "no_work",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "ef67e57a-69ef-535c-ae0d-135b591e1f7f",
+      "name": "No Work",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "154b91ed-86be-5a44-89db-032e8d9f7777",
+              "name": "outcome",
+              "value": "retry_wait",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "883fcdaf-76a1-5d0b-aae5-6ac48fc3e49b",
+      "name": "Retry Wait",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "06917e76-24d4-5fca-b0c7-bc553103a82c",
+              "name": "outcome",
+              "value": "needs_review",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "0b75a90d-adc6-5c7a-ad7d-d2e52203fe1a",
+      "name": "Needs Review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7417ae35-1240-5560-a905-2ab4a8c9afc3",
+              "name": "outcome",
+              "value": "http_401",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "31832c66-d722-5d99-baca-6971ef94b4a9",
+      "name": "HTTP 401",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2163e4da-04a3-5ec1-9eb0-26696d42056b",
+              "name": "outcome",
+              "value": "http_503",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "3d658b2d-8be1-5d63-8570-b9e9ede64844",
+      "name": "HTTP 503",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c627c69d-7a3a-56b3-99a3-f296ef062505",
+              "name": "outcome",
+              "value": "unknown",
+              "type": "string"
+            },
+            {
+              "id": "fa5a2973-d12d-5350-861c-65d3bbbce7e7",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "69fb132e-a6a6-5b50-be38-7806714834c4",
+              "name": "result",
+              "value": "={{ $json.body?.result ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "c9d17fd6-ec50-5fc9-9e28-7788d5f92c29",
+              "name": "order_id",
+              "value": "={{ $json.body?.order_id ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "855eb4d4-633b-5ee3-844b-6d2dfb108bed",
+              "name": "state",
+              "value": "={{ $json.body?.state ?? null }}",
+              "type": "string"
+            },
+            {
+              "id": "f653b956-6b3c-5cdc-801b-87d459b96753",
+              "name": "failure_code",
+              "value": "={{ $json.body?.detail?.code ?? null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "55f44dc9-4539-54df-a00b-97e0b2543c59",
+      "name": "Unknown Outcome",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3e2876b0-cba9-5220-9b58-5d2ebdc19fa3",
+              "name": "outcome",
+              "value": "transport_error",
+              "type": "string"
+            },
+            {
+              "id": "0acb9c31-3d59-5e0e-97cf-314951adedba",
+              "name": "failure_code",
+              "value": "transport_error",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {
+          "stripBinary": true
+        }
+      },
+      "id": "31b6fea2-176d-5c64-a488-b77079217bef",
+      "name": "Transport Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        850,
+        720
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Every Five Minutes": {
+      "main": [
+        [
+          {
+            "node": "Execute Next Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Next Sync": {
+      "main": [
+        [
+          {
+            "node": "Route Execute-Next Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Transport Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Execute-Next Outcome": {
+      "main": [
+        [
+          {
+            "node": "Completed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Worked",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Yielded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Work",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP 401",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP 503",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unknown Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
