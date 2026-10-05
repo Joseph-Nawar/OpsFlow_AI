@@ -110,7 +110,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | 6 | Human Review Application | Usable review and approval interface | COMPLETE |
 | 7 | n8n Workflow Orchestration | Real automation workflow | COMPLETE |
 | 8 | Email & Notification Integrations | Gmail and Slack integration | COMPLETE |
-| 9 | ERP & CRM Integrations | Odoo + HubSpot business-system sync | IN PROGRESS |
+| 9 | ERP & CRM Integrations | Odoo + HubSpot business-system sync | COMPLETE |
 | 10 | Reliability, Security & Hardening | Production-style failure handling | NOT STARTED |
 | 11 | Evaluation & Optimization | Quantitative system evaluation | NOT STARTED |
 | 12 | Portfolio Release | Client-ready public project | NOT STARTED |
