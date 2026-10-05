@@ -1,6 +1,6 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `IN PROGRESS` pending final human approval; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
 **Scope:** repository intelligence, threat/failure modeling, and implementation design only. This document does not implement M10B–M10F behavior.
 
@@ -32,9 +32,10 @@ Phase 7 behavior documents that matching redelivery can stand down after this
 sequence. That is a real undetected-state gap. The fix belongs in M10B and
 must preserve ordinary duplicate stand-down and human Retry semantics.
 
-M10A remains `IN PROGRESS` until the human approves this amended design. M10B
-through M10F remain `NOT STARTED`; this amendment changes documentation and
-planning only.
+M10A is `COMPLETE` following final human approval at
+`ab7cec323e4d45dae57e5d418bc0755175aa0a88`. M10B through M10F remain
+`NOT STARTED`; this closeout changes status documentation only and does not
+implement later-milestone behavior.
 
 ## 2. Repository evidence reviewed
 

@@ -595,8 +595,9 @@ M10A itself must run only documentation/repository checks:
 - `git diff --check`;
 - pinned Gitleaks v8.28.0 changed-content scan;
 - lightweight status/reference searches proving Phase 9 is complete, Phase 10
-  is in progress with M10A in progress pending human approval, and Phases
-  11–12 are not started;
+  is in progress with M10A complete at approved SHA
+  `ab7cec323e4d45dae57e5d418bc0755175aa0a88`, and Phases 11–12 are not
+  started;
 - no application test suite and no live provider scenario.
 
 Commit the M10A result as:
