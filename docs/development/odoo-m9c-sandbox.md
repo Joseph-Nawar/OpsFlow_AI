@@ -123,6 +123,12 @@ with only the approved Salesperson, Stock User, and bridge groups. It writes a
 new API key only to an operator-selected `/tmp` file with mode 600 and never
 prints the key. Example fixture and invocation:
 
+The fixture contains only synthetic identifiers. Set it to mode 644 when it is
+created because `docker compose cp` retains a host-side owner that differs from
+the Odoo service user, which runs as UID 100 in the documented image. The
+service must be able to read this input; the generated API key and result files
+remain mode 600.
+
 ```bash
 python3 - <<'PY'
 import json
@@ -130,11 +136,13 @@ import secrets
 from pathlib import Path
 
 suffix = secrets.token_hex(5).upper()
-Path('/tmp/m9c-fixture.json').write_text(json.dumps({
+fixture_path = Path('/tmp/m9c-fixture.json')
+fixture_path.write_text(json.dumps({
     'suffix': suffix,
     'customer_reference': f'OPSFLOW-M9E-CUST-{suffix}',
     'sku': f'OPSFLOW-M9E-SKU-{suffix}',
 }))
+fixture_path.chmod(0o644)
 PY
 docker compose --env-file integrations/odoo/.env.m9c-sandbox \
   -f integrations/odoo/docker-compose.sandbox.yml -p opsflow-m9c-disposable \
