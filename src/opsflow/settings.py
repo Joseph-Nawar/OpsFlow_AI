@@ -1,5 +1,6 @@
 """Environment-driven application settings."""
 
+import hmac
 import json
 import re
 from functools import lru_cache
@@ -227,6 +228,24 @@ class Settings(BaseSettings):
         tokens = tuple(operator.token.get_secret_value() for operator in self.review_dev_operators)
         if len(set(tokens)) != len(tokens):
             raise ValueError("review development operator tokens must be unique")
+        if self.orchestration_token is not None:
+            orchestration_bytes = self.orchestration_token.get_secret_value().encode("utf-8")
+            if any(
+                hmac.compare_digest(
+                    orchestration_bytes,
+                    operator.token.get_secret_value().encode("utf-8"),
+                )
+                for operator in self.review_dev_operators
+                if operator.role
+                in (
+                    OperatorRole.REVIEWER,
+                    OperatorRole.APPROVER,
+                    OperatorRole.ELEVATED_APPROVER,
+                )
+            ):
+                raise ValueError(
+                    "orchestration_token must differ from every review_dev_operators token"
+                )
         odoo_values = (
             self.odoo_base_url,
             self.odoo_database,

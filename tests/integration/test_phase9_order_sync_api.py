@@ -52,6 +52,10 @@ def test_execute_next_requires_service_authentication() -> None:
     asyncio.run(_assert_authentication())
 
 
+def test_distinct_orchestration_token_cannot_use_human_review_api() -> None:
+    asyncio.run(_assert_orchestration_token_is_not_a_human_operator())
+
+
 def test_missing_executor_returns_503_without_claiming() -> None:
     asyncio.run(_assert_missing_executor_does_not_claim())
 
@@ -115,6 +119,30 @@ async def _assert_authentication() -> None:
         assert response.json()["detail"]["code"] == "ORCHESTRATION_UNAUTHENTICATED"
     assert SERVICE_TOKEN not in "".join(response.text for response in responses)
     assert REVIEW_TOKEN not in responses[2].text
+
+
+async def _assert_orchestration_token_is_not_a_human_operator() -> None:
+    engine, sessions, order_id = await _seed_order()
+    app = create_app(_settings())
+    app.state.order_sync_step_executor = FakeExecutor()
+    try:
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client,
+        ):
+            execute = await client.post(EXECUTE_PATH, headers=AUTH)
+            review = await client.get(f"/v1/review/orders/{order_id}", headers=AUTH)
+            approval = await client.post(f"/v1/review/orders/{order_id}/approve", headers=AUTH)
+
+        assert execute.status_code == 200
+        assert execute.json()["result"] == "completed"
+        assert review.status_code == 401
+        assert approval.status_code == 401
+        assert SERVICE_TOKEN not in review.text + approval.text
+    finally:
+        await _dispose(engine, sessions, order_id)
 
 
 async def _assert_missing_executor_does_not_claim() -> None:

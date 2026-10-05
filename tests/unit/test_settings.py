@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from opsflow.review import OperatorRole
 from opsflow.settings import Settings
 
 
@@ -58,6 +59,60 @@ def test_review_base_url_accepts_exact_2_048_character_limit() -> None:
     settings = Settings(_env_file=None, review_base_url=review_base_url)
 
     assert len(settings.review_base_url) == 2_048
+
+
+@pytest.mark.parametrize(
+    "role",
+    [OperatorRole.REVIEWER, OperatorRole.APPROVER, OperatorRole.ELEVATED_APPROVER],
+)
+def test_orchestration_token_must_differ_from_every_review_capable_operator(
+    role: OperatorRole,
+) -> None:
+    shared_token = "synthetic-shared-orchestration-review-token"
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(
+            _env_file=None,
+            orchestration_token=shared_token,
+            review_dev_operators=(
+                {
+                    "token": shared_token,
+                    "actor": "synthetic-human",
+                    "role": role,
+                },
+            ),
+        )
+
+    assert "orchestration_token" in str(raised.value)
+    assert "review_dev_operators" in str(raised.value)
+    assert shared_token not in str(raised.value)
+
+
+def test_distinct_orchestration_and_review_tokens_are_accepted() -> None:
+    settings = Settings(
+        _env_file=None,
+        orchestration_token="synthetic-orchestration-token",
+        review_dev_operators=(
+            {
+                "token": "synthetic-reviewer-token",
+                "actor": "synthetic-reviewer",
+                "role": OperatorRole.REVIEWER,
+            },
+            {
+                "token": "synthetic-approver-token",
+                "actor": "synthetic-approver",
+                "role": OperatorRole.APPROVER,
+            },
+            {
+                "token": "synthetic-elevated-approver-token",
+                "actor": "synthetic-elevated-approver",
+                "role": OperatorRole.ELEVATED_APPROVER,
+            },
+        ),
+    )
+
+    assert settings.orchestration_token is not None
+    assert len(settings.review_dev_operators) == 3
 
 
 def test_odoo_settings_are_optional_but_complete_when_present() -> None:
