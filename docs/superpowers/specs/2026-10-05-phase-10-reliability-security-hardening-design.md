@@ -1,6 +1,6 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE`; Phase 10 `IN PROGRESS`
+**Status:** M10A `IN PROGRESS` pending final human approval; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
 **Scope:** repository intelligence, threat/failure modeling, and implementation design only. This document does not implement M10B–M10F behavior.
 
@@ -31,6 +31,10 @@ for an intake claim that commits before a later database failure. The current
 Phase 7 behavior documents that matching redelivery can stand down after this
 sequence. That is a real undetected-state gap. The fix belongs in M10B and
 must preserve ordinary duplicate stand-down and human Retry semantics.
+
+M10A remains `IN PROGRESS` until the human approves this amended design. M10B
+through M10F remain `NOT STARTED`; this amendment changes documentation and
+planning only.
 
 ## 2. Repository evidence reviewed
 
@@ -82,12 +86,12 @@ categories. “Sufficient” means the current contract already meets the Phase
 | Business-processing retry ownership | `IMPLEMENTED — HARDENING NEEDED` | Processing/extracted classifiers persist `FAILED_RETRYABLE` or `FAILED_FINAL`; human Review Retry creates a generation consumed once by intake redelivery. | `tests/integration/test_phase7_failure_matrix.py`, concurrency tests. | Classifier coverage is explicit, but unexpected exceptions and the post-claim DB failure window can leave a nonterminal state without a durable recovery owner. | M10B. |
 | ERP/CRM retry ownership and classification | `IMPLEMENTED — HARDENING NEEDED` | M9B owns leases, attempts, retry generations, provider-step checkpointing, automatic transient delays, and human retry after exhaustion. | Phase 9 claim/failure/API tests. | The catch-all non-final branch and provider/configuration classification need a reviewed table so one failure has one owner and no unsafe duplicate retry. Preserve current inventory/reconciliation semantics unless a test proves a defect. | M10B. |
 | External-failure isolation | `IMPLEMENTED — SUFFICIENT` | Notification failures do not alter order state; provider adapters return bounded failures; sync persists completed predecessors and resumes missing steps. | Phase 8 atomicity; Phase 9 partial-sync and diagnostics tests. | Existing isolation is the required foundation. M10B/E should test database/provider boundaries rather than replace adapters. | M10B/E verification. |
-| Orchestration authentication | `IMPLEMENTED — SUFFICIENT` | Fixed server-configured bearer token, constant actor `orchestration:n8n`, constant-time comparison, bounded 401. | Phase 7 auth/API and Phase 9 API tests. | This is a development/service credential boundary, not user identity or production SSO. | M10C may add bounds/rotation documentation only. |
-| Human authentication and role authorization | `IMPLEMENTED — HARDENING NEEDED` | Configured development operator bearer tokens resolve server-side to REVIEWER, APPROVER, or ELEVATED_APPROVER; token overlap with orchestration is rejected. | settings/auth and Phase 6 authorization tests. | Correct for the local demo, but core `/v1/orders` reads/create are not authenticated and the documentation must not imply production identity. | M10C: close the core-route boundary with the existing token model and state its demo limit. |
+| Orchestration authentication and structured creation | `IMPLEMENTED — HARDENING NEEDED` | Fixed server-configured bearer token, constant actor `orchestration:n8n`, constant-time comparison, bounded 401; the existing orchestration dependency protects programmatic intake routes. `POST /v1/orders` is currently not yet behind that dependency. | Phase 7 auth/API and Phase 9 API tests; `src/opsflow/orchestration/auth.py`; `src/opsflow/api/orders.py`. | The service credential must protect `POST /v1/orders` without granting human read/review/approval capability. This remains a local/demo service boundary, not production identity. | M10C: enforce the exact core creation boundary and test separation from human tokens. |
+| Human authentication and role authorization | `IMPLEMENTED — HARDENING NEEDED` | Configured development operator bearer tokens resolve server-side to REVIEWER, APPROVER, or ELEVATED_APPROVER; token overlap with orchestration is rejected. Core order reads currently lack the dependency. | settings/auth and Phase 6 authorization tests; `src/opsflow/review/auth.py`; `src/opsflow/api/orders.py`. | `GET /v1/orders`, `GET /v1/orders/{order_id}`, and `GET /v1/orders/{order_id}/audit` must use `get_operator_context` plus `require_view_access`. Any configured human role may view; browser actor/role claims are never trusted. These fixed credentials are local/demo development authentication, not production user identity, OAuth, SSO, sessions, or internet-facing IAM. | M10C: close the core read boundary and document the development-only posture. |
 | Provider credential boundaries | `IMPLEMENTED — SUFFICIENT` | Odoo/HubSpot secrets are `SecretStr`; n8n provider credentials remain in local n8n storage and sanitized workflow exports; providers are adapter-owned. | settings tests, workflow hygiene checks, Phase 9 diagnostics tests. | No credentials are passed through LLM prompts or persisted provider responses. | M10C regression scan only. |
 | File type and parser validation | `IMPLEMENTED — SUFFICIENT` | Exact supported types, MIME checks, filename basename normalization, PDF signature/encryption/page checks, XLSX ZIP/sheet/row/cell/expanded-size bounds, CSV/text decoding and bounds. | Phase 3 parser/limit/corrupt-input tests; Phase 7 transport tests. | The application document contract is strong. It must not be duplicated or loosened. | M10E adversarial fixtures. |
-| HTTP body and multipart resource limits | `MISSING — REQUIRED` | `read_bounded_upload` caps bytes after Starlette has accepted the multipart request; there is no application-wide body/receive limit. | Existing bounded-upload tests demonstrate only the downstream cap. | A huge multipart envelope or JSON body can consume resources before application validation. | M10C. |
-| API field/count bounds | `MISSING — REQUIRED` | Idempotency/message/filename and list pagination are bounded, but core order/review strings, line counts, metadata counts, and command bodies lack a complete explicit cap table. | Schema tests cover type/extra fields, not a whole resource-budget policy. | Add bounded transport schemas without changing business meaning or document parser limits. | M10C. |
+| HTTP body and multipart resource limits | `MISSING — REQUIRED` | `read_bounded_upload` caps accepted document bytes after Starlette has accepted the multipart request; there is no application-wide body/receive limit. | Existing bounded-upload tests demonstrate only the downstream 10 MiB document cap. | M10C must enforce a 12 MiB absolute request ceiling, an 11 MiB orchestration multipart ceiling, a 512 KiB ordinary JSON ceiling, and a 16 KiB notification command/result ceiling. The parser still owns the exact 10 MiB accepted-document rule; exact-limit documents must remain transportable. | M10C. |
+| API field/count bounds | `MISSING — REQUIRED` | Idempotency key, message ID, filename, and list pagination are bounded, but core/review strings, source-document counts, line counts, metadata counts, and Decimal transport representation lack a complete policy. | `src/opsflow/api/schemas.py`, `review_schemas.py`, notification schemas, and Phase 7 transport tests. | M10C must apply the ratified count/string/Decimal caps across every structured and review transport route, preserve stricter existing limits, reject boundary+1 safely, and never truncate. | M10C. |
 | Prompt-injection resistance and authority separation | `IMPLEMENTED — SUFFICIENT` | Canonical source is marked untrusted in an extraction-only prompt; strict provider schema/evidence grounding and deterministic validation prohibit LLM side effects. | prompt, provider, cross-format, and adversarial fixtures. | No generic prompt firewall is justified. Add regression cases only where M10E exercises the existing boundary. | M10E regression coverage. |
 | Safe validation/provider errors | `IMPLEMENTED — HARDENING NEEDED` | Orchestration, review, notification, and provider adapters use bounded errors; core route validation is less consistently non-echoing and unhandled exceptions have no common safe envelope. | route/API tests and provider diagnostic tests. | M10C should standardize safe error codes without exposing bodies, tokens, SQL, or tracebacks. | M10C. |
 | SQL injection and query safety | `IMPLEMENTED — SUFFICIENT` | SQLAlchemy expressions, typed enums/UUIDs, fixed `SELECT 1` and fixed interval fragments, and no user-derived raw SQL/sort expression. | repository/migration tests; source audit of `text()`/`execute()` uses. | No ORM rewrite or SQL abstraction is justified. Add a static review guard and regression test for future raw SQL. | M10C verification only. |
@@ -95,10 +99,10 @@ categories. “Sufficient” means the current contract already meets the Phase
 | Sensitive logging | `MISSING — REQUIRED` | There is no application logging layer; provider failures are intentionally bounded but there is no allowlisted log policy or redaction test. | adapter tests assert raw diagnostics do not leak; absence of logger instrumentation verified in source. | Add a small allowlist-based structured logger and redaction tests, never log payloads/tokens/provider bodies. | M10D, with security regression in M10E. |
 | Structured logs/correlation/latency | `MISSING — REQUIRED` | No request ID, n8n workflow correlation, order/provider fields, duration, or bounded failure-code log events exist. | No current application instrumentation; readiness tests are separate. | This is the highest-value observability gap and should be implemented without a hosted stack. | M10D. |
 | LLM usage visibility | `MISSING — REQUIRED` | Gemini adapter returns only normalized extraction output; no provider usage metadata is persisted or logged. | Gemini tests intentionally verify SDK object/body is not retained. | Expose usage only when the provider response supplies trustworthy counts; otherwise record `unavailable`, never estimate. | M10D, then Phase 11 may consume it. |
-| Basic operational metrics | `MISSING — REQUIRED` | No counters/histograms or metrics endpoint/library exists. | CI/readiness evidence only. | Add a small process-local counter/duration registry for requests, failures, provider calls, retries, and sync outcomes; no Prometheus/hosted stack required. | M10D. |
+| Basic operational metrics | `MISSING — REQUIRED` | No counters/histograms or metrics endpoint/library exists. | CI/readiness evidence only. | Add only a small standard-library process-local registry. Dimensions are fixed/bounded: route class/name, HTTP status/class, provider, operation, state, retry outcome, and bounded failure code. Request/workflow/order/customer/PO/filename/actor/email/raw-exception values are log-only, never metric labels. Reset on restart is acceptable and documented; no Prometheus/Grafana/OTel. | M10D. |
 | Core readiness | `IMPLEMENTED — SUFFICIENT` | `/health` is liveness; `/ready` performs only database `SELECT 1` and returns bounded 200/503. | `tests/integration/test_readiness.py`, Compose healthcheck. | Do not make readiness depend on Gmail, Slack, Gemini, Odoo, HubSpot, or n8n. | None; M10D regression test. |
-| Integration/provider health visibility | `MISSING — REQUIRED` | No separate health view exists beyond readiness and provider execution failures. | Compose/API health checks only. | Add a separate non-blocking, safe health/diagnostic view with configured/unconfigured and bounded last-known/error status; provider probes must be explicit and timeout-bounded, never readiness-critical. | M10D. |
-| Dependency vulnerability policy | `IMPLEMENTED — HARDENING NEEDED` | npm audit and Gitleaks exist in evidence/CI; the known `brace-expansion@5.0.9` advisory is classified as transitive dev-only and non-production. | final Phase 9 audit; `.github/workflows/ci.yml`; `web/package-lock.json`. | Add a repeatable Python production-dependency audit and preserve an exception record for the known frontend advisory until evidence changes. Do not upgrade solely to zero the number. | M10C. |
+| Integration/provider health visibility | `MISSING — REQUIRED` | No separate health view exists beyond readiness and provider execution failures. | Compose/API health checks only. | Add passive, non-blocking, human-view-protected diagnostics only: configured/unconfigured, healthy/unavailable from the last real operation, not checked/no observation, and bounded last failure code/time where justified. Do not actively call Gemini, Gmail, Slack, Odoo, HubSpot, or n8n. `/ready` remains database-only. | M10D. |
+| Dependency vulnerability policy | `IMPLEMENTED — HARDENING NEEDED` | npm audit and Gitleaks exist in evidence/CI; the known `brace-expansion@5.0.9` advisory is classified as transitive dev-only and non-production. | final Phase 9 audit; `.github/workflows/ci.yml`; `web/package-lock.json`; verified `uv 0.12.2` and `pip-audit 2.10.1` command behavior. | M10C must add a pinned developer/CI-only `pip-audit==2.10.1` audit of a frozen production-only `uv export`, excluding dev groups, without mutating `uv.lock` or the runtime image. Production Python vulnerabilities fail by default; visible, human-approved, evidence-based exceptions are required. Preserve the frontend advisory classification and `npm audit --omit=dev --audit-level=high`. | M10C. |
 | Failure drills and clean-clone proof | `MISSING — REQUIRED` | Individual phase tests and sandbox guides exist; no bounded whole-system fault-injection matrix or Phase 10 clean-clone gate exists. | Phase 7/8/9 integration evidence is phase-specific. | M10E must use fakes/fault injection by default and make live provider checks explicit opt-in. | M10E/M10F. |
 | Unsupported enterprise architecture, Phase 11 evaluation, and Phase 12 release work | `OUT OF SCOPE` | The repository has no OAuth/OIDC server, user-account system, Vault, WAF, service mesh, Kubernetes, hosted observability stack, multi-tenancy, billing, benchmark program, or portfolio-release capability. | Roadmap Phase 11/12 boundaries; current Compose/CI/repository inventory. | Adding these would exceed the portfolio complexity/cost budget and the M10A brief. They are not reliability/security gaps for this repository. | None in Phase 10; revisit only in the named later phase if explicitly approved. |
 
@@ -129,9 +133,9 @@ plane.
 | Trust boundary / threat | Untrusted input and harmful effect | Existing control | Remaining gap | Required Phase 10 control | Verification |
 | --- | --- | --- | --- | --- | --- |
 | External document/email sender | Malicious text, spreadsheet formulas/content, embedded “approve” instructions, malformed or huge bytes could influence routing or exhaust resources. | Parser/type/size limits; canonicalization; prompt marks source as data; deterministic validation; no LLM side effects. | HTTP envelope/body limits and some API field counts are absent. | M10C receive/body and transport caps; M10E hostile fixtures and resource-bound tests. | Provider-free tests with prompt injection, corrupt, boundary, and oversized fixtures. |
-| Browser/user | Forged actor/role, stale command, overlong draft, unauthorized approval/retry, sensitive read. | Server-resolved development operator tokens, fixed roles, `If-Match`, review state checks, bounded schemas. | Core order routes are not authenticated; the token model is only development identity. | M10C protect core routes with the existing configured-token model and document that it is not production identity; retain role matrix. | 401/403/stale replay and route-auth tests; no OAuth/SSO. |
+| Browser/user | Forged actor/role, stale command, overlong draft, unauthorized approval/retry, or sensitive read. | Server-resolved development operator tokens, fixed roles, `If-Match`, review state checks, bounded schemas. | Core order reads and structured creation are not yet separated by their required credentials; the token model is only local/demo development authentication. | M10C must require human view access for the three core reads and the orchestration credential for `POST /v1/orders`; no browser actor/role claims, fourth role, OAuth, SSO, session, or production-IAM claim. | 401/403/credential-separation/stale-replay route tests. |
 | n8n | Forged service call, repeated delivery, workflow retry loop, leaked provider secret, or business decision in a workflow. | Fixed orchestration bearer; n8n only transports/routes; bounded intake retry; sanitized exports; Phase 9 no retry loop. | Claim recovery after DB loss needs one explicit owner; workflow correlation is absent. | M10B recovery contract and graph regression; M10D correlation; M10C credential/input review. | Workflow graph assertions and repeated synthetic deliveries. |
-| OpsFlow API | Unbounded request, reflected validation/provider diagnostics, missing auth, unsafe error handling. | FastAPI/Pydantic, bounded specialized routes, safe adapter errors, local Compose port binding. | No global receive limit, no common safe-error envelope, open core routes, no security telemetry. | M10C resource/auth/error policy; M10D allowlisted logs/metrics. | HTTP boundary tests, secret sentinel tests, local-only deployment checks. |
+| OpsFlow API | Unbounded request, reflected validation/provider diagnostics, forged credentials, missing auth, or unsafe error handling. | FastAPI/Pydantic, bounded specialized routes, safe adapter errors, local Compose port binding. | No global receive limit, no complete transport cap table, open core routes, and no security telemetry. | M10C exact receive/auth/error policy; M10D allowlisted logs/metrics and protected diagnostics. | HTTP boundary, credential-separation, secret-sentinel, and local-only deployment checks. |
 | LLM provider | Prompt injection in source, timeout, malformed/unsafe output, token/data leakage. | Extraction-only prompt, strict `extra=forbid` schema, evidence grounding, deterministic post-validation, timeout, SDK retry disabled. | Usage/latency visibility absent; unexpected application exceptions can be under-observed. | M10D optional trustworthy usage metadata and provider timing; M10E timeout/invalid fixtures. | Fake provider fault injection and prompt-injection regression; no live provider in CI. |
 | PostgreSQL | Unavailability, transaction rollback, lock contention, query injection, partial persistence. | SQLAlchemy parameterized expressions, transactions, row locks, `pool_pre_ping`, durable audit/receipts, `/ready`. | Intake claim can commit before later persistence; request correlation/diagnostics absent. | M10B claim/recovery proof; M10C SQL and limits review; M10D bounded DB failure telemetry. | PostgreSQL interruption/transaction fault tests and replay checks. |
 | Gmail/Slack | Timeout, rejected send, provider error, lost outcome acknowledgement, duplicate external delivery. | Python-owned durable intents/leases/attempts; n8n transport only; fixed payloads and bounded references. | At-least-once duplicate delivery remains possible by contract; visibility is limited. | Preserve isolation; add explicit duplicate/failed-delivery metrics and fault drills, not exactly-once claims. | Fake transport loss-after-success and retry/final tests; live sandbox only opt-in. |
@@ -165,10 +169,54 @@ effects, or database recovery on its own.
 | Partial configuration or bad credential | `503` before claim when configuration is absent; provider failure when configured but unusable | No sync intent mutation before claim for absent config; otherwise bounded M9B failure | M10B classification table chooses no duplicate owner; configuration correction/operator action, not an n8n loop | No provider write if preflight rejects; stable identity for uncertain calls | sanitized config/provider code |
 | Wrong HubSpot portal | Existing adapter fails closed before company/deal mutation | Sync failure must remain bounded and operator-visible; M10B confirms final/retry classification without repeating unsafe writes | Operator/configuration correction; do not let n8n retry business state | No cross-portal mutation | portal guard failure code, no portal ID/secret leakage |
 
-M10B must test the two currently most important semantic edges: post-claim
-database loss in intake, and the complete M9B failure-code table. It must not
-replace the existing Phase 7 state machine or M9B coordinator merely to make
-the matrix look uniform.
+### M10B stale-ownership contract
+
+The current Phase 7 claim commits `PROCESSING` plus
+`ORDER_PROCESSING_STARTED`, then parsing/provider work and later persistence run
+outside that transaction. A database loss after the claim can therefore leave
+ordinary matching redelivery looking at `PROCESSING` or `EXTRACTED` and standing
+down. Phase 7 has no durable lease or fencing token comparable to M9B.
+
+M10B must not make every bare `PROCESSING` or `EXTRACTED` delivery resumable.
+Before choosing a lease schema or timeout, M10B must inspect and record:
+
+- every Phase 7 parser, processing, and provider timeout. Current evidence is a
+  configurable Gemini timeout (the checked-in example is 30 seconds), disabled
+  SDK retries, and no aggregate Phase 7 deadline;
+- n8n intake request timeout as observed in the pinned runtime and its current
+  three-total-attempt transport behavior with two one-second waits. The
+  exported intake nodes do not set an explicit request timeout, so the pinned
+  runtime default must be verified rather than assumed;
+- the business-data provider timeout used on the Phase 7 path, when configured.
+  Current Odoo calls use a 20-second per-request timeout; one validation lookup
+  can make several setup/customer/product calls and has no aggregate deadline;
+- relevant PostgreSQL connection, statement, lock, transaction, and
+  persistence-operation bounds. Current engine setup only enables
+  `pool_pre_ping`; it does not establish these deadlines; and
+- the longest valid single intake execution under the existing 10 MiB and
+  parser limits.
+
+If those facts do not establish a defensible total execution maximum, M10B
+must define that bounded maximum first. Any recovery lease must be longer than
+that complete execution budget. The likely minimal implementation is a durable
+intake execution lease and fencing token, possibly with a small migration, but
+the exact columns, values, and migration decision belong to M10B evidence and
+tests. M10B must not create a generic worker framework or reuse the M9B sync
+state machine.
+
+The resulting contract must prove that an active owner cannot be reclaimed, a
+stale owner can be recovered after the defined bound, and a stale worker cannot
+persist over a newer owner. Normal duplicate delivery must still stand down;
+human Retry generation semantics must remain authoritative; no second order or
+source graph may be created; and n8n must not acquire business-retry state.
+
+Fresh PostgreSQL concurrency/fault tests are mandatory for concurrent
+duplicates during active ownership, stale lease recovery, stale-token
+persistence rejection, database loss after claim, database loss after
+extraction/provider work, ordinary duplicate stand-down, human Retry, and
+source/fingerprint mismatch. M10B must test these edges and the complete M9B
+failure-code table without replacing the existing Phase 7 state machine or M9B
+coordinator merely to make the matrix look uniform.
 
 ## 7. Observability design
 
@@ -194,15 +242,25 @@ M10D should add the smallest useful layer:
    fields are recorded only if the SDK response exposes trustworthy input,
    output, and total counts. Missing values are explicitly absent/unavailable;
    no token estimate is made.
-5. A small process-local registry records counters and bounded duration
-   histograms for HTTP outcomes, intake state outcomes, provider calls,
-   notification attempts, order-sync steps, retries, and failure codes. A
-   local/authenticated metrics view may expose these values. No collector,
+5. A small standard-library, process-local registry records counters and
+   bounded duration histograms for HTTP outcomes, intake state outcomes,
+   provider calls, notification attempts, order-sync steps, retries, and
+   failure codes. It may use only fixed/bounded dimensions: route class/name,
+   HTTP status/status class, provider, operation, state, retry outcome, and
+   bounded failure code. Request ID, workflow execution ID, order ID, customer,
+   PO number, filename, actor, email, and raw exception text are never metric
+   labels; they belong only in bounded structured logs. Reset on application
+   restart is acceptable and must be documented. No collector, Prometheus,
    hosted APM, Grafana, ELK, or OpenTelemetry stack is justified.
-6. `/health` remains liveness and `/ready` remains database-only. A separate
-   non-blocking integration-health/diagnostic view may report configuration
-   completeness and explicitly requested, timeout-bounded provider probes or
-   last-known bounded status. Its failure never changes `/ready`.
+6. `/health` remains unauthenticated liveness and `/ready` remains
+   unauthenticated, database-only readiness. A separate non-blocking
+   integration-health/diagnostic view may report only passive state: configured,
+   unconfigured, healthy or unavailable from the last observed real operation,
+   not checked/no observation yet, and a bounded last failure code/time where
+   justified. It must not actively call Gemini, Gmail, Slack, Odoo, HubSpot, or
+   n8n. Metrics and diagnostics require existing human development
+   `require_view_access`; they are not public status endpoints. Their failure
+   never changes `/ready`.
 
 The observability contract is diagnostic, not a Phase 11 evaluation program.
 It may expose the trustworthy data Phase 11 later consumes, but M10D must not
@@ -213,32 +271,102 @@ cost reports, or model/prompt optimization.
 
 M10C owns a narrow posture tied to the gaps above:
 
-- Add an ASGI receive/body budget before multipart/JSON parsing. Retain the
-  existing 10 MiB document limit and reserve a small bounded multipart envelope
-  allowance; reject oversized requests with a non-echoing `413` before an
-  order is created. Set a smaller JSON budget for ordinary API commands and
-  notification outcomes.
-- Ratify transport caps for order/review strings, descriptions, MIME/name and
-  storage references, line/document/metadata counts, evidence and rejection
-  text, and bounded headers. Reuse existing document parser limits rather than
-  adding a second parser policy. Tests must exercise exact boundary and
-  over-boundary values.
+- Add an ASGI receive/body budget before multipart/JSON parsing. The ratified
+  absolute application request ceiling is 12 MiB; orchestration multipart is
+  11 MiB; ordinary JSON is 512 KiB; notification transport/result commands are
+  16 KiB. Retain the existing exact 10 MiB accepted-document limit so a
+  document at that boundary remains transportable. Reject oversized requests
+  with a non-echoing `413` before an order is created.
+- Apply the ratified transport caps for order/review strings, descriptions,
+  MIME/name and storage references, source-document and line/metadata counts,
+  evidence and rejection text, headers, and Decimal representation. Reuse
+  existing document parser limits rather than adding a second parser policy.
+  Tests must exercise exact boundary and boundary+1 values; inputs are rejected,
+  never silently truncated, and an already-stricter contract is never loosened.
 - Keep constant-time comparison and separate credentials for n8n versus human
-  development operators. Require the existing server-resolved operator
-  capability for core order reads and the service credential for programmatic
-  intake creation, or document and enforce an equally narrow local-only
-  boundary in the route contract. Do not add OAuth/OIDC, SSO, accounts, or
-  claims supplied by the browser.
+  development operators. `GET /v1/orders`, `GET /v1/orders/{order_id}`, and
+  `GET /v1/orders/{order_id}/audit` require `get_operator_context` plus
+  `require_view_access`; any configured REVIEWER, APPROVER, or
+  ELEVATED_APPROVER may view. `POST /v1/orders` requires the existing
+  orchestration/service bearer mechanism. A human token cannot create through
+  that route, and an orchestration token cannot gain human view/review/approval
+  capability. `/health` and `/ready` remain unauthenticated. These fixed
+  credentials are local/demo development authentication only, not production
+  identity, OAuth, SSO, sessions, or internet-facing IAM; no browser actor/role
+  claims are accepted.
 - Normalize core validation and unexpected transport errors to safe bounded
   codes/messages. Never return Pydantic input values, tracebacks, SQL, provider
   response bodies, or secrets. Preserve useful HTTP status semantics.
 - Keep `.env`, `SecretStr`, sanitized workflow exports, provider adapter
   boundaries, and pinned full-history Gitleaks. Add a repeatable dependency
-  policy: production-only frontend audit, locked Python production dependency
-  audit, and a documented exception for the known transitive dev-only
-  `brace-expansion@5.0.9` advisory. A CI-only `pip-audit` tool is a possible
-  minimal addition; it is not an application dependency and does not justify
-  production upgrades by itself.
+  policy: production-only frontend audit plus the verified Python command
+  below. `pip-audit==2.10.1` is a CI/developer tool only, not an application
+  dependency:
+
+  ```sh
+  set -o pipefail
+  uv export --frozen --no-dev --no-emit-project --format requirements.txt \
+    | uvx --from 'pip-audit==2.10.1' pip-audit \
+        --requirement /dev/stdin --no-deps --disable-pip --strict
+  ```
+
+  `uv export --frozen` derives the frozen production-only, hashed dependency
+  set from the committed `uv.lock`, excludes development groups, and refuses
+  to update the lockfile. The pinned audit tool reads that exported set from
+  standard input without installing into the application runtime image.
+  `--no-deps` and `--disable-pip` avoid a second dependency-resolution path;
+  the exported requirements are fully pinned/hashed, and `--strict` makes
+  incomplete collection fail. `set -o pipefail` also propagates an export
+  failure. This verified workflow is preferred over claiming that
+  `pip-audit --locked` directly audits `uv.lock`. Any known vulnerability in a
+  Python production dependency fails by default. An exception must visibly
+  record the vulnerability ID, technical rationale, affected/not-affected
+  analysis, and human approval; it must not be hidden with `|| true`. Retain
+  `npm audit --omit=dev --audit-level=high` and the existing transitive,
+  development-only `brace-expansion@5.0.9` classification unless fresh evidence
+  changes it.
+
+### Ratified M10C transport/resource cap table
+
+These are implementation contracts, not business-rule changes. A current
+stricter field or parser limit remains authoritative.
+
+| Boundary or field | Maximum |
+| --- | ---: |
+| Absolute HTTP request body | 12 MiB |
+| Orchestration multipart request | 11 MiB |
+| Accepted document bytes inside that request | 10 MiB, exact Phase 3 limit |
+| Ordinary JSON business/review/core command body | 512 KiB |
+| Notification result command body: `POST /v1/integrations/notifications/{notification_id}/outcome` | 16 KiB; bodyless claim and unrelated routes are excluded |
+| Order/review lines | 200 |
+| Source documents on structured core order creation | 8 |
+| Metadata pairs per source document | 32 |
+| List/query result limit | 100 |
+| Ordinary business identifier, including customer reference, PO number, SKU | 256 characters |
+| Filename/name | 255 characters |
+| MIME type | 128 characters |
+| Message ID | 256 characters |
+| Description | 2,048 characters |
+| Storage/source reference | 2,048 characters |
+| Metadata key | 128 characters |
+| Metadata value | 512 characters |
+| Evidence quote/review text | 4,096 characters |
+| Rejection reason | 500 characters |
+| Client-supplied quantity/price Decimal significant digits | 28 |
+| Client-supplied quantity/price Decimal fractional digits | 8 |
+
+Exact boundary values pass and boundary+1 values fail safely. The transport
+Decimal caps preserve positive quantity and non-negative price semantics; they
+do not change trusted-price tolerance or other monetary business rules. The
+source-document count applies to every structured core create route, and the
+same string/count/Decimal policy must cover alternate review and structured
+transport schemas rather than allowing a bypass. The ordinary JSON budget
+applies to `POST /v1/orders` and review draft/command bodies unless the
+notification result budget is narrower. The Decimal cap covers every
+client-supplied quantity/price field in those core and review schemas,
+including `quantity`, `submitted_price`, and any client-visible catalogue-price
+transport field; it does not make a client-supplied catalogue value trusted.
+
 - Verify SQLAlchemy parameterization and fixed raw SQL fragments. Do not add
   an ORM abstraction or query builder.
 - Preserve the prompt/data authority separation. Security tests should prove
