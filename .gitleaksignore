@@ -1,0 +1,3 @@
+# Historical M10C test fixture; it was a synthetic Idempotency-Key value,
+# not a credential, and was replaced by commit dd18b46.
+827782df6664c7e92e90330d61fb97f276b1c1d1:tests/integration/test_m10c_http_limits.py:generic-api-key:253
