@@ -474,6 +474,32 @@ M10C may add only a narrowly justified control if the actual frontend/API
 deployment path demonstrates a need; it must not imply public-internet
 hardening that the repository does not contain.
 
+### M10C independent-review remediation record
+
+The initial M10C candidate was `b666673162b26cfc63fe9c9e3ef609e47b16f23d`.
+Independent review identified two MEDIUM findings:
+
+- M10C-01: known JSON command routes selected the 512 KiB budget primarily
+  from `Content-Type`, allowing missing or misleading media types to fall
+  through to the 12 MiB ceiling.
+- M10C-02: the request-constrained `MetadataPair` model was reused by
+  `SourceDocumentResponse`, so historical persisted metadata outside new
+  request limits could fail response serialization.
+
+The remediation adds deterministic RED-to-GREEN ASGI tests for `/v1/orders`
+and review draft/reject commands with correct, missing, and misleading media
+types. Known body-bearing JSON business/review routes now resolve the 512 KiB
+budget by method/path before the generic Content-Type fallback. The
+orchestration, notification, and global budgets remain unchanged.
+
+The remediation also separates `MetadataPairCreate` from
+`MetadataPairResponse`. New client input retains the 128/512 key/value limits
+and 32-pair limit, while persisted response metadata is returned unchanged.
+An integration regression seeds over-limit metadata through the application
+path and verifies authenticated order detail reads succeed without truncation
+or mutation. M10C remains `IMPLEMENTED — PENDING HUMAN REVIEW`; M10D–M10F
+remain `NOT STARTED`.
+
 ## 8A. M10C implementation record — pending independent review
 
 M10C is `IMPLEMENTED — PENDING HUMAN REVIEW` in implementation commits

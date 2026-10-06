@@ -24,8 +24,8 @@ from opsflow.persistence.repositories import OrderSummary, PersistedOrder
 from .constraints import NonNegativeTransportDecimal, PositiveTransportDecimal
 
 
-class MetadataPair(BaseModel):
-    """One ordered source-document metadata pair."""
+class MetadataPairCreate(BaseModel):
+    """One ordered source-document metadata pair supplied by a client."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -56,13 +56,13 @@ class SourceDocumentCreate(BaseModel):
     sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9A-Fa-f]{64}$")
     message_id: str | None = Field(default=None, max_length=256)
     storage_reference: str | None = Field(default=None, max_length=2_048)
-    metadata: list[MetadataPair] = Field(default_factory=list, max_length=32)
+    metadata: list[MetadataPairCreate] = Field(default_factory=list, max_length=32)
 
     @field_validator("metadata")
     @classmethod
     def reject_reserved_source_system_metadata(
-        cls, metadata: list[MetadataPair]
-    ) -> list[MetadataPair]:
+        cls, metadata: list[MetadataPairCreate]
+    ) -> list[MetadataPairCreate]:
         if any(pair.key == "source_system" for pair in metadata):
             raise ValueError("source_system metadata is reserved")
         return metadata
@@ -107,7 +107,16 @@ class SourceDocumentResponse(BaseModel):
     sha256: str
     message_id: str | None
     storage_reference: str | None
-    metadata: list[MetadataPair]
+    metadata: list["MetadataPairResponse"]
+
+
+class MetadataPairResponse(BaseModel):
+    """One persisted source-document metadata pair returned unchanged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    value: str
 
 
 class ValidationIssueResponse(BaseModel):
@@ -257,7 +266,9 @@ def order_detail_response(persisted: PersistedOrder) -> OrderDetailResponse:
                 sha256=document.sha256,
                 message_id=document.message_id,
                 storage_reference=document.storage_reference,
-                metadata=[MetadataPair(key=key, value=value) for key, value in document.metadata],
+                metadata=[
+                    MetadataPairResponse(key=key, value=value) for key, value in document.metadata
+                ],
             )
             for document in order.source_documents
         ],

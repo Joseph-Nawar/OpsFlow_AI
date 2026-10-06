@@ -36,9 +36,14 @@ async def _fake_downstream(
 
 
 def _scope(
-    path: str, *, content_length: int | None = None, content_type: str = "application/json"
+    path: str,
+    *,
+    content_length: int | None = None,
+    content_type: str | None = "application/json",
 ) -> dict[str, Any]:
-    headers: list[tuple[bytes, bytes]] = [(b"content-type", content_type.encode())]
+    headers: list[tuple[bytes, bytes]] = []
+    if content_type is not None:
+        headers.append((b"content-type", content_type.encode()))
     if content_length is not None:
         headers.append((b"content-length", str(content_length).encode()))
     return {
@@ -62,7 +67,7 @@ async def _invoke(
     chunks: Iterable[bytes],
     *,
     content_length: int | None = None,
-    content_type: str = "application/json",
+    content_type: str | None = "application/json",
 ) -> list[dict[str, Any]]:
     messages = iter(
         [
@@ -132,6 +137,56 @@ def test_exact_route_budgets_reach_the_downstream_asgi_app() -> None:
 
 
 @pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/orders",
+        "/v1/review/orders/00000000-0000-0000-0000-000000000001/draft",
+        "/v1/review/orders/00000000-0000-0000-0000-000000000001/reject",
+    ],
+)
+def test_known_json_command_exact_limit_reaches_downstream(path: str) -> None:
+    import asyncio
+
+    from opsflow.http_limits import JSON_REQUEST_LIMIT, RequestBodyLimitMiddleware
+
+    messages = asyncio.run(
+        _invoke(
+            RequestBodyLimitMiddleware(_fake_downstream),
+            path,
+            [b"x" * JSON_REQUEST_LIMIT],
+            content_length=JSON_REQUEST_LIMIT,
+            content_type="application/json",
+        )
+    )
+    assert _status_and_body(messages)[0] == 204
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/orders",
+        "/v1/review/orders/00000000-0000-0000-0000-000000000001/draft",
+        "/v1/review/orders/00000000-0000-0000-0000-000000000001/reject",
+    ],
+)
+def test_known_json_command_plus_one_returns_413_with_json_content_type(path: str) -> None:
+    import asyncio
+
+    from opsflow.http_limits import JSON_REQUEST_LIMIT, RequestBodyLimitMiddleware
+
+    messages = asyncio.run(
+        _invoke(
+            RequestBodyLimitMiddleware(_fake_downstream),
+            path,
+            [b"x" * (JSON_REQUEST_LIMIT + 1)],
+            content_length=JSON_REQUEST_LIMIT + 1,
+            content_type="application/json",
+        )
+    )
+    assert _status_and_body(messages)[0] == 413
+
+
+@pytest.mark.parametrize(
     ("path", "content_type"),
     [
         ("/v1/orders", "application/json"),
@@ -190,6 +245,72 @@ def test_actual_bytes_are_limited_without_content_length_or_with_misleading_leng
             )
         )
         assert _status_and_body(messages)[0] == 413
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    [None, "text/plain"],
+)
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/orders",
+        "/v1/review/orders/00000000-0000-0000-0000-000000000001/draft",
+    ],
+)
+def test_known_json_routes_reject_oversize_without_honest_content_type(
+    path: str, content_type: str | None
+) -> None:
+    import asyncio
+
+    from opsflow.http_limits import JSON_REQUEST_LIMIT, RequestBodyLimitMiddleware
+
+    messages = asyncio.run(
+        _invoke(
+            RequestBodyLimitMiddleware(_fake_downstream),
+            path,
+            [b"x" * (JSON_REQUEST_LIMIT + 1)],
+            content_length=JSON_REQUEST_LIMIT + 1,
+            content_type=content_type,
+        )
+    )
+    status, body = _status_and_body(messages)
+    assert status == 413
+    assert body == (
+        b'{"detail":{"code":"REQUEST_TOO_LARGE","message":"The request body '
+        b'exceeds the allowed size."}}'
+    )
+
+
+def test_known_json_route_rejection_does_not_invoke_downstream() -> None:
+    import asyncio
+
+    from opsflow.http_limits import JSON_REQUEST_LIMIT, RequestBodyLimitMiddleware
+
+    downstream_called = False
+
+    async def downstream(
+        scope: dict[str, Any],
+        receive: Callable[[], Awaitable[dict[str, Any]]],
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        nonlocal downstream_called
+        del scope, receive, send
+        downstream_called = True
+
+    messages = asyncio.run(
+        _invoke(
+            RequestBodyLimitMiddleware(downstream),
+            "/v1/orders",
+            [b"SECRET_SENTINEL_DO_NOT_ECHO" * (JSON_REQUEST_LIMIT // 24 + 1)],
+            content_length=JSON_REQUEST_LIMIT + 1,
+            content_type=None,
+        )
+    )
+    status, body = _status_and_body(messages)
+    assert status == 413
+    assert downstream_called is False
+    assert b"SECRET_SENTINEL_DO_NOT_ECHO" not in body
 
 
 def test_absolute_content_length_limit_rejects_before_downstream_consumption() -> None:

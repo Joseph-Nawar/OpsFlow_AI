@@ -13,6 +13,7 @@ NOTIFICATION_OUTCOME_LIMIT = 16 * 1024
 
 _NOTIFICATION_OUTCOME_SUFFIX = "/outcome"
 _JSON_CONTENT_TYPES = {"application/json", "application/merge-patch+json"}
+_JSON_REVIEW_COMMANDS = {"draft", "reject"}
 
 
 class _RequestBodyTooLarge(Exception):
@@ -83,9 +84,26 @@ def _request_limit(scope: Scope) -> int | None:
         and path.endswith(_NOTIFICATION_OUTCOME_SUFFIX)
     ):
         return NOTIFICATION_OUTCOME_LIMIT
+    if _is_known_json_command(method, path):
+        return JSON_REQUEST_LIMIT
     if _content_type(scope) in _JSON_CONTENT_TYPES or _content_type(scope).endswith("+json"):
         return JSON_REQUEST_LIMIT
     return ABSOLUTE_REQUEST_LIMIT
+
+
+def _is_known_json_command(method: str, path: str) -> bool:
+    """Identify body-bearing JSON business commands before media-type fallback."""
+
+    normalized_path = path.rstrip("/") or "/"
+    if method == "POST" and normalized_path == "/v1/orders":
+        return True
+    path_parts = normalized_path.split("/")
+    return (
+        method in {"POST", "PUT"}
+        and len(path_parts) == 6
+        and path_parts[1:4] == ["v1", "review", "orders"]
+        and path_parts[5] in _JSON_REVIEW_COMMANDS
+    )
 
 
 def _content_type(scope: Scope) -> str:
