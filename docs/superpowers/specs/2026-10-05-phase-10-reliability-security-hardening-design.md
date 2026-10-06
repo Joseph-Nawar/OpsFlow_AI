@@ -1,8 +1,8 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `IMPLEMENTED — PENDING HUMAN REVIEW`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
-**Scope:** repository intelligence, threat/failure modeling, implementation design, and the concise M10B candidate record below. M10C–M10F behavior remains outside this document's implementation scope.
+**Scope:** repository intelligence, threat/failure modeling, implementation design, and the concise M10B closeout record below. M10C–M10F behavior remains outside this document's implementation scope.
 
 ## 1. Design decision
 
@@ -33,7 +33,8 @@ sequence. That is a real undetected-state gap. The fix belongs in M10B and
 must preserve ordinary duplicate stand-down and human Retry semantics.
 
 M10A is `COMPLETE` following final human approval at
-`ab7cec323e4d45dae57e5d418bc0755175aa0a88`. M10B is now `IN PROGRESS` and
+`ab7cec323e4d45dae57e5d418bc0755175aa0a88`. At that M10A closeout, M10B was
+recorded as `IN PROGRESS` and
 M10C through M10F remain `NOT STARTED`; this status transition does not change
 the approved M10A design.
 
@@ -219,7 +220,7 @@ source/fingerprint mismatch. M10B must test these edges and the complete M9B
 failure-code table without replacing the existing Phase 7 state machine or M9B
 coordinator merely to make the matrix look uniform.
 
-### M10B implementation record — candidate pending independent review
+### M10B implementation record — human-approved closeout
 
 M10B derives a bounded Python intake execution budget of **180 seconds** from
 the checked-in 30-second no-retry Gemini call, the Phase 7 Odoo validation
@@ -289,6 +290,29 @@ recovery remain the authoritative Phase 9 lifecycle. The Phase 7 n8n workflow
 change is transport-only: it waits on a backend-provided bounded hint and
 resends the same idempotent source; it does not acquire ownership or business
 retry state.
+
+The M10B review history is preserved: the initial candidate was
+`053278d348aad8c346d82676c1f4c5d54aef3e53`; independent review found
+M10B-01 HIGH (bounded retries could terminate on a live `202
+PROCESSING`/`EXTRACTED` lease) and M10B-02 MEDIUM (expired recovery could bypass
+invalid audit-history fail-closed semantics); remediation was committed at
+`765c5030659d6c4d0aebe325b7d35d577766dbfd`; targeted independent re-review
+returned `PASS`; and human approval recorded M10B `COMPLETE` at that technical
+SHA.
+
+The final bounded contract remains: Python owns a 180-second intake execution
+budget; the Phase 7 durable `orders` token/expiry fence is 210 seconds, with a
+30-second safety margin; ownership decisions use PostgreSQL
+`clock_timestamp()` after row locking; only valid recoverable in-progress
+audit history may recover; live active-owner stand-down may carry a bounded
+`retry_after_seconds`; and n8n performs at most one backend-directed delayed
+same-identity resend for transport only. Stale workers cannot persist
+authoritative results, and human Retry remains authoritative for durable
+`FAILED_RETRYABLE` outcomes. This does not claim exactly-once physical
+execution. If PostgreSQL remains unavailable, a future recovery attempt can
+still fail visibly; the contract is bounded recovery, not infinite transport
+retry, and this is an operational limitation rather than an unresolved M10B
+defect.
 
 ## 7. Observability design
 
