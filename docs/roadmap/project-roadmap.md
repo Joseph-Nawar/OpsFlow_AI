@@ -210,7 +210,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M10A — Hardening Contract, Threat Model & Implementation Plan | COMPLETE |
 | M10B — Cross-Boundary Idempotency, Failure Semantics & Recovery Hardening | COMPLETE |
 | M10C — Security Boundaries, Input Safety & Secret Hygiene | COMPLETE |
-| M10D — Structured Observability, Correlation & Operational Health | NOT STARTED |
+| M10D — Structured Observability, Correlation & Operational Health | IN PROGRESS |
 | M10E — Adversarial Resilience & Whole-System Failure Drills | NOT STARTED |
 | M10F — Independent Phase 10 Audit & Closeout | NOT STARTED |
 
@@ -316,11 +316,11 @@ Protect writes with approval state, durable synchronization intent, stable provi
 
 ### Phase 10 — Reliability, Security & Hardening
 
-**Status:** Phase 10 `IN PROGRESS`; M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`; M10B `COMPLETE` at human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`; M10D–M10F `NOT STARTED`.
+**Status:** Phase 10 `IN PROGRESS`; M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`; M10B `COMPLETE` at human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`; M10D `IN PROGRESS`; M10E–M10F `NOT STARTED`.
 The authoritative M10A [design](../superpowers/specs/2026-10-05-phase-10-reliability-security-hardening-design.md)
 and [implementation plan](../superpowers/plans/2026-10-05-phase-10-reliability-security-hardening.md)
 define the hardening boundary. M10B is complete at the approved technical SHA
-`765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C is `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`; M10D–M10F remain `NOT STARTED`.
+`765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C is `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`; M10D is `IN PROGRESS`; M10E–M10F remain `NOT STARTED`.
 No M10D–M10F production behavior is included in this milestone.
 
 **Objective:** Turn a functioning demo into convincing production-style engineering.
