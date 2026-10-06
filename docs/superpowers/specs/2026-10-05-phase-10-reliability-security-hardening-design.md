@@ -584,10 +584,20 @@ probe providers.
 Integration health is passive last-observed state: Gemini, Odoo, HubSpot,
 Gmail, Slack, and n8n distinguish configuration from `NOT_OBSERVED`, `HEALTHY`,
 or `UNAVAILABLE` outcomes. Gemini/Odoo/HubSpot state is updated only by the
-existing provider seams; Gmail/Slack state is sourced only from authenticated
-notification outcomes; n8n state is sourced from authenticated inbound
-workflow traffic. `/ready` remains strictly database-only and does not depend
-on any of these observations.
+existing logical provider seams; the trusted-data Odoo lookup is one
+`ODOO_LOOKUP` observation and Phase 9 Odoo/HubSpot steps reuse provider metrics
+without emitting a duplicate provider event. Only explicit provider-operational
+failure codes (`PROVIDER_ERROR`, `PROVIDER_TIMEOUT`,
+`PROVIDER_UNAVAILABLE`, `PROVIDER_RATE_LIMIT`, and
+`PROVIDER_INVALID_RESPONSE`) make a failed provider operation an unavailable
+observation; configuration, pending/rejected, business/data, reconciliation,
+and worker-state outcomes leave the prior health observation unchanged.
+Gmail/Slack state is sourced only from authenticated notification outcomes;
+n8n is marked healthy only after a successful authenticated workflow-bound
+response and is never marked unavailable from an inbound failure response.
+Notification events include only the bounded channel/provider and order UUID.
+`/ready` remains strictly database-only and does not depend on any of these
+observations.
 
 The installed `google-genai` SDK is 2.24.0 and its Interaction response exposes
 `usage.total_input_tokens`, `usage.total_output_tokens`, and `usage.total_tokens`.
@@ -600,6 +610,17 @@ and the M10B delayed resend. n8n still owns transport only.
 No CORS, host-policy, public-IAM, collector, tracing stack, database telemetry
 table, or new runtime dependency was introduced. M10E adversarial drills,
 Phase 11 evaluation, and Phase 12 release work remain outside this record.
+
+The initial M10D candidate was `424ba74b91b3fae13721e7eb93f20a3dad9ad3f5`.
+Independent review found three MEDIUM issues: M10D-01 (forged workflow
+metadata and business failures could poison passive health), M10D-02 (trusted
+data Odoo calls and Phase 9 provider metrics were incomplete), and M10D-03
+(notification events lacked provider and order correlation). The focused
+remediation adds the authenticated-success-only n8n observation rule, the
+bounded provider-health classification above, one logical trusted-data Odoo
+instrumentation seam, provider metric reuse for Phase 9 steps, and safe
+notification provider/order fields. The milestone remains
+`IMPLEMENTED — PENDING HUMAN REVIEW` pending targeted independent re-review.
 
 ## 9. Phase 10 decomposition and gates
 

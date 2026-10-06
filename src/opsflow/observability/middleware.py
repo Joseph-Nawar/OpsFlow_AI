@@ -88,11 +88,9 @@ class RequestCorrelationMiddleware:
             context is not None
             and context.workflow_execution_id is not None
             and route in _N8N_WORKFLOW_ROUTES
+            and 200 <= status < 400
         ):
-            if 200 <= status < 400:
-                self.observability.integrations.observe_success("n8n")
-            else:
-                self.observability.integrations.observe_failure("n8n", "PROVIDER_UNAVAILABLE")
+            self.observability.integrations.observe_success("n8n")
         self.observability.emit(
             event="http_request_completed",
             http_method=scope.get("method"),

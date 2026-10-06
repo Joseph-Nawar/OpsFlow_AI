@@ -8,6 +8,7 @@ from uuid import UUID
 import httpx
 import pytest
 
+from opsflow.observability.runtime import Observability, reset_observability, set_observability
 from opsflow.odoo import OdooERPAdapter, _bridge_result, _OdooFailure
 from opsflow.order_sync.contracts import OrderSyncFailureCode, OrderSyncStepFailure
 from opsflow.settings import Settings
@@ -316,6 +317,60 @@ def test_lookup_uses_lst_price_and_free_qty_with_explicit_company_warehouse() ->
         "active_test": False,
     }
     assert all("qty_available" not in body.get("fields", []) for _, body in calls)
+
+
+def test_validation_lookup_observes_one_logical_odoo_operation() -> None:
+    adapter = OdooERPAdapter(_settings(), transport=httpx.MockTransport(_lookup_handler()))
+    observer = Observability({"odoo": "CONFIGURED"})
+    token = set_observability(observer)
+
+    async def exercise():
+        try:
+            return await adapter.get_validation_data(
+                BusinessDataLookupRequest("CUST-001", None, ("SKU-001",))
+            )
+        finally:
+            await adapter.aclose()
+
+    try:
+        data = asyncio.run(exercise())
+    finally:
+        reset_observability(token)
+
+    assert data.products_by_line[0] is not None
+    assert observer.integrations.snapshot()["odoo"]["observation"] == "HEALTHY"
+    snapshot = observer.metrics.snapshot()
+    assert sum(snapshot["counters"]["provider_calls_total"].values()) == 1
+    assert (
+        sum(item["count"] for item in snapshot["histograms"]["provider_duration_ms"].values()) == 1
+    )
+
+
+def test_validation_lookup_provider_failure_observes_bounded_odoo_failure() -> None:
+    def unavailable(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="provider-private-response")
+
+    adapter = OdooERPAdapter(_settings(), transport=httpx.MockTransport(unavailable))
+    observer = Observability({"odoo": "CONFIGURED"})
+    token = set_observability(observer)
+
+    async def exercise():
+        try:
+            return await adapter.get_validation_data(
+                BusinessDataLookupRequest("CUST-001", None, ("SKU-001",))
+            )
+        finally:
+            await adapter.aclose()
+
+    try:
+        with pytest.raises(_OdooFailure) as captured:
+            asyncio.run(exercise())
+    finally:
+        reset_observability(token)
+
+    assert captured.value.code is OrderSyncFailureCode.PROVIDER_UNAVAILABLE
+    assert observer.integrations.snapshot()["odoo"]["observation"] == "UNAVAILABLE"
+    assert observer.integrations.snapshot()["odoo"]["failure_code"] == "PROVIDER_UNAVAILABLE"
 
 
 def test_lookup_parses_negative_free_qty_without_treating_it_as_provider_error() -> None:

@@ -462,6 +462,35 @@ workflows use `={{ $execution.id }}` only as a stable diagnostic header on
 OpsFlow API calls; no workflow business-state or retry ownership was added.
 M10E/M10F, Phase 11, and Phase 12 remain outside this implementation.
 
+#### Independent review remediation — pending re-review
+
+The initial candidate was `424ba74b91b3fae13721e7eb93f20a3dad9ad3f5`.
+Independent review recorded three MEDIUM findings: M10D-01 (forged workflow
+metadata and non-availability order-sync failures could alter passive health),
+M10D-02 (the trusted-data Odoo seam was not observed and Phase 9 provider
+metrics were incomplete), and M10D-03 (notification events omitted provider
+and order correlation). RED regressions reproduced each finding before the
+fix.
+
+The remediation keeps n8n health passive and truthful: only a successful
+authenticated workflow-bound response can mark n8n healthy, and inbound
+failures never mark it unavailable. Odoo/HubSpot provider health uses the
+explicit operational failure set `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`,
+`PROVIDER_UNAVAILABLE`, `PROVIDER_RATE_LIMIT`, and
+`PROVIDER_INVALID_RESPONSE`; configuration, pending/rejected, business/data,
+reconciliation, and worker-state outcomes leave prior health unchanged.
+`OdooERPAdapter.get_validation_data()` is one logical
+`ODOO_LOOKUP` provider operation. Phase 9 Odoo/HubSpot steps add exactly one
+provider counter and duration observation while retaining one
+`order_sync_step_outcome` event and no duplicate provider event. Notification
+events now include only the safe provider/channel and order UUID.
+
+The minor metrics-endpoint wording issue was resolved by describing the
+endpoint as a bounded process-local snapshot without claiming exclusion from
+later HTTP completion accounting. No migration, dependency, lockfile,
+workflow, or M10E/M10F change was introduced. M10D remains
+`IMPLEMENTED — PENDING HUMAN REVIEW`.
+
 ## M10E — Adversarial Resilience & Whole-System Failure Drills
 
 ### Boundary

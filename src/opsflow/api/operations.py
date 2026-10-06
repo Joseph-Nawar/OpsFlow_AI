@@ -27,7 +27,7 @@ async def metrics_endpoint(
     request: Request,
     operator: ViewOperatorDependency,
 ) -> dict[str, object]:
-    """Return a bounded process-local metrics snapshot without self-observation."""
+    """Return a bounded process-local metrics snapshot."""
 
     del operator
     observability = cast(Observability, request.app.state.observability)

@@ -14,6 +14,15 @@ from opsflow.observability.metrics import MetricsRegistry
 _active_observability: ContextVar[Observability | None] = ContextVar(
     "opsflow_active_observability", default=None
 )
+_PROVIDER_HEALTH_FAILURE_CODES = frozenset(
+    {
+        "PROVIDER_ERROR",
+        "PROVIDER_TIMEOUT",
+        "PROVIDER_UNAVAILABLE",
+        "PROVIDER_RATE_LIMIT",
+        "PROVIDER_INVALID_RESPONSE",
+    }
+)
 
 
 class Observability:
@@ -45,15 +54,13 @@ class Observability:
         total_tokens: int | None = None,
     ) -> None:
         state = "SUCCESS" if success else "FAILURE"
-        labels: dict[str, object] = {
-            "provider": provider,
-            "operation": operation,
-            "state": state,
-        }
-        if failure_code is not None:
-            labels["failure_code"] = failure_code
-        self.metrics.increment("provider_calls_total", labels=labels)
-        self.metrics.observe("provider_duration_ms", duration_ms, labels=labels)
+        self._record_provider_metrics(
+            provider=provider,
+            operation=operation,
+            state=state,
+            duration_ms=duration_ms,
+            failure_code=failure_code,
+        )
         self.emit(
             event="provider_call_completed",
             provider=provider,
@@ -66,10 +73,7 @@ class Observability:
             output_tokens=output_tokens,
             total_tokens=total_tokens,
         )
-        if success:
-            self.integrations.observe_success(provider)
-        else:
-            self.integrations.observe_failure(provider, failure_code or "UNKNOWN_FAILURE")
+        self._observe_provider_health(provider, success=success, failure_code=failure_code)
 
     def intake_outcome(
         self,
@@ -103,6 +107,7 @@ class Observability:
         state: str,
         duration_ms: float,
         failure_code: str | None = None,
+        order_id: str | None = None,
     ) -> None:
         labels: dict[str, object] = {"channel": channel, "state": state}
         if failure_code is not None:
@@ -110,10 +115,12 @@ class Observability:
         self.metrics.increment("notification_outcomes_total", labels=labels)
         self.emit(
             event="notification_outcome_recorded",
+            provider=channel.lower(),
             operation="notification_outcome",
             state=state,
             failure_code=failure_code,
             duration_ms=duration_ms,
+            order_id=order_id,
         )
         if channel.lower() in {"gmail", "slack"}:
             if state == "DELIVERED":
@@ -138,6 +145,13 @@ class Observability:
         if failure_code is not None:
             labels["failure_code"] = failure_code
         self.metrics.increment("order_sync_steps_total", labels=labels)
+        self._record_provider_metrics(
+            provider=provider,
+            operation=step,
+            state=state,
+            duration_ms=duration_ms,
+            failure_code=failure_code,
+        )
         self.emit(
             event="order_sync_step_outcome",
             provider=provider,
@@ -148,10 +162,38 @@ class Observability:
             order_id=order_id,
         )
         if provider in {"odoo", "hubspot"}:
-            if success:
-                self.integrations.observe_success(provider)
-            else:
-                self.integrations.observe_failure(provider, failure_code or "UNKNOWN_FAILURE")
+            self._observe_provider_health(provider, success=success, failure_code=failure_code)
+
+    def _record_provider_metrics(
+        self,
+        *,
+        provider: str,
+        operation: str,
+        state: str,
+        duration_ms: float,
+        failure_code: str | None,
+    ) -> None:
+        labels: dict[str, object] = {
+            "provider": provider,
+            "operation": operation,
+            "state": state,
+        }
+        if failure_code is not None:
+            labels["failure_code"] = failure_code
+        self.metrics.increment("provider_calls_total", labels=labels)
+        self.metrics.observe("provider_duration_ms", duration_ms, labels=labels)
+
+    def _observe_provider_health(
+        self,
+        provider: str,
+        *,
+        success: bool,
+        failure_code: str | None,
+    ) -> None:
+        if success:
+            self.integrations.observe_success(provider)
+        elif failure_code in _PROVIDER_HEALTH_FAILURE_CODES:
+            self.integrations.observe_failure(provider, failure_code)
 
 
 def current_observability() -> Observability | None:

@@ -52,6 +52,14 @@ def test_execute_next_requires_service_authentication() -> None:
     asyncio.run(_assert_authentication())
 
 
+def test_forged_workflow_header_on_unauthenticated_request_does_not_claim_n8n_failure() -> None:
+    asyncio.run(_assert_forged_workflow_header_does_not_claim_n8n_failure())
+
+
+def test_successful_authenticated_workflow_marks_n8n_but_later_backend_failure_does_not() -> None:
+    asyncio.run(_assert_n8n_health_is_success_only())
+
+
 def test_distinct_orchestration_token_cannot_use_human_review_api() -> None:
     asyncio.run(_assert_orchestration_token_is_not_a_human_operator())
 
@@ -119,6 +127,56 @@ async def _assert_authentication() -> None:
         assert response.json()["detail"]["code"] == "ORCHESTRATION_UNAUTHENTICATED"
     assert SERVICE_TOKEN not in "".join(response.text for response in responses)
     assert REVIEW_TOKEN not in responses[2].text
+
+
+async def _assert_forged_workflow_header_does_not_claim_n8n_failure() -> None:
+    app = create_app(_settings())
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client,
+    ):
+        response = await client.post(
+            EXECUTE_PATH,
+            headers={"X-Workflow-Execution-ID": "forged-execution"},
+        )
+    assert response.status_code == 401
+    record = app.state.observability.integrations.snapshot()["n8n"]
+    assert record["observation"] == "NOT_OBSERVED"
+    assert record["last_observed_at"] is None
+
+
+async def _assert_n8n_health_is_success_only() -> None:
+    engine, sessions, order_id = await _seed_order()
+    app = create_app(_settings())
+    app.state.order_sync_step_executor = FakeExecutor()
+    try:
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client,
+        ):
+            successful = await client.post(
+                EXECUTE_PATH,
+                headers={**AUTH, "X-Workflow-Execution-ID": "legitimate-execution"},
+            )
+            forged_after_success = await client.post(
+                EXECUTE_PATH,
+                headers={"X-Workflow-Execution-ID": "forged-execution"},
+            )
+            app.state.order_sync_step_executor = None
+            unavailable = await client.post(
+                EXECUTE_PATH,
+                headers={**AUTH, "X-Workflow-Execution-ID": "legitimate-execution"},
+            )
+        assert successful.status_code == 200
+        assert forged_after_success.status_code == 401
+        assert unavailable.status_code == 503
+        assert app.state.observability.integrations.snapshot()["n8n"]["observation"] == "HEALTHY"
+    finally:
+        await _dispose(engine, sessions, order_id)
 
 
 async def _assert_orchestration_token_is_not_a_human_operator() -> None:

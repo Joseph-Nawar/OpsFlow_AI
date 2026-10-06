@@ -242,6 +242,35 @@ def test_passive_integration_health_observes_only_explicit_real_operations() -> 
     assert after["gmail"]["failure_code"] == "PROVIDER_UNAVAILABLE"
 
 
+def test_notification_event_contains_provider_and_order_correlation(caplog: Any) -> None:
+    observer = Observability({"gmail": "EXTERNALLY_MANAGED", "slack": "EXTERNALLY_MANAGED"})
+    order_id = "00000000-0000-0000-0000-000000000123"
+    with caplog.at_level(logging.INFO, logger="opsflow.observability"):
+        observer.notification_outcome(
+            channel="gmail",
+            state="DELIVERED",
+            duration_ms=4.5,
+            order_id=order_id,
+        )
+        observer.notification_outcome(
+            channel="slack",
+            state="FAILED_RETRYABLE",
+            duration_ms=5.5,
+            failure_code="NOTIFICATION_FAILURE",
+            order_id=order_id,
+        )
+
+    events = [json.loads(record.message) for record in caplog.records]
+    assert events[0]["provider"] == "gmail"
+    assert events[0]["order_id"] == order_id
+    assert events[1]["provider"] == "slack"
+    assert events[1]["order_id"] == order_id
+    assert events[1]["failure_code"] == "NOTIFICATION_FAILURE"
+    serialized = json.dumps(events)
+    assert "provider-reference" not in serialized
+    assert "claim-token" not in serialized
+
+
 def test_public_probe_with_workflow_header_does_not_claim_n8n_health() -> None:
     observed = IntegrationHealthRegistry({"n8n": "EXTERNALLY_MANAGED"})
 

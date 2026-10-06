@@ -173,6 +173,7 @@ async def record_notification_outcome(
                 channel=delivery.channel.value.lower(),
                 state=result.status.value,
                 duration_ms=duration_ms(started_ns),
+                order_id=str(delivery.order_id),
                 failure_code=(
                     result.last_failure_code.value if result.last_failure_code is not None else None
                 ),
