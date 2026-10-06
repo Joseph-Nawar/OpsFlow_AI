@@ -1,8 +1,8 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `IN PROGRESS`; M10D–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `IMPLEMENTED — PENDING HUMAN REVIEW`; M10D–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
-**Scope:** repository intelligence, threat/failure modeling, implementation design, and the concise M10B closeout record below. M10C–M10F behavior remains outside this document's implementation scope.
+**Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B/M10C implementation records below. M10D–M10F behavior remains outside this document's implementation scope.
 
 ## 1. Design decision
 
@@ -33,10 +33,9 @@ sequence. That is a real undetected-state gap. The fix belongs in M10B and
 must preserve ordinary duplicate stand-down and human Retry semantics.
 
 M10A is `COMPLETE` following final human approval at
-`ab7cec323e4d45dae57e5d418bc0755175aa0a88`. At that M10A closeout, M10B was
-recorded as `IN PROGRESS` and
-M10C through M10F remain `NOT STARTED`; this status transition does not change
-the approved M10A design.
+`ab7cec323e4d45dae57e5d418bc0755175aa0a88`. At that historical M10A closeout,
+M10B was recorded as `IN PROGRESS` and M10C through M10F remained `NOT STARTED`;
+the later M10B/M10C records below do not change the approved M10A design.
 
 ## 2. Repository evidence reviewed
 
@@ -474,6 +473,43 @@ not automatically required by the current localhost-bound Compose deployment.
 M10C may add only a narrowly justified control if the actual frontend/API
 deployment path demonstrates a need; it must not imply public-internet
 hardening that the repository does not contain.
+
+## 8A. M10C implementation record — pending independent review
+
+M10C is `IMPLEMENTED — PENDING HUMAN REVIEW` in implementation commits
+`827782d` and `477e416`. It adds a pure-ASGI receive wrapper that enforces the 12 MiB
+absolute ceiling, 11 MiB orchestration multipart budget, 512 KiB ordinary JSON
+budget, and 16 KiB notification-outcome budget before normal body parsing. It
+counts actual received bytes when `Content-Length` is absent or misleading and
+returns a bounded non-echoing `413`; the existing 10 MiB document parser limit
+remains authoritative.
+
+Transport schemas now enforce the approved collection, string, header, and
+Decimal budgets across structured order creation and review edits. Core order
+reads resolve server-side human development operators through
+`get_operator_context`/`require_view_access`; structured creation requires only
+the orchestration bearer. `/health` and database-only `/ready` remain public.
+Fixed bearer values remain a local/demo development authentication boundary,
+not production identity, OAuth, SSO, sessions, or internet-facing IAM.
+
+Core domain and global request-validation errors now use bounded stable
+messages, while existing orchestration/review/notification error contracts are
+preserved. Secret-sentinel regressions verify that settings, auth, provider
+configuration, and request-validation responses do not echo credentials,
+payloads, SQL, provider bodies, or tracebacks.
+
+The repository exposes `make dependency-audit`, `make frontend-audit`, and
+`make security-audit`. The Python gate derives frozen production-only
+requirements from `uv.lock` and runs pinned `pip-audit==2.10.1`; the frontend
+gate runs `npm audit --omit=dev --audit-level=high`. Both pass, and the known
+`brace-expansion@5.0.9` development-only advisory remains non-blocking. SQL
+review found no user-controlled SQL syntax interpolation; existing prompt/data
+authority tests are sufficient, so no ORM rewrite, prompt filter, or second AI
+safety component was added. No CORS/host/security-header change is required
+under the localhost/demo deployment contract.
+
+M10D–M10F remain `NOT STARTED`; this record adds no observability, Phase 11
+evaluation, or Phase 12 release behavior.
 
 ## 9. Phase 10 decomposition and gates
 

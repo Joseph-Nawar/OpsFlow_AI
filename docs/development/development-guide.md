@@ -16,7 +16,7 @@ is `COMPLETE` (M9A–M9F `COMPLETE`; M9F and Phase 9 technical approval at
 `b96364d11da37b61fd6c8bc75c651918cf596ac7`). Phase 10 is `IN PROGRESS` with
 M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`,
 M10B `COMPLETE` at human-approved technical SHA
-`765c5030659d6c4d0aebe325b7d35d577766dbfd`, M10C `IN PROGRESS`, and M10D–M10F `NOT STARTED`;
+`765c5030659d6c4d0aebe325b7d35d577766dbfd`, M10C `IMPLEMENTED — PENDING HUMAN REVIEW`, and M10D–M10F `NOT STARTED`;
 Phases 11–12 remain `NOT STARTED`.
 The [Phase 0 audit record](../audits/phase-0-audit.md) through the [Phase 9
 audit record](../audits/phase-9-audit.md) preserve closeout evidence.
@@ -58,7 +58,7 @@ The closeout report must identify the branch, HEAD, commits created, files chang
 
 The intended baseline is Python 3.12 for backend and business logic, `uv` with `pyproject.toml` and `uv.lock` for Python dependency management, FastAPI for HTTP boundaries, Pydantic v2 for typed input/output models, SQLAlchemy 2.x and Alembic for persistence, PostgreSQL as the application store, React/TypeScript/Vite for the review UI, and self-hosted n8n for orchestration. The exact internal folders should be created only when their responsibilities become necessary.
 
-Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7–9 `workflows/n8n/` area now exist. Phase 8 is `COMPLETE` (M8A–M8F `COMPLETE`); Phase 9 is `COMPLETE` (M9A–M9F `COMPLETE`; technical approval at `b96364d11da37b61fd6c8bc75c651918cf596ac7`). M10A is `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`; M10B is `COMPLETE` at human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C `IN PROGRESS`; M10D–M10F remain planned; other future areas remain absent until an applicable milestone requires them.
+Expected top-level areas are described by the roadmap, including `src/opsflow/`, `web/`, `workflows/n8n/`, `tests/`, `evals/`, `fixtures/`, `migrations/`, `infra/`, and Docker/packaging files. `src/opsflow/`, `web/`, `tests/`, migrations, the Phase 2–6 capabilities, and the Phase 7–9 `workflows/n8n/` area now exist. Phase 8 is `COMPLETE` (M8A–M8F `COMPLETE`); Phase 9 is `COMPLETE` (M9A–M9F `COMPLETE`; technical approval at `b96364d11da37b61fd6c8bc75c651918cf596ac7`). M10A is `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`; M10B is `COMPLETE` at human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C `IMPLEMENTED — PENDING HUMAN REVIEW` in implementation commits `827782d` and `477e416`; M10D–M10F remain planned; other future areas remain absent until an applicable milestone requires them.
 
 ## Historical verified M0B/M0C backend commands
 
@@ -154,7 +154,7 @@ docker run --rm --volume "$PWD:/repo:ro" \
   --log-opts="--all --full-history" /repo
 ```
 
-This scan completed successfully with no leaks found. The CI workflow is [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) and has three read-only jobs: backend, frontend, and secret-scan. Backend CI uses Python 3.12, frozen `uv` dependencies, and a PostgreSQL 16 service; frontend CI uses Node.js 24 and `npm ci`.
+This scan completed successfully with no leaks found. The CI workflow is [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) and has four read-only jobs: backend, frontend, production dependency-security, and secret-scan. Backend CI uses Python 3.12, frozen `uv` dependencies, and a PostgreSQL 16 service; frontend CI uses Node.js 24 and `npm ci`. The dependency-security job audits frozen production-only Python dependencies with pinned `pip-audit==2.10.1` and frontend production dependencies with `npm audit --omit=dev --audit-level=high`.
 
 ## Clean-checkout workflow
 
