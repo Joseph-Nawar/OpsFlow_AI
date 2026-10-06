@@ -1,6 +1,6 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `IMPLEMENTED — PENDING HUMAN REVIEW`; M10D–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
 **Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B/M10C implementation records below. M10D–M10F behavior remains outside this document's implementation scope.
 
@@ -497,13 +497,15 @@ The remediation also separates `MetadataPairCreate` from
 and 32-pair limit, while persisted response metadata is returned unchanged.
 An integration regression seeds over-limit metadata through the application
 path and verifies authenticated order detail reads succeed without truncation
-or mutation. M10C remains `IMPLEMENTED — PENDING HUMAN REVIEW`; M10D–M10F
-remain `NOT STARTED`.
+or mutation. The targeted independent re-review passed, and human approval
+records M10C `COMPLETE` against technical SHA
+`7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`. M10D–M10F remain `NOT STARTED`.
 
-## 8A. M10C implementation record — pending independent review
+## 8A. M10C implementation record — human-approved closeout
 
-M10C is `IMPLEMENTED — PENDING HUMAN REVIEW` in implementation commits
-`827782d` and `477e416`. It adds a pure-ASGI receive wrapper that enforces the 12 MiB
+M10C is `COMPLETE` at human-approved technical SHA
+`7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`, following implementation commits
+`827782d` and `477e416` and the remediation commit above. It adds a pure-ASGI receive wrapper that enforces the 12 MiB
 absolute ceiling, 11 MiB orchestration multipart budget, 512 KiB ordinary JSON
 budget, and 16 KiB notification-outcome budget before normal body parsing. It
 counts actual received bytes when `Content-Length` is absent or misleading and
@@ -536,6 +538,22 @@ under the localhost/demo deployment contract.
 
 M10D–M10F remain `NOT STARTED`; this record adds no observability, Phase 11
 evaluation, or Phase 12 release behavior.
+
+The final M10C boundary is a pure-ASGI receive counter before normal body
+parsing: orchestration multipart is 11 MiB, the accepted document remains the
+existing 10 MiB limit, known JSON business/review bodies are 512 KiB by route
+before Content-Type, notification outcomes are 16 KiB, and the generic
+non-JSON fallback is 12 MiB. Exact string/count/Decimal transport limits remain
+request-only and separate from unconstrained persisted response serialization.
+Core reads require human development view access; `POST /v1/orders` requires
+the orchestration bearer; `/health` and database-only `/ready` remain public.
+Errors are bounded and non-echoing. Python production dependencies use pinned
+`pip-audit==2.10.1`, frontend production auditing remains enabled, and pinned
+full-history Gitleaks remains required. SQL review found no user-controlled
+SQL interpolation, and deterministic software remains authoritative over AI
+output. No CORS, WAF, OAuth, or public-IAM architecture was introduced; the
+development bearer boundary remains local/demo-only. GET/HEAD/OPTIONS routes
+do not consume request bodies through application parsing.
 
 ## 9. Phase 10 decomposition and gates
 
