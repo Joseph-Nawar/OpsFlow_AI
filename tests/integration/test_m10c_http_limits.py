@@ -250,7 +250,7 @@ async def _post_multipart(document: bytes) -> httpx.Response:
             files={"document": ("boundary.csv", document, "text/csv")},
             headers={
                 "Authorization": f"Bearer {ORCHESTRATION_TOKEN}",
-                "Idempotency-Key": "m10c-boundary-intake",
+                "Idempotency-Key": "boundary",
             },
         )
 
