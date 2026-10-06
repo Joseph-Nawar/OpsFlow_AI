@@ -166,6 +166,17 @@ retry trigger. A human must use the existing review Retry action and then
 resubmit the same document with the same event ID. Automatic recovery beyond
 this bounded transport fallback is outside Task 13.
 
+M10B adds one backend-authoritative abandoned-intake recovery path to both
+Phase 7 intake workflows. A valid live `PROCESSING` or `EXTRACTED` stand-down
+may include `retry_after_seconds`; the workflow waits for exactly that bounded
+hint and resends the same multipart document and idempotency/source identity
+once. The API derives the hint from the current ownership expiry and the
+workflow does not contain the lease value or interpret audit/business state.
+The final recovery attempt routes its returned state normally and cannot loop.
+Responses without the backend hint, including invalid-history stand-downs and
+terminal `FAILED_RETRYABLE`, do not enter this path. The 210-second ownership
+lease and the 180-second Python execution budget remain backend contracts.
+
 ## Task 14 local sandbox verification
 
 The complete local rehearsal used n8n `2.40.5`, the existing Compose services,

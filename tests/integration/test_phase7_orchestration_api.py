@@ -94,6 +94,7 @@ def test_openapi_exposes_exactly_the_phase7_intake_boundary() -> None:
         "state",
         "failure_origin",
         "idempotent_replay",
+        "retry_after_seconds",
     }
     assert "execution" not in response_schema["properties"]
 
@@ -349,6 +350,7 @@ def test_result_execution_maps_to_the_approved_http_status(
         "state",
         "failure_origin",
         "idempotent_replay",
+        "retry_after_seconds",
     }
     assert "execution" not in response.json()
 

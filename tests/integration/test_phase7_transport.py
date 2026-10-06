@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 import opsflow.main as main_module
+from opsflow.application.orchestration import OrchestrationUnavailableError
 from opsflow.domain import OrderState
 from opsflow.orchestration.contracts import IntakeExecution, OrchestrationIntakeResult
 from opsflow.settings import Settings
@@ -55,14 +56,72 @@ async def _assert_persisted_failed_retryable(monkeypatch: pytest.MonkeyPatch) ->
         assert first.status_code == 201
         assert first.json()["state"] == OrderState.FAILED_RETRYABLE.value
         assert first.json()["failure_origin"] == OrderState.PROCESSING.value
+        assert first.json()["retry_after_seconds"] is None
         assert second.status_code == 200
         assert second.json()["state"] == OrderState.FAILED_RETRYABLE.value
         assert second.json()["idempotent_replay"] is True
+        assert second.json()["retry_after_seconds"] is None
         order_id, _, events = await _read_order_evidence(key)
         assert events.count("ORDER_PROCESSING_FAILED") == 1
     finally:
         if order_id is not None:
             await _delete_orders((order_id,))
+
+
+def test_bounded_retry_sequence_exposes_future_recovery_after_live_stand_down() -> None:
+    asyncio.run(_assert_bounded_retry_sequence_exposes_future_recovery())
+
+
+async def _assert_bounded_retry_sequence_exposes_future_recovery() -> None:
+    app = main_module.create_app(Settings(orchestration_token=ORCHESTRATION_TOKEN))
+    calls = 0
+
+    async def handler(session, command, actor, recorded_at):
+        nonlocal calls
+        del session, command, actor, recorded_at
+        calls += 1
+        if calls == 1:
+            raise OrchestrationUnavailableError()
+        return OrchestrationIntakeResult(
+            order_id=UUID("00000000-0000-0000-0000-000000000015"),
+            state=OrderState.PROCESSING,
+            failure_origin=None,
+            idempotent_replay=True,
+            execution=IntakeExecution.STANDING_DOWN,
+            retry_after_seconds=210,
+        )
+
+    app.state.orchestration_intake_handler = handler
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client,
+    ):
+        first = await client.post(
+            "/v1/orchestration/intakes",
+            data={"document_type": "EMAIL_BODY"},
+            files={"document": ("synthetic-order.txt", b"synthetic", "text/plain")},
+            headers={
+                "Authorization": f"Bearer {ORCHESTRATION_TOKEN}",
+                "Idempotency-Key": "m10b-live-recovery",
+            },
+        )
+        second = await client.post(
+            "/v1/orchestration/intakes",
+            data={"document_type": "EMAIL_BODY"},
+            files={"document": ("synthetic-order.txt", b"synthetic", "text/plain")},
+            headers={
+                "Authorization": f"Bearer {ORCHESTRATION_TOKEN}",
+                "Idempotency-Key": "m10b-live-recovery",
+            },
+        )
+
+    assert first.status_code == 503
+    assert second.status_code == 202
+    assert second.json()["state"] == OrderState.PROCESSING.value
+    assert second.json()["retry_after_seconds"] == 210
+    assert calls == 2
 
 
 @pytest.mark.parametrize("state", (OrderState.PROCESSING, OrderState.EXTRACTED))

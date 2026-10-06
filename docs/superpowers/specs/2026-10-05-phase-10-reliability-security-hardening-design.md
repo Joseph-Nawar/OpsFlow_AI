@@ -244,6 +244,34 @@ failure/audit/notification persistence. It remains active across the
 `EXTRACTED` intermediate state and is cleared with persisted `NEEDS_REVIEW`,
 `READY_FOR_APPROVAL`, `FAILED_RETRYABLE`, or `FAILED_FINAL` outcomes.
 
+The independent M10B review identified two remediation findings. **M10B-01
+(HIGH)** was that the existing two one-second n8n transport waits could end on
+a live `202 PROCESSING`/`EXTRACTED` stand-down before stale recovery was
+eligible. The API now exposes a bounded `retry_after_seconds` hint only for a
+valid live in-progress history with current ownership. Both Phase 7 intake
+workflows route that backend-provided value through one delayed Wait and one
+final same-identity multipart redelivery. The workflow does not contain the
+210-second lease value, ownership state, or recovery classification. The final
+recovery response routes to the existing backend-state path and cannot loop.
+The maximum wait from a live stand-down response is the remaining lease,
+rounded up and capped at 210 seconds; the existing two one-second transport
+waits remain separate. Therefore an abandoned claim receives another recovery
+attempt within at most 210 seconds after the live stand-down response, or
+within the two bounded transport waits before that response if the initial
+caller returned `503`.
+The recovery-versus-delay branch makes that choice from one PostgreSQL
+`clock_timestamp()` read after the locked order row is acquired, so the
+lease-boundary decision and the returned hint cannot disagree.
+
+**M10B-02 (MEDIUM)** was that stale recovery ignored the existing fail-closed
+audit-history decision. Recovery and the backend retry hint now require the
+single existing audit-history interpretation to report a valid recoverable
+`PROCESSING` or `EXTRACTED` phase. Unknown, malformed, misordered, approval,
+rejection, or otherwise impossible histories remain `STAND_DOWN`, do not
+rotate ownership, do not emit recovery audit evidence, and do not enter the
+pipeline. No lease, execution-budget, migration, M9B, or human Retry semantics
+changed during this remediation.
+
 | Failure boundary | Durable outcome | Sole retry owner |
 | --- | --- | --- |
 | malformed/unsupported document or invalid AI response | `FAILED_FINAL` | no automatic retry; human supplies a valid input |
@@ -258,7 +286,9 @@ failure/audit/notification persistence. It remains active across the
 No M9B production behavior changed: its single sync row, lease/fence, retry
 generation, receipts, stable provider identities, and first-missing-step
 recovery remain the authoritative Phase 9 lifecycle. The Phase 7 n8n workflow
-was not changed and does not acquire ownership or business retry state.
+change is transport-only: it waits on a backend-provided bounded hint and
+resends the same idempotent source; it does not acquire ownership or business
+retry state.
 
 ## 7. Observability design
 

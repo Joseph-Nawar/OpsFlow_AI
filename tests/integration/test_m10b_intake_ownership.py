@@ -45,7 +45,7 @@ from opsflow.persistence.models import (
     SourceDocumentModel,
     ValidationIssueModel,
 )
-from opsflow.persistence.repositories import get_audit_events, get_order
+from opsflow.persistence.repositories import get_audit_events, get_order, insert_audit_event
 from opsflow.settings import Settings
 from opsflow.validation import TrustedBusinessData, ValidationContext
 from opsflow.validation.policy import ValidationPolicy
@@ -84,11 +84,53 @@ async def _assert_active_duplicate_stands_down_without_rotating_ownership() -> N
         before_events = await _events(engine, persisted.order.id)
         second = await _claim(engine, persisted, request, key)
         assert second.kind is IntakeClaimKind.STAND_DOWN
+        assert second.retry_after_seconds is not None
+        assert 1 <= second.retry_after_seconds <= 210
         assert await _ownership_row(engine, persisted.order.id) == (
             first.ownership_token,
             first.ownership_expires_at,
         )
         assert await _events(engine, persisted.order.id) == before_events
+    finally:
+        await _delete_order(engine, persisted.order.id)
+        await engine.dispose()
+
+
+def test_expired_unknown_audit_history_stands_down_without_recovery() -> None:
+    asyncio.run(_assert_expired_invalid_history_stands_down("UNKNOWN_AUDIT_EVENT"))
+
+
+def test_expired_impossible_audit_history_stands_down_without_recovery() -> None:
+    asyncio.run(_assert_expired_invalid_history_stands_down("ORDER_APPROVED"))
+
+
+async def _assert_expired_invalid_history_stands_down(event_type: str) -> None:
+    engine = _engine()
+    persisted, request, key = await _create_order(engine)
+    try:
+        first = await _claim(engine, persisted, request, key)
+        async with AsyncSession(engine) as session, session.begin():
+            await insert_audit_event(
+                session,
+                AuditEvent(
+                    id=uuid4(),
+                    order_id=persisted.order.id,
+                    event_type=event_type,
+                    actor="synthetic:test",
+                    occurred_at=BASE_TIME + timedelta(seconds=1),
+                    description="synthetic invalid lifecycle history",
+                ),
+            )
+        await _expire_ownership(engine, persisted.order.id)
+
+        redelivery = await _claim(engine, persisted, request, key)
+
+        assert redelivery.kind is IntakeClaimKind.STAND_DOWN
+        assert redelivery.retry_after_seconds is None
+        assert (await _ownership_row(engine, persisted.order.id))[0] == first.ownership_token
+        events = await _events(engine, persisted.order.id)
+        assert event_type in {event.event_type for event in events}
+        assert "ORDER_PROCESSING_RECOVERED" not in {event.event_type for event in events}
     finally:
         await _delete_order(engine, persisted.order.id)
         await engine.dispose()

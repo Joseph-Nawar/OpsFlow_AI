@@ -100,12 +100,14 @@ def test_response_exposes_exactly_four_fields_and_serializes_domain_values() -> 
         "state",
         "failure_origin",
         "idempotent_replay",
+        "retry_after_seconds",
     }
     assert response.model_dump(mode="json") == {
         "order_id": "00000000-0000-0000-0000-000000000002",
         "state": "READY_FOR_APPROVAL",
         "failure_origin": None,
         "idempotent_replay": True,
+        "retry_after_seconds": None,
     }
 
 

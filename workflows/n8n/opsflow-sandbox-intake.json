@@ -422,6 +422,185 @@
       },
       {
         "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "outputKey": "RECOVERY_ELIGIBLE",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.retry_after_seconds }}",
+                      "rightValue": 0,
+                      "operator": {
+                        "type": "number",
+                        "operation": "largerEqual"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Backend State"
+          }
+        },
+        "id": "8c000000-0000-4000-0000-000000000036",
+        "name": "Route Recovery Hint",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          2520,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "resume": "timeInterval",
+          "amount": "={{ $json.body.retry_after_seconds }}",
+          "unit": "seconds"
+        },
+        "id": "8c000000-0000-4000-0000-000000000037",
+        "name": "Wait For Backend Recovery",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          2800,
+          -80
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "combine",
+          "combineBy": "combineByPosition",
+          "options": {
+            "includeUnpaired": false
+          }
+        },
+        "id": "8c000000-0000-4000-0000-000000000038",
+        "name": "Restore Original After Backend Recovery",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          3080,
+          -80
+        ]
+      },
+      {
+        "parameters": {
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpBearerAuth",
+          "method": "POST",
+          "url": "http://api:8000/v1/orchestration/intakes",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Idempotency-Key",
+                "value": "={{ $('Webhook').item.json.headers['x-opsflow-event-id'] }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "specifyBody": "keypair",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "document",
+                "inputDataFieldName": "document"
+              },
+              {
+                "parameterType": "formData",
+                "name": "document_type",
+                "value": "={{ $('Webhook').item.json.body.document_type }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "message_id",
+                "value": "={{ $('Webhook').item.json.body.message_id }}"
+              }
+            ]
+          },
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json",
+                "fullResponse": true
+              }
+            }
+          }
+        },
+        "id": "8c000000-0000-4000-0000-000000000039",
+        "name": "Submit to OpsFlow API After Backend Recovery",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "onError": "continueErrorOutput",
+        "position": [
+          3360,
+          -80
+        ],
+        "credentials": {
+          "httpBearerAuth": {
+            "name": "OpsFlow Orchestration"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "outputKey": "HTTP_503",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.statusCode }}",
+                      "rightValue": 503,
+                      "operator": {
+                        "type": "number",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Non-503"
+          }
+        },
+        "id": "8c000000-0000-4000-0000-000000000040",
+        "name": "Route Backend Recovery Status",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          3640,
+          -80
+        ]
+      },
+      {
+        "parameters": {
           "respondWith": "json",
           "responseBody": "{\"state\": \"UNAVAILABLE\", \"message\": \"OpsFlow transport is unavailable after bounded retries.\"}",
           "options": {
@@ -712,6 +891,11 @@
               "node": "Restore Original After Retry Wait 2",
               "type": "main",
               "index": 0
+            },
+            {
+              "node": "Restore Original After Backend Recovery",
+              "type": "main",
+              "index": 0
             }
           ]
         ]
@@ -756,7 +940,7 @@
           ],
           [
             {
-              "node": "Route Backend State",
+              "node": "Route Recovery Hint",
               "type": "main",
               "index": 0
             }
@@ -814,7 +998,7 @@
           ],
           [
             {
-              "node": "Route Backend State",
+              "node": "Route Recovery Hint",
               "type": "main",
               "index": 0
             }
@@ -851,6 +1035,82 @@
         ]
       },
       "Route Attempt 2 Status": {
+        "main": [
+          [
+            {
+              "node": "Transport Unavailable",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Route Recovery Hint",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Recovery Hint": {
+        "main": [
+          [
+            {
+              "node": "Wait For Backend Recovery",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Route Backend State",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait For Backend Recovery": {
+        "main": [
+          [
+            {
+              "node": "Restore Original After Backend Recovery",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Restore Original After Backend Recovery": {
+        "main": [
+          [
+            {
+              "node": "Submit to OpsFlow API After Backend Recovery",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Submit to OpsFlow API After Backend Recovery": {
+        "main": [
+          [
+            {
+              "node": "Route Backend Recovery Status",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Transport Unavailable",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Backend Recovery Status": {
         "main": [
           [
             {

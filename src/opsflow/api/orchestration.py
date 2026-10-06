@@ -140,6 +140,7 @@ async def create_orchestration_intake_endpoint(
         state=result.state,
         failure_origin=result.failure_origin,
         idempotent_replay=result.idempotent_replay,
+        retry_after_seconds=result.retry_after_seconds,
     )
 
 

@@ -3,6 +3,7 @@
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
+from math import ceil
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
@@ -59,6 +60,7 @@ class IntakeClaim:
     source_document_id: UUID
     ownership_token: UUID | None = None
     ownership_expires_at: datetime | None = None
+    retry_after_seconds: int | None = None
 
 
 async def claim_intake_execution(
@@ -92,8 +94,13 @@ async def claim_intake_execution(
         source_document_id = _require_source_identity(persisted, source, order_id)
         audit_events = await get_audit_events(session, order_id)
         kind = decide_intake_claim_kind(persisted.order.state, audit_events)
+        retry_after_seconds: int | None = None
         if kind is IntakeClaimKind.STAND_DOWN:
-            kind = await _recover_stale_kind(session, persisted)
+            kind, retry_after_seconds = await _recover_stale_ownership(
+                session,
+                persisted,
+                audit_events,
+            )
 
         if kind is IntakeClaimKind.INITIAL:
             processing_order = persisted.order.transition_to(OrderState.PROCESSING)
@@ -200,32 +207,41 @@ async def claim_intake_execution(
                 if kind is not IntakeClaimKind.STAND_DOWN
                 else None
             ),
+            retry_after_seconds=retry_after_seconds,
         )
 
     return claim
 
 
-async def _recover_stale_kind(
+async def _recover_stale_ownership(
     session: AsyncSession,
     persisted: PersistedOrder,
-) -> IntakeClaimKind:
-    """Recover only a known expired owner; bare active states stand down."""
+    audit_events: tuple[AuditEvent, ...],
+) -> tuple[IntakeClaimKind, int | None]:
+    """Choose recovery or a safe delay from one post-lock database-clock read."""
 
     if (
-        persisted.intake_claim_token is None
+        not _is_recoverable_in_progress_history(persisted.order.state, audit_events)
+        or persisted.intake_claim_token is None
         or persisted.intake_claim_expires_at is None
         or persisted.order.state not in {OrderState.PROCESSING, OrderState.EXTRACTED}
     ):
-        return IntakeClaimKind.STAND_DOWN
+        return IntakeClaimKind.STAND_DOWN, None
 
     now = await session.scalar(select(func.clock_timestamp()))
-    if not isinstance(now, datetime) or persisted.intake_claim_expires_at > now:
-        return IntakeClaimKind.STAND_DOWN
-    return (
-        IntakeClaimKind.RECOVER_PROCESSING
-        if persisted.order.state is OrderState.PROCESSING
-        else IntakeClaimKind.RECOVER_EXTRACTED
-    )
+    if not isinstance(now, datetime):
+        return IntakeClaimKind.STAND_DOWN, None
+    if persisted.intake_claim_expires_at <= now:
+        return (
+            (
+                IntakeClaimKind.RECOVER_PROCESSING
+                if persisted.order.state is OrderState.PROCESSING
+                else IntakeClaimKind.RECOVER_EXTRACTED
+            ),
+            None,
+        )
+    remaining = ceil((persisted.intake_claim_expires_at - now).total_seconds())
+    return IntakeClaimKind.STAND_DOWN, max(1, min(remaining, INTAKE_OWNERSHIP_LEASE_SECONDS))
 
 
 def _require_source_identity(
@@ -279,19 +295,13 @@ def decide_intake_claim_kind(
 ) -> IntakeClaimKind:
     """Decide ownership from one locked state and deterministic audit history."""
 
-    if not isinstance(state, OrderState) or not isinstance(audit_events, tuple):
+    if not isinstance(state, OrderState):
         return IntakeClaimKind.STAND_DOWN
 
-    ordered = tuple(sorted(audit_events, key=lambda event: (event.occurred_at, event.id)))
-    if any(
-        not isinstance(event, AuditEvent) or event.event_type not in _KNOWN_AUDIT_EVENTS
-        for event in ordered
-    ):
-        return IntakeClaimKind.STAND_DOWN
-    if ordered and len({event.order_id for event in ordered}) != 1:
+    event_types = _normalized_audit_event_types(audit_events)
+    if event_types is None:
         return IntakeClaimKind.STAND_DOWN
 
-    event_types = tuple(event.event_type for event in ordered)
     if state is OrderState.RECEIVED:
         if event_types == ("ORDER_RECEIVED",):
             return IntakeClaimKind.INITIAL
@@ -315,6 +325,37 @@ def decide_intake_claim_kind(
         return IntakeClaimKind.STAND_DOWN
 
     return IntakeClaimKind.STAND_DOWN
+
+
+def _normalized_audit_event_types(
+    audit_events: tuple[AuditEvent, ...],
+) -> tuple[str, ...] | None:
+    if not isinstance(audit_events, tuple) or any(
+        not isinstance(event, AuditEvent) or event.event_type not in _KNOWN_AUDIT_EVENTS
+        for event in audit_events
+    ):
+        return None
+    ordered = tuple(sorted(audit_events, key=lambda event: (event.occurred_at, event.id)))
+    if ordered and len({event.order_id for event in ordered}) != 1:
+        return None
+    return tuple(event.event_type for event in ordered)
+
+
+def _is_recoverable_in_progress_history(
+    state: OrderState,
+    audit_events: tuple[AuditEvent, ...],
+) -> bool:
+    event_types = _normalized_audit_event_types(audit_events)
+    if event_types is None:
+        return False
+    valid, phase, _, _ = _audit_history_status(event_types)
+    if not valid:
+        return False
+    if state is OrderState.PROCESSING:
+        return phase in {"PROCESSING", "PROCESSING_RESTORED"}
+    if state is OrderState.EXTRACTED:
+        return phase in {"EXTRACTED", "EXTRACTED_FAILED", "EXTRACTED_RESTORED"}
+    return False
 
 
 def _audit_history_status(

@@ -40,6 +40,7 @@ class OrchestrationIntakeResult:
     failure_origin: OrderState | None
     idempotent_replay: bool
     execution: IntakeExecution
+    retry_after_seconds: int | None = None
 
 
 class OrchestrationIntakeHandler(Protocol):

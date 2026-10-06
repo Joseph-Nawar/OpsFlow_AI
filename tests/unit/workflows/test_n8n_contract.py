@@ -89,7 +89,7 @@ def test_webhook_and_http_request_contract_is_exact() -> None:
     assert webhook["parameters"]["path"] == "opsflow-sandbox-intake"
     assert webhook["parameters"]["responseMode"] == "responseNode"
 
-    assert len(http_requests) == 3
+    assert len(http_requests) == 4
     for http_request in http_requests:
         assert http_request["typeVersion"] == 4.5
         parameters = http_request["parameters"]
@@ -138,8 +138,8 @@ def test_webhook_and_http_request_contract_is_exact() -> None:
 def test_switch_routes_only_on_server_state_with_safe_default() -> None:
     workflow = _load_workflow()
     switches = _nodes_by_type(workflow, "n8n-nodes-base.switch")
-    assert len(switches) == 4
-    status_switches = [switch for switch in switches if "Status" in switch["name"]]
+    assert len(switches) == 6
+    status_switches = [switch for switch in switches if switch["name"].startswith("Route Attempt")]
     assert len(status_switches) == 3
     for switch in status_switches:
         rules = switch["parameters"]["rules"]["values"]
@@ -206,8 +206,9 @@ def test_workflow_has_no_business_authority_or_embedded_private_data() -> None:
 def test_workflow_has_a_finite_two_retry_transport_dag() -> None:
     workflow = _load_workflow()
     waits = _nodes_by_type(workflow, "n8n-nodes-base.wait")
-    assert len(waits) == 2
-    assert all("retry" in node["name"].lower() for node in waits)
+    assert len(waits) == 3
+    retry_waits = [node for node in waits if "retry" in node["name"].lower()]
+    assert len(retry_waits) == 2
 
     restorers = [
         node
@@ -237,7 +238,7 @@ def test_workflow_has_a_finite_two_retry_transport_dag() -> None:
     } <= names
 
     http_names = {node["name"] for node in _nodes_by_type(workflow, "n8n-nodes-base.httpRequest")}
-    assert len(http_names) == 3
+    assert len(http_names) == 4
     for name in http_names:
         connections = workflow["connections"][name]
         assert len(connections["main"]) == 2
@@ -295,21 +296,21 @@ def test_retry_transport_outputs_have_no_silent_terminal_branch() -> None:
     assert_target("Submit to OpsFlow API", 0, "Route Attempt 0 Status")
     assert_target("Submit to OpsFlow API", 1, "Wait Before Retry 1")
     assert_target("Route Attempt 0 Status", 0, "Wait Before Retry 1")
-    assert_target("Route Attempt 0 Status", 1, "Route Backend State")
+    assert_target("Route Attempt 0 Status", 1, "Route Recovery Hint")
     assert_target("Wait Before Retry 1", 0, "Restore Original After Retry Wait 1", 1)
     assert_target("Restore Original After Retry Wait 1", 0, "Submit to OpsFlow API Retry 1")
 
     assert_target("Submit to OpsFlow API Retry 1", 0, "Route Attempt 1 Status")
     assert_target("Submit to OpsFlow API Retry 1", 1, "Wait Before Retry 2")
     assert_target("Route Attempt 1 Status", 0, "Wait Before Retry 2")
-    assert_target("Route Attempt 1 Status", 1, "Route Backend State")
+    assert_target("Route Attempt 1 Status", 1, "Route Recovery Hint")
     assert_target("Wait Before Retry 2", 0, "Restore Original After Retry Wait 2", 1)
     assert_target("Restore Original After Retry Wait 2", 0, "Submit to OpsFlow API Retry 2")
 
     assert_target("Submit to OpsFlow API Retry 2", 0, "Route Attempt 2 Status")
     assert_target("Submit to OpsFlow API Retry 2", 1, "Transport Unavailable")
     assert_target("Route Attempt 2 Status", 0, "Transport Unavailable")
-    assert_target("Route Attempt 2 Status", 1, "Route Backend State")
+    assert_target("Route Attempt 2 Status", 1, "Route Recovery Hint")
 
     for status_router in (
         "Route Attempt 0 Status",
@@ -317,8 +318,49 @@ def test_retry_transport_outputs_have_no_silent_terminal_branch() -> None:
         "Route Attempt 2 Status",
     ):
         for branch in targets(status_router, 1):
-            assert branch["node"] == "Route Backend State"
+            assert branch["node"] == "Route Recovery Hint"
 
     for output in connections["Route Backend State"]["main"]:
         assert output
         assert output[0]["node"] in EXPECTED_STATES | {"Unexpected State"}
+
+
+def test_live_processing_stand_down_has_a_backend_authorized_recovery_path() -> None:
+    workflow = _load_workflow()
+    serialized = _serialized(workflow)
+
+    assert "Route Recovery Hint" in serialized
+    assert "Wait For Backend Recovery" in serialized
+    assert "Submit to OpsFlow API After Backend Recovery" in serialized
+    assert "retry_after_seconds" in serialized
+    assert '"amount": 210' not in serialized
+    assert '"rightValue": 210' not in serialized
+
+    recovery_wait = next(
+        node for node in workflow["nodes"] if node["name"] == "Wait For Backend Recovery"
+    )
+    assert recovery_wait["parameters"] == {
+        "resume": "timeInterval",
+        "amount": "={{ $json.body.retry_after_seconds }}",
+        "unit": "seconds",
+    }
+
+    recovery_hint = next(
+        node for node in workflow["nodes"] if node["name"] == "Route Recovery Hint"
+    )
+    condition = recovery_hint["parameters"]["rules"]["values"][0]["conditions"]["conditions"][0]
+    assert condition["leftValue"] == "={{ $json.body.retry_after_seconds }}"
+    assert condition["rightValue"] == 0
+    assert condition["operator"] == {"type": "number", "operation": "largerEqual"}
+
+    connections = workflow["connections"]
+    assert connections["Route Recovery Hint"]["main"][0][0]["node"] == "Wait For Backend Recovery"
+    assert connections["Route Recovery Hint"]["main"][1][0]["node"] == "Route Backend State"
+    assert (
+        connections["Wait For Backend Recovery"]["main"][0][0]["node"]
+        == "Restore Original After Backend Recovery"
+    )
+    assert (
+        connections["Restore Original After Backend Recovery"]["main"][0][0]["node"]
+        == "Submit to OpsFlow API After Backend Recovery"
+    )

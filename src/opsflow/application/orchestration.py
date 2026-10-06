@@ -131,6 +131,7 @@ def _standing_down_result(
         failure_origin=claim.persisted.order.failure_origin,
         idempotent_replay=idempotent_replay,
         execution=IntakeExecution.STANDING_DOWN,
+        retry_after_seconds=claim.retry_after_seconds,
     )
 
 
