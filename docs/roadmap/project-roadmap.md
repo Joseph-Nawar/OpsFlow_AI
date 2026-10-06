@@ -208,7 +208,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | Milestone | Status |
 | --- | --- |
 | M10A — Hardening Contract, Threat Model & Implementation Plan | COMPLETE |
-| M10B — Cross-Boundary Idempotency, Failure Semantics & Recovery Hardening | NOT STARTED |
+| M10B — Cross-Boundary Idempotency, Failure Semantics & Recovery Hardening | IN PROGRESS |
 | M10C — Security Boundaries, Input Safety & Secret Hygiene | NOT STARTED |
 | M10D — Structured Observability, Correlation & Operational Health | NOT STARTED |
 | M10E — Adversarial Resilience & Whole-System Failure Drills | NOT STARTED |
@@ -316,7 +316,7 @@ Protect writes with approval state, durable synchronization intent, stable provi
 
 ### Phase 10 — Reliability, Security & Hardening
 
-**Status:** Phase 10 `IN PROGRESS`; M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`; M10B–M10F `NOT STARTED`.
+**Status:** Phase 10 `IN PROGRESS`; M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`; M10B `IN PROGRESS`; M10C–M10F `NOT STARTED`.
 The authoritative M10A [design](../superpowers/specs/2026-10-05-phase-10-reliability-security-hardening-design.md)
 and [implementation plan](../superpowers/plans/2026-10-05-phase-10-reliability-security-hardening.md)
 define the hardening boundary. No M10B–M10F production behavior is included

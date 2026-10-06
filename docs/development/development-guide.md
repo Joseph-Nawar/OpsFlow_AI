@@ -14,7 +14,7 @@ and independent whole-phase audit, and Phase 9 Odoo/HubSpot synchronization,
 durable receipts, bounded recovery, and independent whole-phase audit. Phase 9
 is `COMPLETE` (M9A–M9F `COMPLETE`; M9F and Phase 9 technical approval at
 `b96364d11da37b61fd6c8bc75c651918cf596ac7`). Phase 10 is `IN PROGRESS` with
-M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88` and M10B–M10F `NOT STARTED`; Phases 11–12 remain `NOT STARTED`.
+M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`, M10B `IN PROGRESS`, and M10C–M10F `NOT STARTED`; Phases 11–12 remain `NOT STARTED`.
 The [Phase 0 audit record](../audits/phase-0-audit.md) through the [Phase 9
 audit record](../audits/phase-9-audit.md) preserve closeout evidence.
 Commands below distinguish historical verified checks from current or

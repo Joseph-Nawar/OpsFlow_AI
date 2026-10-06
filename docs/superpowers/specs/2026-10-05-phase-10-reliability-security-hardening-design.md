@@ -33,9 +33,9 @@ sequence. That is a real undetected-state gap. The fix belongs in M10B and
 must preserve ordinary duplicate stand-down and human Retry semantics.
 
 M10A is `COMPLETE` following final human approval at
-`ab7cec323e4d45dae57e5d418bc0755175aa0a88`. M10B through M10F remain
-`NOT STARTED`; this closeout changes status documentation only and does not
-implement later-milestone behavior.
+`ab7cec323e4d45dae57e5d418bc0755175aa0a88`. M10B is now `IN PROGRESS` and
+M10C through M10F remain `NOT STARTED`; this status transition does not change
+the approved M10A design.
 
 ## 2. Repository evidence reviewed
 
