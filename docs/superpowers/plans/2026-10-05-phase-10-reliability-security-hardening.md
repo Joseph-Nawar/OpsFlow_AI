@@ -447,6 +447,21 @@ Commit as:
   restart by design, and never use high-cardinality identifiers as labels; no
   hosted or paid infrastructure is introduced.
 
+### M10D implementation record — pending human review
+
+The candidate implementation uses the standard library only: pure-ASGI
+request correlation outside the existing streaming body limiter, one
+allowlisted JSON event logger, fixed process-local counters/histograms, and
+human-view-only `/v1/operations/metrics` and `/v1/operations/integrations`
+diagnostics. Provider observations are attached at the existing Gemini,
+Phase 9 executor, and authenticated notification-outcome seams. `/ready` is
+unchanged and database-only. The installed `google-genai==2.24.0` Interaction
+object supplies trustworthy `usage` counts, so optional non-negative input,
+output, and total counts are exposed without estimation. The four n8n
+workflows use `={{ $execution.id }}` only as a stable diagnostic header on
+OpsFlow API calls; no workflow business-state or retry ownership was added.
+M10E/M10F, Phase 11, and Phase 12 remain outside this implementation.
+
 ## M10E — Adversarial Resilience & Whole-System Failure Drills
 
 ### Boundary

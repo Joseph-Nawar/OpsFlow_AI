@@ -1,8 +1,8 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `IN PROGRESS`; M10E–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `IMPLEMENTED — PENDING HUMAN REVIEW`; M10E–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
-**Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B/M10C implementation records below. M10D–M10F behavior remains outside this document's implementation scope.
+**Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B/M10C/M10D implementation records below. M10E–M10F behavior remains outside this document's implementation scope.
 
 ## 1. Design decision
 
@@ -554,6 +554,52 @@ SQL interpolation, and deterministic software remains authoritative over AI
 output. No CORS, WAF, OAuth, or public-IAM architecture was introduced; the
 development bearer boundary remains local/demo-only. GET/HEAD/OPTIONS routes
 do not consume request bodies through application parsing.
+
+## 8B. M10D implementation record — pending human review
+
+M10D implements a standard-library-only observability boundary. A pure-ASGI
+correlation middleware validates or generates `X-Request-ID` values, accepts a
+bounded optional `X-Workflow-Execution-ID`, returns the effective request ID
+on responses, and runs outside the existing streaming body limiter so `413`
+responses are correlated without a second body buffer. Correlation values are
+diagnostic only and do not affect idempotency, ownership, review authorization,
+or provider identities.
+
+Structured events are one JSON object per line with an explicit allowlist for
+event, request/workflow correlation, order UUID, provider, operation, state,
+bounded failure code, attempt, duration, HTTP route/status, and trustworthy
+Gemini usage counts. Payloads, prompts, documents, credentials, headers,
+provider responses, database URLs, customer/PO/filename values, and raw
+exception text are not accepted event fields. Durations use a monotonic clock.
+
+The process-local registry exposes fixed counters and small duration buckets for
+HTTP, intake, provider, notification, and order-sync outcomes. Labels are
+bounded route/status/provider/operation/state/retry/channel/step/failure
+dimensions only; request IDs, workflow IDs, order IDs, customer data, filenames,
+actors, email, and exception text are never labels. Metrics reset on process
+restart by design. `GET /v1/operations/metrics` and
+`GET /v1/operations/integrations` require existing human view access and do not
+probe providers.
+
+Integration health is passive last-observed state: Gemini, Odoo, HubSpot,
+Gmail, Slack, and n8n distinguish configuration from `NOT_OBSERVED`, `HEALTHY`,
+or `UNAVAILABLE` outcomes. Gemini/Odoo/HubSpot state is updated only by the
+existing provider seams; Gmail/Slack state is sourced only from authenticated
+notification outcomes; n8n state is sourced from authenticated inbound
+workflow traffic. `/ready` remains strictly database-only and does not depend
+on any of these observations.
+
+The installed `google-genai` SDK is 2.24.0 and its Interaction response exposes
+`usage.total_input_tokens`, `usage.total_output_tokens`, and `usage.total_tokens`.
+Those non-negative integers are propagated only as optional provider-neutral
+telemetry; no token estimate is made. The four committed n8n workflows use the
+documented `={{ $execution.id }}` expression for the diagnostic header on every
+OpsFlow API request, preserving one execution correlation value across retries
+and the M10B delayed resend. n8n still owns transport only.
+
+No CORS, host-policy, public-IAM, collector, tracing stack, database telemetry
+table, or new runtime dependency was introduced. M10E adversarial drills,
+Phase 11 evaluation, and Phase 12 release work remain outside this record.
 
 ## 9. Phase 10 decomposition and gates
 
