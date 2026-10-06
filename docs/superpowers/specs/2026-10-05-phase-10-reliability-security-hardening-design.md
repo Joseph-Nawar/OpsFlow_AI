@@ -1,6 +1,6 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `IMPLEMENTED — PENDING HUMAN REVIEW`; M10E–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `COMPLETE` (human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`); M10E–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
 **Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B/M10C/M10D implementation records below. M10E–M10F behavior remains outside this document's implementation scope.
 
@@ -555,7 +555,7 @@ output. No CORS, WAF, OAuth, or public-IAM architecture was introduced; the
 development bearer boundary remains local/demo-only. GET/HEAD/OPTIONS routes
 do not consume request bodies through application parsing.
 
-## 8B. M10D implementation record — pending human review
+## 8B. M10D implementation record — human-approved closeout
 
 M10D implements a standard-library-only observability boundary. A pure-ASGI
 correlation middleware validates or generates `X-Request-ID` values, accepts a
@@ -619,8 +619,11 @@ data Odoo calls and Phase 9 provider metrics were incomplete), and M10D-03
 remediation adds the authenticated-success-only n8n observation rule, the
 bounded provider-health classification above, one logical trusted-data Odoo
 instrumentation seam, provider metric reuse for Phase 9 steps, and safe
-notification provider/order fields. The milestone remains
-`IMPLEMENTED — PENDING HUMAN REVIEW` pending targeted independent re-review.
+notification provider/order fields. The targeted independent re-review returned
+`PASS` with no unresolved High or Medium findings. Human approval records M10D
+`COMPLETE` against technical SHA
+`cf0b331864ca2cc5246aa32c7ce12827b79284d0`. M10E–M10F remain `NOT STARTED`;
+Phase 10 remains `IN PROGRESS`; Phase 11–12 remain `NOT STARTED`.
 
 ## 9. Phase 10 decomposition and gates
 

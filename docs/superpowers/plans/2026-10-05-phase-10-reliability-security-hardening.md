@@ -447,7 +447,7 @@ Commit as:
   restart by design, and never use high-cardinality identifiers as labels; no
   hosted or paid infrastructure is introduced.
 
-### M10D implementation record — pending human review
+### M10D implementation record — human-approved closeout
 
 The candidate implementation uses the standard library only: pure-ASGI
 request correlation outside the existing streaming body limiter, one
@@ -462,7 +462,7 @@ workflows use `={{ $execution.id }}` only as a stable diagnostic header on
 OpsFlow API calls; no workflow business-state or retry ownership was added.
 M10E/M10F, Phase 11, and Phase 12 remain outside this implementation.
 
-#### Independent review remediation — pending re-review
+#### Independent review remediation and human-approved closeout
 
 The initial candidate was `424ba74b91b3fae13721e7eb93f20a3dad9ad3f5`.
 Independent review recorded three MEDIUM findings: M10D-01 (forged workflow
@@ -488,8 +488,11 @@ events now include only the safe provider/channel and order UUID.
 The minor metrics-endpoint wording issue was resolved by describing the
 endpoint as a bounded process-local snapshot without claiming exclusion from
 later HTTP completion accounting. No migration, dependency, lockfile,
-workflow, or M10E/M10F change was introduced. M10D remains
-`IMPLEMENTED — PENDING HUMAN REVIEW`.
+workflow, or M10E/M10F change was introduced. The targeted independent
+re-review returned `PASS` with no unresolved High or Medium findings. Human
+approval records M10D `COMPLETE` against technical SHA
+`cf0b331864ca2cc5246aa32c7ce12827b79284d0`; M10E–M10F remain `NOT STARTED`,
+and Phase 10 remains `IN PROGRESS`.
 
 ## M10E — Adversarial Resilience & Whole-System Failure Drills
 
