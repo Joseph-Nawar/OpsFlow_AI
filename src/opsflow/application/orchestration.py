@@ -1,6 +1,7 @@
 """Application service for one Phase 7 orchestration intake execution."""
 
 import asyncio
+import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -73,6 +74,13 @@ class OrchestrationUnavailableError(Exception):
 
     def __init__(self) -> None:
         super().__init__(_UNAVAILABLE_MESSAGE)
+
+
+def _require_execution_budget(deadline: float) -> None:
+    """Stop before another blocking boundary can outlive the intake lease."""
+
+    if time.monotonic() >= deadline:
+        raise OrchestrationUnavailableError()
 
 
 def _basename(filename: str) -> str:
@@ -198,6 +206,8 @@ async def _execute_orchestration_intake(
     runtime: OrchestrationRuntime,
     actor: str,
     recorded_at: datetime,
+    *,
+    deadline: float,
 ) -> OrchestrationIntakeResult:
     """Execute one claimed document through Phases 2–5."""
 
@@ -267,6 +277,7 @@ async def _execute_orchestration_intake(
     if claim.kind is IntakeClaimKind.STAND_DOWN:
         return _standing_down_result(claim, idempotent_replay=idempotent_replay)
 
+    _require_execution_budget(deadline)
     processing_classifier = (
         classify_processing_failure
         if claim.kind
@@ -293,6 +304,7 @@ async def _execute_orchestration_intake(
             ownership_token=claim.ownership_token,
         )
 
+    _require_execution_budget(deadline)
     if session.in_transaction():
         raise RuntimeError("orchestration provider call requires no active transaction")
     try:
@@ -311,6 +323,7 @@ async def _execute_orchestration_intake(
             ownership_token=claim.ownership_token,
         )
 
+    _require_execution_budget(deadline)
     if (
         draft.source_sha256 != source_identity.sha256
         or draft.source_document_type is not source_identity.document_type
@@ -368,6 +381,7 @@ async def _execute_orchestration_intake(
     except (SQLAlchemyError, StaleIntakeOwnershipError):
         raise OrchestrationUnavailableError() from None
 
+    _require_execution_budget(deadline)
     return _completed_order_result(validation.order, idempotent_replay=idempotent_replay)
 
 
@@ -381,6 +395,7 @@ async def execute_orchestration_intake(
     """Execute intake within the bounded lifetime protected by its lease."""
 
     try:
+        deadline = time.monotonic() + INTAKE_EXECUTION_BUDGET_SECONDS
         async with asyncio.timeout(INTAKE_EXECUTION_BUDGET_SECONDS):
             return await _execute_orchestration_intake(
                 session,
@@ -388,6 +403,7 @@ async def execute_orchestration_intake(
                 runtime,
                 actor,
                 recorded_at,
+                deadline=deadline,
             )
     except TimeoutError:
         raise OrchestrationUnavailableError() from None
