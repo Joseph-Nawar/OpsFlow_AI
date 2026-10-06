@@ -63,8 +63,8 @@ class ReviewLineRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sku: StrictStr | None = Field(default=None, max_length=256)
-    description: StrictStr | None = Field(default=None, max_length=2_048)
+    sku: StrictStr | None = Field(max_length=256)
+    description: StrictStr | None = Field(max_length=2_048)
     quantity: PositiveTransportDecimal | None
     submitted_price: NonNegativeTransportDecimal | None
 
@@ -74,9 +74,9 @@ class ReviewDraftRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    customer_name: StrictStr | None = Field(default=None, max_length=255)
-    customer_reference: StrictStr | None = Field(default=None, max_length=256)
-    po_number: StrictStr | None = Field(default=None, max_length=256)
+    customer_name: StrictStr | None = Field(max_length=255)
+    customer_reference: StrictStr | None = Field(max_length=256)
+    po_number: StrictStr | None = Field(max_length=256)
     order_date: date | None
     requested_delivery_date: date | None
     currency: StrictStr | None
