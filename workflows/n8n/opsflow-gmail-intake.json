@@ -576,6 +576,10 @@
               {
                 "name": "Idempotency-Key",
                 "value": "={{ $json.idempotency_key }}"
+              },
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
               }
             ]
           },
@@ -808,6 +812,10 @@
               {
                 "name": "Idempotency-Key",
                 "value": "={{ $json.idempotency_key }}"
+              },
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
               }
             ]
           },
@@ -941,6 +949,10 @@
               {
                 "name": "Idempotency-Key",
                 "value": "={{ $json.idempotency_key }}"
+              },
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
               }
             ]
           },
@@ -1041,6 +1053,10 @@
               {
                 "name": "Idempotency-Key",
                 "value": "={{ $json.idempotency_key }}"
+              },
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
               }
             ]
           },

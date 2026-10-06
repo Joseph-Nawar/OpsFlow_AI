@@ -3,6 +3,7 @@
 import asyncio
 from uuid import uuid4
 
+from opsflow.observability.runtime import Observability, reset_observability, set_observability
 from opsflow.order_sync.contracts import (
     HubSpotCompanyReceipt,
     OrderSyncFailureCode,
@@ -67,3 +68,22 @@ def test_fixed_executor_bounds_unknown_step_without_dispatch() -> None:
     assert result == OrderSyncStepFailure(OrderSyncFailureCode.INTEGRATION_CONFIG)
     assert not odoo.calls
     assert not hubspot.calls
+
+
+def test_executor_observes_one_provider_operation_without_changing_result() -> None:
+    async def exercise() -> tuple[object, Observability]:
+        result = HubSpotCompanyReceipt("company-synthetic-2")
+        observer = Observability({"hubspot": "CONFIGURED"})
+        token = set_observability(observer)
+        try:
+            executor = Phase9OrderSyncExecutor(_Executor(None), _Executor(result))
+            returned = await executor.execute(uuid4(), OrderSyncStep.HUBSPOT_COMPANY)
+        finally:
+            reset_observability(token)
+        return returned, observer
+
+    returned, observer = asyncio.run(exercise())
+    assert returned == HubSpotCompanyReceipt("company-synthetic-2")
+    snapshot = observer.metrics.snapshot()
+    assert snapshot["counters"]["order_sync_steps_total"]
+    assert observer.integrations.snapshot()["hubspot"]["observation"] == "HEALTHY"

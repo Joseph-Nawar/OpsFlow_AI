@@ -2,6 +2,7 @@
 
 import json
 import math
+import time
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -21,6 +22,7 @@ from opsflow.extraction.provider import (
     StructuredGenerationRequest,
     StructuredGenerationResult,
 )
+from opsflow.observability.runtime import current_observability, duration_ms
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +93,9 @@ class GeminiProvider(LLMProvider):
         root_client = self._client
         owns_client = root_client is None
         async_client: object | None = None
+        started_ns = time.perf_counter_ns()
+        usage: tuple[int | None, int | None, int | None] = (None, None, None)
+        failure_code: str | None = None
 
         try:
             if root_client is None:
@@ -116,20 +121,45 @@ class GeminiProvider(LLMProvider):
                 payload = json.loads(output_text)
             except json.JSONDecodeError as exc:
                 raise ProviderError("Gemini provider returned invalid JSON") from exc
-            return StructuredGenerationResult(payload=payload)
+            usage = _usage_counts(interaction)
+            return StructuredGenerationResult(
+                payload=payload,
+                input_tokens=usage[0],
+                output_tokens=usage[1],
+                total_tokens=usage[2],
+            )
         except ProviderError:
+            failure_code = "PROVIDER_ERROR"
             raise
         except (TimeoutError, httpx.TimeoutException) as exc:
+            failure_code = "PROVIDER_TIMEOUT"
             raise ProviderTimeoutError("Gemini provider request timed out") from exc
         except ServerError as exc:
             if _is_timeout_error(exc):
+                failure_code = "PROVIDER_TIMEOUT"
                 raise ProviderTimeoutError("Gemini provider request timed out") from exc
+            failure_code = "PROVIDER_UNAVAILABLE"
             raise ProviderUnavailableError("Gemini provider is unavailable") from exc
         except Exception as exc:
             if _is_timeout_error(exc):
+                failure_code = "PROVIDER_TIMEOUT"
                 raise ProviderTimeoutError("Gemini provider request timed out") from exc
+            failure_code = "PROVIDER_ERROR"
             raise ProviderError("Gemini provider request failed") from exc
         finally:
+            observer = current_observability()
+            if observer is not None:
+                with suppress(Exception):
+                    observer.provider_completed(
+                        provider="gemini",
+                        operation="structured_generation",
+                        success=failure_code is None,
+                        duration_ms=duration_ms(started_ns),
+                        failure_code=failure_code,
+                        input_tokens=usage[0],
+                        output_tokens=usage[1],
+                        total_tokens=usage[2],
+                    )
             if owns_client:
                 if async_client is not None:
                     async_close = getattr(async_client, "aclose", None)
@@ -142,6 +172,17 @@ class GeminiProvider(LLMProvider):
                     if sync_close is not None:
                         with suppress(Exception):
                             sync_close()
+
+
+def _usage_counts(interaction: object) -> tuple[int | None, int | None, int | None]:
+    """Read only authoritative non-negative counts from google-genai 2.24.0."""
+
+    usage = getattr(interaction, "usage", None)
+    values: list[int | None] = []
+    for field_name in ("total_input_tokens", "total_output_tokens", "total_tokens"):
+        value = getattr(usage, field_name, None)
+        values.append(value if type(value) is int and value >= 0 else None)
+    return values[0], values[1], values[2]
 
 
 __all__ = ["GeminiConfig", "GeminiProvider"]

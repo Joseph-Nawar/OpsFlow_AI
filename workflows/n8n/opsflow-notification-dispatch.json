@@ -38,6 +38,16 @@
           "genericAuthType": "httpBearerAuth",
           "method": "POST",
           "url": "={{ 'http://' + 'api' + ':8000' + '/v1/integrations/notifications/claim' }}",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
+              }
+            ]
+          },
           "options": {
             "response": {
               "response": {
@@ -427,6 +437,16 @@
           "genericAuthType": "httpBearerAuth",
           "method": "POST",
           "url": "={{ 'http://' + 'api' + ':8000' + '/v1/integrations/notifications/' + $json.notification_id + '/outcome' }}",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
+              }
+            ]
+          },
           "sendBody": true,
           "contentType": "json",
           "specifyBody": "json",

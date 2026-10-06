@@ -103,6 +103,8 @@ def test_openapi_exposes_only_the_approved_business_routes() -> None:
         "/v1/orchestration/order-sync/execute-next",
         "/v1/integrations/notifications/claim",
         "/v1/integrations/notifications/{notification_id}/outcome",
+        "/v1/operations/metrics",
+        "/v1/operations/integrations",
     }
 
 

@@ -88,6 +88,10 @@
               {
                 "name": "Idempotency-Key",
                 "value": "={{ $('Webhook').item.json.headers['x-opsflow-event-id'] }}"
+              },
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
               }
             ]
           },
@@ -208,6 +212,10 @@
               {
                 "name": "Idempotency-Key",
                 "value": "={{ $('Webhook').item.json.headers['x-opsflow-event-id'] }}"
+              },
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
               }
             ]
           },
@@ -328,6 +336,10 @@
               {
                 "name": "Idempotency-Key",
                 "value": "={{ $('Webhook').item.json.headers['x-opsflow-event-id'] }}"
+              },
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
               }
             ]
           },
@@ -507,6 +519,10 @@
               {
                 "name": "Idempotency-Key",
                 "value": "={{ $('Webhook').item.json.headers['x-opsflow-event-id'] }}"
+              },
+              {
+                "name": "X-Workflow-Execution-ID",
+                "value": "={{ $execution.id }}"
               }
             ]
           },

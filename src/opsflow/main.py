@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from opsflow.api.notifications import router as notifications_router
+from opsflow.api.operations import router as operations_router
 from opsflow.api.orchestration import router as orchestration_router
 from opsflow.api.orders import router as orders_router
 from opsflow.api.review import router as review_router
@@ -24,6 +25,8 @@ from opsflow.application.orchestration import execute_orchestration_intake
 from opsflow.database import create_engine, create_sessionmaker, database_is_available
 from opsflow.http_limits import RequestBodyLimitMiddleware
 from opsflow.hubspot import HubSpotCRMAdapter
+from opsflow.observability.middleware import RequestCorrelationMiddleware
+from opsflow.observability.runtime import Observability
 from opsflow.odoo import OdooERPAdapter
 from opsflow.orchestration.composition import build_orchestration_runtime
 from opsflow.orchestration.contracts import (
@@ -59,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     engine = create_engine(resolved_settings)
     app = FastAPI(title="OpsFlow AI", lifespan=lifespan)
+    app.state.observability = Observability(_integration_configuration(resolved_settings))
     app.state.database_engine = engine
     app.state.database_sessionmaker = create_sessionmaker(engine)
     review_runtime = build_demo_review_runtime()
@@ -125,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(review_router)
     app.include_router(orchestration_router)
     app.include_router(notifications_router)
+    app.include_router(operations_router)
 
     @app.exception_handler(UnauthenticatedError)
     async def unauthenticated_error_handler(
@@ -208,7 +213,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.add_middleware(RequestBodyLimitMiddleware)
+    app.add_middleware(RequestCorrelationMiddleware, observability=app.state.observability)
     return app
+
+
+def _integration_configuration(settings: Settings) -> dict[str, str]:
+    """Resolve configuration state without attempting any external connection."""
+
+    gemini_complete = all(
+        value is not None and (not isinstance(value, str) or bool(value.strip()))
+        for value in (
+            settings.gemini_api_key,
+            settings.gemini_model,
+            settings.gemini_timeout_seconds,
+        )
+    )
+    odoo_complete = all(
+        value is not None
+        for value in (
+            settings.odoo_base_url,
+            settings.odoo_database,
+            settings.odoo_api_key,
+            settings.odoo_company_id,
+            settings.odoo_warehouse_id,
+            settings.odoo_pricelist_id,
+        )
+    )
+    hubspot_complete = all(
+        value is not None
+        for value in (
+            settings.hubspot_service_key,
+            settings.hubspot_pipeline_id,
+            settings.hubspot_initial_stage_id,
+            settings.hubspot_portal_currency,
+            settings.hubspot_expected_portal_id,
+        )
+    )
+    return {
+        "gemini": "CONFIGURED" if gemini_complete else "UNCONFIGURED",
+        "odoo": "CONFIGURED" if odoo_complete else "UNCONFIGURED",
+        "hubspot": "CONFIGURED" if hubspot_complete else "UNCONFIGURED",
+        "gmail": "EXTERNALLY_MANAGED",
+        "slack": "EXTERNALLY_MANAGED",
+        "n8n": "EXTERNALLY_MANAGED",
+    }
 
 
 app = create_app()

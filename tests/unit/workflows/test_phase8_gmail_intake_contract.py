@@ -445,7 +445,8 @@ def test_multipart_identity_and_binary_property_are_constant_across_attempts() -
         == "={{ $json.source_system }}"
     )
     assert parameters["headerParameters"]["parameters"] == [
-        {"name": "Idempotency-Key", "value": "={{ $json.idempotency_key }}"}
+        {"name": "Idempotency-Key", "value": "={{ $json.idempotency_key }}"},
+        {"name": "X-Workflow-Execution-ID", "value": "={{ $execution.id }}"},
     ]
     assert nodes["Preserve Original Gmail Intake"]["parameters"]["options"] == {
         "stripBinary": False

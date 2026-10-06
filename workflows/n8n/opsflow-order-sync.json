@@ -37,6 +37,16 @@
         "genericAuthType": "httpBearerAuth",
         "method": "POST",
         "url": "http://api:8000/v1/orchestration/order-sync/execute-next",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Workflow-Execution-ID",
+              "value": "={{ $execution.id }}"
+            }
+          ]
+        },
         "options": {
           "response": {
             "response": {

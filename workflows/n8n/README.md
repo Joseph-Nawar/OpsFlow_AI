@@ -177,6 +177,14 @@ Responses without the backend hint, including invalid-history stand-downs and
 terminal `FAILED_RETRYABLE`, do not enter this path. The 210-second ownership
 lease and the 180-second Python execution budget remain backend contracts.
 
+M10D adds `X-Workflow-Execution-ID` to every OpsFlow API HTTP Request node,
+using n8n 2.40.5's stable `={{ $execution.id }}` expression. The value is
+diagnostic correlation only and is repeated across initial intake, bounded
+transport retries, delayed recovery resend, notification claim/outcome, and
+order-sync execution. It is not an idempotency key, order identity, lease
+value, or business-state input; no workflow provider or retry ownership is
+changed.
+
 ## Task 14 local sandbox verification
 
 The complete local rehearsal used n8n `2.40.5`, the existing Compose services,
