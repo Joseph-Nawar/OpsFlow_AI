@@ -1,6 +1,6 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `IN PROGRESS`; M10D–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
 **Scope:** repository intelligence, threat/failure modeling, implementation design, and the concise M10B closeout record below. M10C–M10F behavior remains outside this document's implementation scope.
 
