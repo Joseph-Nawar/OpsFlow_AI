@@ -38,7 +38,7 @@ from opsflow.settings import Settings
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_5_REVISION = "0003_phase5_extraction_snapshots"
 PHASE_6_REVISION = "0004_phase6_review_revisions"
-CURRENT_HEAD_REVISION = "0006_phase9_order_syncs"
+CURRENT_HEAD_REVISION = "0007_phase7_intake_ownership"
 
 
 def test_phase6_migration_revision_chain_is_locked() -> None:

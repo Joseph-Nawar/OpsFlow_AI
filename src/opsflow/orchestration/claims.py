@@ -1,10 +1,11 @@
 """Locked ownership claims for Phase 7 orchestration intake."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsflow.application.errors import (
@@ -15,12 +16,14 @@ from opsflow.application.errors import (
 from opsflow.documents.common import normalize_mime_type
 from opsflow.documents.errors import DocumentValidationError
 from opsflow.domain import AuditEvent, OrderState, SourceDocumentType
+from opsflow.orchestration.ownership import INTAKE_OWNERSHIP_LEASE_SECONDS
 from opsflow.persistence.repositories import (
     PersistedOrder,
     get_audit_events,
     get_idempotency_record,
     get_order_for_update,
     insert_audit_event,
+    set_intake_ownership,
     update_order_snapshot,
 )
 
@@ -31,6 +34,8 @@ class IntakeClaimKind(Enum):
     INITIAL = "INITIAL"
     RESUME_PROCESSING = "RESUME_PROCESSING"
     RESUME_EXTRACTED = "RESUME_EXTRACTED"
+    RECOVER_PROCESSING = "RECOVER_PROCESSING"
+    RECOVER_EXTRACTED = "RECOVER_EXTRACTED"
     STAND_DOWN = "STAND_DOWN"
 
 
@@ -52,6 +57,8 @@ class IntakeClaim:
     kind: IntakeClaimKind
     persisted: PersistedOrder
     source_document_id: UUID
+    ownership_token: UUID | None = None
+    ownership_expires_at: datetime | None = None
 
 
 async def claim_intake_execution(
@@ -85,6 +92,8 @@ async def claim_intake_execution(
         source_document_id = _require_source_identity(persisted, source, order_id)
         audit_events = await get_audit_events(session, order_id)
         kind = decide_intake_claim_kind(persisted.order.state, audit_events)
+        if kind is IntakeClaimKind.STAND_DOWN:
+            kind = await _recover_stale_kind(session, persisted)
 
         if kind is IntakeClaimKind.INITIAL:
             processing_order = persisted.order.transition_to(OrderState.PROCESSING)
@@ -104,6 +113,8 @@ async def claim_intake_execution(
                 order=processing_order,
                 created_at=persisted.created_at,
                 validation_issues=persisted.validation_issues,
+                intake_claim_token=persisted.intake_claim_token,
+                intake_claim_expires_at=persisted.intake_claim_expires_at,
             )
         elif kind is IntakeClaimKind.RESUME_PROCESSING:
             await insert_audit_event(
@@ -133,14 +144,88 @@ async def claim_intake_execution(
                     ),
                 ),
             )
+        elif kind in {
+            IntakeClaimKind.RECOVER_PROCESSING,
+            IntakeClaimKind.RECOVER_EXTRACTED,
+        }:
+            recovered_event_type = (
+                "ORDER_PROCESSING_RECOVERED"
+                if kind is IntakeClaimKind.RECOVER_PROCESSING
+                else "ORDER_EXTRACTION_RECOVERED"
+            )
+            await insert_audit_event(
+                session,
+                AuditEvent(
+                    id=uuid4(),
+                    order_id=order_id,
+                    event_type=recovered_event_type,
+                    actor=actor,
+                    occurred_at=recorded_at,
+                    description=(
+                        "Stale orchestration intake ownership was recovered for the existing "
+                        "order and source."
+                    ),
+                ),
+            )
+
+        if kind in {
+            IntakeClaimKind.INITIAL,
+            IntakeClaimKind.RESUME_PROCESSING,
+            IntakeClaimKind.RESUME_EXTRACTED,
+            IntakeClaimKind.RECOVER_PROCESSING,
+            IntakeClaimKind.RECOVER_EXTRACTED,
+        }:
+            ownership_token = uuid4()
+            ownership_expires_at = await set_intake_ownership(
+                session,
+                order_id,
+                ownership_token,
+                INTAKE_OWNERSHIP_LEASE_SECONDS,
+            )
+            persisted = replace(
+                persisted,
+                intake_claim_token=ownership_token,
+                intake_claim_expires_at=ownership_expires_at,
+            )
 
         claim = IntakeClaim(
             kind=kind,
             persisted=persisted,
             source_document_id=source_document_id,
+            ownership_token=(
+                persisted.intake_claim_token if kind is not IntakeClaimKind.STAND_DOWN else None
+            ),
+            ownership_expires_at=(
+                persisted.intake_claim_expires_at
+                if kind is not IntakeClaimKind.STAND_DOWN
+                else None
+            ),
         )
 
     return claim
+
+
+async def _recover_stale_kind(
+    session: AsyncSession,
+    persisted: PersistedOrder,
+) -> IntakeClaimKind:
+    """Recover only a known expired owner; bare active states stand down."""
+
+    if (
+        persisted.intake_claim_token is None
+        or persisted.intake_claim_expires_at is None
+        or persisted.order.state not in {OrderState.PROCESSING, OrderState.EXTRACTED}
+    ):
+        return IntakeClaimKind.STAND_DOWN
+
+    now = await session.scalar(select(func.clock_timestamp()))
+    if not isinstance(now, datetime) or persisted.intake_claim_expires_at > now:
+        return IntakeClaimKind.STAND_DOWN
+    return (
+        IntakeClaimKind.RECOVER_PROCESSING
+        if persisted.order.state is OrderState.PROCESSING
+        else IntakeClaimKind.RECOVER_EXTRACTED
+    )
 
 
 def _require_source_identity(
@@ -173,9 +258,11 @@ _KNOWN_AUDIT_EVENTS = frozenset(
     {
         "ORDER_RECEIVED",
         "ORDER_PROCESSING_STARTED",
+        "ORDER_PROCESSING_RECOVERED",
         "ORDER_PROCESSING_FAILED",
         "ORDER_PROCESSING_RESUMED",
         "ORDER_EXTRACTION_COMPLETED",
+        "ORDER_EXTRACTION_RECOVERED",
         "ORDER_EXTRACTION_RESUMED",
         "ORDER_VALIDATION_FAILED",
         "ORDER_RETRY_REQUESTED",
@@ -265,12 +352,20 @@ def _audit_history_status(
                 return False, phase, False, False
             pending_failure_origin = "PROCESSING"
             phase = "PROCESSING_FAILED"
+        elif event_type == "ORDER_PROCESSING_RECOVERED":
+            if pending_failure_origin or pending_request_origin or phase != "PROCESSING":
+                return False, phase, False, False
+            phase = "PROCESSING"
         elif event_type == "ORDER_EXTRACTION_COMPLETED":
             if extraction_completed or pending_failure_origin or pending_request_origin:
                 return False, phase, False, False
             if processing_started and phase != "PROCESSING":
                 return False, phase, False, False
             extraction_completed = True
+            phase = "EXTRACTED"
+        elif event_type == "ORDER_EXTRACTION_RECOVERED":
+            if pending_failure_origin or pending_request_origin or phase != "EXTRACTED":
+                return False, phase, False, False
             phase = "EXTRACTED"
         elif event_type == "ORDER_VALIDATION_FAILED":
             if pending_failure_origin or pending_request_origin:

@@ -1,8 +1,8 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `IMPLEMENTED — PENDING HUMAN REVIEW`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
-**Scope:** repository intelligence, threat/failure modeling, and implementation design only. This document does not implement M10B–M10F behavior.
+**Scope:** repository intelligence, threat/failure modeling, implementation design, and the concise M10B candidate record below. M10C–M10F behavior remains outside this document's implementation scope.
 
 ## 1. Design decision
 
@@ -159,7 +159,7 @@ effects, or database recovery on its own.
 | LLM timeout/unavailable | Current processing failure response with persisted `FAILED_RETRYABLE` | Failure origin `PROCESSING` or `EXTRACTED`, audit/notification durable | Human Review Retry, followed by one authorized n8n redelivery; no SDK/n8n business retry | No external mutation; replay consumes one restore generation | provider code, duration, attempt/generation |
 | LLM malformed/invalid response | Current processing/extraction final failure | `FAILED_FINAL`, failure origin/audit durable | No automatic retry; operator supplies a new input or a future explicit human retry policy | No external mutation | bounded invalid-response code |
 | PostgreSQL unavailable before creation/claim | `503` unavailable | No claimed business state if transaction did not commit | Caller/n8n transport may retry the same idempotent request; Python owns eventual replay | No provider call before durable claim | DB-unavailable code, request ID, duration |
-| PostgreSQL fails after intake claim or during result persistence | `503` current boundary, but current implementation may leave `PROCESSING`/`EXTRACTED` without a retry marker | M10B must make the state recoverable and visible; transaction rollback must not invent a terminal result | M10B-defined Python recovery/lease owner; n8n only repeats transport after the API is available | No external side effect occurred in Phase 7; replay must not stand down invisibly | durable recovery-needed event/metric and order ID |
+| PostgreSQL fails after intake claim or during result persistence | `503` bounded-unavailability result; the committed order remains `PROCESSING`/`EXTRACTED` under its durable intake fence | The fence remains until expiry; later identical delivery can recover only the known stale owner, while the stale worker cannot persist | Phase 7 durable intake lease/recovery owner; n8n only repeats transport after the API is available | No external side effect occurred in Phase 7; extraction may replay under the same source identity | recovery audit event, bounded stale-owner result, and order ID |
 | Persistence fails after Odoo/HubSpot success | Sync endpoint returns bounded unavailable/recovery result | In-flight step remains or durable receipt is absent; M9B checkpoint is authoritative | M9B sync coordinator on next eligible tick; human Retry only after exhaustion | Stable provider identity reconciles possible existing record; no new logical record | in-flight step, provider, receipt/recovery metric |
 | Gmail or Slack failure | Notification endpoint records outcome; order business response is not changed | Intent remains retryable until bounded attempt three, then `FAILED_FINAL` | Python notification lease/schedule owner; n8n performs one provider call and reports outcome | A lost successful outcome may duplicate delivery; business state remains unchanged | channel, attempt, bounded failure code |
 | Odoo timeout/unavailable response | Sync result `retry_wait` or `needs_review` per M9B | `SYNCING` with failed step/retry schedule or `FAILED_RETRYABLE` after budget | M9B automatic transient retry up to limit, then human Retry | Odoo stable identity/reconciliation handles uncertain commit | step, code, attempt, next-attempt time |
@@ -218,6 +218,47 @@ extraction/provider work, ordinary duplicate stand-down, human Retry, and
 source/fingerprint mismatch. M10B must test these edges and the complete M9B
 failure-code table without replacing the existing Phase 7 state machine or M9B
 coordinator merely to make the matrix look uniform.
+
+### M10B implementation record — candidate pending independent review
+
+M10B derives a bounded Python intake execution budget of **180 seconds** from
+the checked-in 30-second no-retry Gemini call, the Phase 7 Odoo validation
+ceiling of seven sequential 20-second requests (140 seconds), and a 10-second
+reserve for bounded parsing and database work. An outer application deadline
+returns the existing safe unavailability result; n8n's later transport retries
+are intentionally outside this active-execution budget. The durable lease is
+**210 seconds**, giving a 30-second safety margin. Ownership decisions use
+PostgreSQL `clock_timestamp()` after the order row lock; tests force expiry in
+the database rather than sleeping for the production lease.
+
+The one focused migration `0007_phase7_intake_ownership` adds nullable,
+timezone-aware `orders.intake_claim_token` and
+`orders.intake_claim_expires_at` columns plus a pair-consistency check. Existing
+rows remain inactive (`NULL`, `NULL`); bare historical `PROCESSING` or
+`EXTRACTED` rows still stand down rather than being guessed stale. A current
+token and expiry form the fence: initial claims, human Retry claims, and stale
+recovery rotate it; recovery emits only bounded
+`ORDER_PROCESSING_RECOVERED`/`ORDER_EXTRACTION_RECOVERED` audit evidence. The
+fence is checked in extraction completion, validation promotion/routing, and
+failure/audit/notification persistence. It remains active across the
+`EXTRACTED` intermediate state and is cleared with persisted `NEEDS_REVIEW`,
+`READY_FOR_APPROVAL`, `FAILED_RETRYABLE`, or `FAILED_FINAL` outcomes.
+
+| Failure boundary | Durable outcome | Sole retry owner |
+| --- | --- | --- |
+| malformed/unsupported document or invalid AI response | `FAILED_FINAL` | no automatic retry; human supplies a valid input |
+| AI timeout/unavailable or trusted-data transient failure | `FAILED_RETRYABLE` | human Retry, then one authorized intake redelivery |
+| database unavailable before claim | no claimed state; bounded `503` | same idempotent caller/n8n transport |
+| database unavailable after claim | nonterminal state with fence; bounded `503` | stale Phase 7 recovery after lease expiry |
+| stale Phase 7 worker | no authoritative write; bounded unavailable result | newer fenced intake owner |
+| Phase 7 validation-facts change | `FAILED_RETRYABLE` | human Retry |
+| M9B provider/configuration/pending/reconciliation failure | existing `order_syncs` state/code | M9B coordinator or human Retry after exhaustion, per existing code |
+| lost M9B receipt persistence | existing in-flight/checkpoint state | M9B first-missing-step recovery |
+
+No M9B production behavior changed: its single sync row, lease/fence, retry
+generation, receipts, stable provider identities, and first-missing-step
+recovery remain the authoritative Phase 9 lifecycle. The Phase 7 n8n workflow
+was not changed and does not acquire ownership or business retry state.
 
 ## 7. Observability design
 

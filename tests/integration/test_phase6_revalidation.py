@@ -79,7 +79,7 @@ from opsflow.validation.policy import ValidationPolicy
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
-PHASE_9_HEAD = "0006_phase9_order_syncs"
+PHASE_10B_HEAD = "0007_phase7_intake_ownership"
 REVIEWER_TOKEN = "synthetic-reviewer-integration-credential"
 APPROVER_TOKEN = "synthetic-approver-integration-credential"
 REVIEWER = OperatorContext("reviewer-integration", OperatorRole.REVIEWER)
@@ -325,7 +325,7 @@ async def _case_client(
     """Create isolated test data and a real PostgreSQL-backed review HTTP app."""
 
     _run_alembic("upgrade", "head")
-    assert PHASE_9_HEAD in _run_alembic("current")
+    assert PHASE_10B_HEAD in _run_alembic("current")
     engine = create_async_engine(Settings().database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     await _seed_case(

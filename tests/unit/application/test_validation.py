@@ -280,6 +280,9 @@ def install_repository_doubles(
     async def insert_audit(session: FakeSession, event: object) -> None:
         calls["audits"].append(event)
 
+    async def clear_ownership(session: FakeSession, order_id: UUID) -> None:
+        del session, order_id
+
     for name, function in {
         "get_order": get_order,
         "get_source_document_order_id": source_owner,
@@ -291,6 +294,7 @@ def install_repository_doubles(
         "update_order_snapshot": update_order,
         "replace_order_graph": replace_graph,
         "insert_audit_event": insert_audit,
+        "clear_intake_ownership": clear_ownership,
     }.items():
         monkeypatch.setattr(validation_module, name, function)
     return calls

@@ -10,6 +10,7 @@ from opsflow.domain import AuditEvent, Order, OrderState, SourceDocument
 from opsflow.extraction.models import ExtractionDraft
 from opsflow.notifications.contracts import NotificationChannel, NotificationKind
 from opsflow.notifications.service import create_notification_intent
+from opsflow.orchestration.ownership import require_current_intake_ownership
 from opsflow.persistence.mappers import (
     PersistedExtractionSnapshot,
     extraction_draft_to_payload,
@@ -17,6 +18,7 @@ from opsflow.persistence.mappers import (
 from opsflow.persistence.repositories import (
     PersistedOrder,
     build_validation_facts,
+    clear_intake_ownership,
     get_extraction_snapshot,
     get_order,
     get_order_for_update,
@@ -75,6 +77,7 @@ async def validate_order(
     context: ValidationContext,
     recorded_at: datetime,
     review_base_url: str,
+    ownership_token: UUID | None = None,
 ) -> ValidationApplicationResult:
     """Validate and atomically route one already-extracted order."""
 
@@ -125,6 +128,7 @@ async def validate_order(
         locked = await get_order_for_update(session, order_id)
         if locked is None:
             raise OrderNotFoundError(order_id)
+        await require_current_intake_ownership(session, locked, ownership_token)
         source_document = await _require_owned_source(session, locked, order_id, source_document_id)
         _require_source_identity(order_id, source_document_id, source_document, draft)
         _require_extracted_state(locked, order_id)
@@ -173,6 +177,7 @@ async def validate_order(
             )
 
         await update_order_snapshot(session, final_order)
+        await clear_intake_ownership(session, order_id)
         if validation_result.route is ValidationRoute.READY_FOR_APPROVAL:
             await replace_order_graph(session, final_order)
 

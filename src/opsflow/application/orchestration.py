@@ -1,5 +1,6 @@
 """Application service for one Phase 7 orchestration intake execution."""
 
+import asyncio
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -47,6 +48,11 @@ from opsflow.orchestration.failures import (
     classify_extracted_failure,
     classify_processing_failure,
     persist_orchestration_failure,
+)
+from opsflow.orchestration.ownership import (
+    INTAKE_EXECUTION_BUDGET_SECONDS,
+    StaleIntakeOwnershipError,
+    require_current_intake_ownership,
 )
 from opsflow.persistence.repositories import (
     PersistedOrder,
@@ -130,6 +136,7 @@ async def _persist_failure_result(
     recorded_at: datetime,
     review_base_url: str,
     idempotent_replay: bool,
+    ownership_token: UUID | None,
 ) -> OrchestrationIntakeResult:
     classification = classifier(error)
     try:
@@ -140,8 +147,9 @@ async def _persist_failure_result(
             actor=actor,
             recorded_at=recorded_at,
             review_base_url=review_base_url,
+            ownership_token=ownership_token,
         )
-    except SQLAlchemyError:
+    except (SQLAlchemyError, StaleIntakeOwnershipError):
         raise OrchestrationUnavailableError() from None
     return _completed_result(persisted, idempotent_replay=idempotent_replay)
 
@@ -152,6 +160,7 @@ async def _persist_extraction_completed(
     order_id: UUID,
     actor: str,
     recorded_at: datetime,
+    ownership_token: UUID | None = None,
 ) -> PersistedOrder:
     _require_aware_recorded_at(recorded_at)
     async with session.begin():
@@ -160,6 +169,7 @@ async def _persist_extraction_completed(
             raise OrderNotFoundError(order_id)
         if locked.order.state is not OrderState.PROCESSING:
             raise OrderValidationStateError(order_id, locked.order.state)
+        await require_current_intake_ownership(session, locked, ownership_token)
 
         extracted = locked.order.transition_to(OrderState.EXTRACTED)
         await update_order_snapshot(session, extracted)
@@ -182,7 +192,7 @@ async def _persist_extraction_completed(
     return persisted
 
 
-async def execute_orchestration_intake(
+async def _execute_orchestration_intake(
     session: AsyncSession,
     command: OrchestrationIntakeCommand,
     runtime: OrchestrationRuntime,
@@ -259,7 +269,12 @@ async def execute_orchestration_intake(
 
     processing_classifier = (
         classify_processing_failure
-        if claim.kind in (IntakeClaimKind.INITIAL, IntakeClaimKind.RESUME_PROCESSING)
+        if claim.kind
+        in (
+            IntakeClaimKind.INITIAL,
+            IntakeClaimKind.RESUME_PROCESSING,
+            IntakeClaimKind.RECOVER_PROCESSING,
+        )
         else classify_extracted_failure
     )
     failure_at = recorded_at + timedelta(microseconds=2)
@@ -275,6 +290,7 @@ async def execute_orchestration_intake(
             recorded_at=failure_at,
             review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
+            ownership_token=claim.ownership_token,
         )
 
     if session.in_transaction():
@@ -292,6 +308,7 @@ async def execute_orchestration_intake(
             recorded_at=failure_at,
             review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
+            ownership_token=claim.ownership_token,
         )
 
     if (
@@ -303,15 +320,20 @@ async def execute_orchestration_intake(
             claim.source_document_id,
         )
 
-    if claim.kind in (IntakeClaimKind.INITIAL, IntakeClaimKind.RESUME_PROCESSING):
+    if claim.kind in (
+        IntakeClaimKind.INITIAL,
+        IntakeClaimKind.RESUME_PROCESSING,
+        IntakeClaimKind.RECOVER_PROCESSING,
+    ):
         try:
             await _persist_extraction_completed(
                 session,
                 order_id=claim.persisted.order.id,
                 actor=actor,
                 recorded_at=failure_at,
+                ownership_token=claim.ownership_token,
             )
-        except SQLAlchemyError:
+        except (SQLAlchemyError, StaleIntakeOwnershipError):
             raise OrchestrationUnavailableError() from None
 
     try:
@@ -325,6 +347,7 @@ async def execute_orchestration_intake(
             ValidationContext(evaluation_date=runtime.date_provider.current_date()),
             recorded_at + timedelta(microseconds=3),
             runtime.review_base_url,
+            ownership_token=claim.ownership_token,
         )
     except (
         BusinessDataProviderError,
@@ -340,11 +363,34 @@ async def execute_orchestration_intake(
             recorded_at=recorded_at + timedelta(microseconds=3),
             review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
+            ownership_token=claim.ownership_token,
         )
-    except SQLAlchemyError:
+    except (SQLAlchemyError, StaleIntakeOwnershipError):
         raise OrchestrationUnavailableError() from None
 
     return _completed_order_result(validation.order, idempotent_replay=idempotent_replay)
+
+
+async def execute_orchestration_intake(
+    session: AsyncSession,
+    command: OrchestrationIntakeCommand,
+    runtime: OrchestrationRuntime,
+    actor: str,
+    recorded_at: datetime,
+) -> OrchestrationIntakeResult:
+    """Execute intake within the bounded lifetime protected by its lease."""
+
+    try:
+        async with asyncio.timeout(INTAKE_EXECUTION_BUDGET_SECONDS):
+            return await _execute_orchestration_intake(
+                session,
+                command,
+                runtime,
+                actor,
+                recorded_at,
+            )
+    except TimeoutError:
+        raise OrchestrationUnavailableError() from None
 
 
 __all__ = ["OrchestrationUnavailableError", "execute_orchestration_intake"]

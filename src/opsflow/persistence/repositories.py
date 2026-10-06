@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import and_, delete, false, func, select
+from sqlalchemy import and_, delete, false, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsflow.domain import AuditEvent, Order, OrderState, ValidationIssue, ValidationSeverity
@@ -45,6 +45,8 @@ class PersistedOrder:
     order: Order
     created_at: datetime
     validation_issues: tuple[ValidationIssue, ...]
+    intake_claim_token: UUID | None = None
+    intake_claim_expires_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,7 +380,47 @@ async def _load_order(
         order=order_from_models(order_row, line_rows, document_rows),
         created_at=order_row.created_at,
         validation_issues=tuple(validation_issue_from_model(row) for row in issue_rows),
+        intake_claim_token=order_row.intake_claim_token,
+        intake_claim_expires_at=order_row.intake_claim_expires_at,
     )
+
+
+async def set_intake_ownership(
+    session: AsyncSession,
+    order_id: UUID,
+    token: UUID,
+    lease_seconds: int,
+) -> datetime:
+    """Set one bounded Phase 7 fence and return its database-derived expiry."""
+
+    if type(lease_seconds) is not int or lease_seconds <= 0:
+        raise ValueError("lease_seconds must be a positive integer")
+    result = await session.execute(
+        update(OrderModel)
+        .where(OrderModel.id == order_id)
+        .values(
+            intake_claim_token=token,
+            intake_claim_expires_at=func.clock_timestamp()
+            + text(f"interval '{lease_seconds} seconds'"),
+        )
+        .returning(OrderModel.intake_claim_expires_at)
+    )
+    expires_at = result.scalar_one_or_none()
+    if not isinstance(expires_at, datetime) or expires_at.utcoffset() is None:
+        raise ValueError("database did not return a timezone-aware intake ownership expiry")
+    await session.flush()
+    return expires_at
+
+
+async def clear_intake_ownership(session: AsyncSession, order_id: UUID) -> None:
+    """Clear Phase 7 infrastructure ownership after an authoritative result."""
+
+    row = await session.get(OrderModel, order_id)
+    if row is None:
+        raise ValueError("cannot clear ownership for a missing order")
+    row.intake_claim_token = None
+    row.intake_claim_expires_at = None
+    await session.flush()
 
 
 async def update_order_snapshot(session: AsyncSession, order: Order) -> None:

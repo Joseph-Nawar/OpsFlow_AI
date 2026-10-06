@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -24,6 +24,7 @@ from opsflow.persistence.models import (
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_8_REVISION = "0005_phase8_notification_deliveries"
 PHASE_9_REVISION = "0006_phase9_order_syncs"
+CURRENT_HEAD_REVISION = "0007_phase7_intake_ownership"
 _NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 
 
@@ -39,7 +40,7 @@ def test_clean_upgrade_and_order_sync_schema_constraints(
 ) -> None:
     _run_alembic(migration_test_database_url, "downgrade", "base")
     _run_alembic(migration_test_database_url, "upgrade", "head")
-    assert PHASE_9_REVISION in _run_alembic(migration_test_database_url, "current")
+    assert CURRENT_HEAD_REVISION in _run_alembic(migration_test_database_url, "current")
     asyncio.run(_assert_schema_and_constraints(migration_test_database_url))
 
 
@@ -281,7 +282,13 @@ async def _insert_phase8_rows(database_url: str) -> tuple[object, object]:
     order_id, event_id, delivery_id = uuid4(), uuid4(), uuid4()
     try:
         async with session_factory() as session:
-            session.add(OrderModel(id=order_id, state="RECEIVED", created_at=_NOW))
+            await session.execute(
+                text(
+                    "INSERT INTO orders (id, state, created_at) "
+                    "VALUES (:id, 'RECEIVED', :created_at)"
+                ),
+                {"id": order_id, "created_at": _NOW},
+            )
             await session.flush()
             session.add(
                 AuditEventModel(
