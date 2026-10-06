@@ -173,6 +173,15 @@ def test_odoo_api_key_is_secret_and_never_rendered() -> None:
     assert settings.odoo_api_key.get_secret_value() == key
 
 
+def test_secret_is_not_rendered_in_configuration_validation_errors() -> None:
+    key = "SECRET_SENTINEL_DO_NOT_ECHO"
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None, odoo_api_key=key)
+
+    assert key not in str(raised.value)
+
+
 def test_hubspot_settings_are_optional_but_complete_when_present() -> None:
     defaults = Settings(_env_file=None)
     assert defaults.hubspot_service_key is None

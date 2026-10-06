@@ -21,14 +21,16 @@ from opsflow.domain import (
 )
 from opsflow.persistence.repositories import OrderSummary, PersistedOrder
 
+from .constraints import NonNegativeTransportDecimal, PositiveTransportDecimal
+
 
 class MetadataPair(BaseModel):
     """One ordered source-document metadata pair."""
 
     model_config = ConfigDict(extra="forbid")
 
-    key: str
-    value: str
+    key: str = Field(max_length=128)
+    value: str = Field(max_length=512)
 
 
 class OrderLineCreate(BaseModel):
@@ -36,11 +38,11 @@ class OrderLineCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sku: str | None = None
-    description: str | None = None
-    quantity: Decimal
-    submitted_price: Decimal | None = None
-    trusted_catalogue_price: Decimal | None = None
+    sku: str | None = Field(default=None, max_length=256)
+    description: str | None = Field(default=None, max_length=2_048)
+    quantity: PositiveTransportDecimal
+    submitted_price: NonNegativeTransportDecimal | None = None
+    trusted_catalogue_price: NonNegativeTransportDecimal | None = None
 
 
 class SourceDocumentCreate(BaseModel):
@@ -49,12 +51,12 @@ class SourceDocumentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     document_type: SourceDocumentType
-    name: str
-    mime_type: str
-    sha256: str
-    message_id: str | None = None
-    storage_reference: str | None = None
-    metadata: list[MetadataPair] = Field(default_factory=list)
+    name: str = Field(max_length=255)
+    mime_type: str = Field(max_length=128)
+    sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9A-Fa-f]{64}$")
+    message_id: str | None = Field(default=None, max_length=256)
+    storage_reference: str | None = Field(default=None, max_length=2_048)
+    metadata: list[MetadataPair] = Field(default_factory=list, max_length=32)
 
     @field_validator("metadata")
     @classmethod
@@ -71,13 +73,13 @@ class OrderCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    customer_reference: str | None = None
-    po_number: str | None = None
+    customer_reference: str | None = Field(default=None, max_length=256)
+    po_number: str | None = Field(default=None, max_length=256)
     order_date: date | None = None
     requested_delivery_date: date | None = None
     currency: str | None = None
-    lines: list[OrderLineCreate] = Field(default_factory=list)
-    source_documents: list[SourceDocumentCreate] = Field(default_factory=list)
+    lines: list[OrderLineCreate] = Field(default_factory=list, max_length=200)
+    source_documents: list[SourceDocumentCreate] = Field(default_factory=list, max_length=8)
 
 
 class OrderLineResponse(BaseModel):

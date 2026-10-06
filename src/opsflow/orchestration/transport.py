@@ -15,6 +15,7 @@ from .contracts import OrchestrationIntakeCommand
 _MAX_FILENAME_CHARACTERS = 255
 _MAX_MESSAGE_ID_CHARACTERS = 256
 _MAX_IDEMPOTENCY_KEY_CHARACTERS = 128
+_MAX_MIME_TYPE_CHARACTERS = 128
 
 
 async def read_bounded_upload(upload: UploadFile, max_input_bytes: int) -> bytes:
@@ -92,6 +93,8 @@ def _basename(filename: str | None) -> str:
 def _validated_mime_type(mime_type: str | None) -> str:
     if not isinstance(mime_type, str) or not mime_type.strip():
         raise DocumentValidationError("mime_type must be a nonblank string")
+    if len(mime_type) > _MAX_MIME_TYPE_CHARACTERS:
+        raise DocumentValidationError("mime_type exceeds 128 characters")
     return mime_type
 
 

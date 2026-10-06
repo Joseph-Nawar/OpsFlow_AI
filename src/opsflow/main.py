@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import cast
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -21,6 +22,7 @@ from opsflow.application.errors import (
 )
 from opsflow.application.orchestration import execute_orchestration_intake
 from opsflow.database import create_engine, create_sessionmaker, database_is_available
+from opsflow.http_limits import RequestBodyLimitMiddleware
 from opsflow.hubspot import HubSpotCRMAdapter
 from opsflow.odoo import OdooERPAdapter
 from opsflow.orchestration.composition import build_orchestration_runtime
@@ -169,6 +171,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error_handler(
+        request: Request, error: RequestValidationError
+    ) -> JSONResponse:
+        del request, error
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": "INVALID_REQUEST",
+                    "message": "The request is invalid.",
+                }
+            },
+        )
+
     @app.get("/health")
     def health() -> dict[str, str]:
         """Return the process liveness response without dependency checks."""
@@ -190,6 +207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"status": "not_ready", "checks": {"database": "unavailable"}},
         )
 
+    app.add_middleware(RequestBodyLimitMiddleware)
     return app
 
 

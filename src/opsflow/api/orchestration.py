@@ -95,13 +95,13 @@ OrchestrationActorDependency = Annotated[str, Depends(get_orchestration_actor)]
 async def create_orchestration_intake_endpoint(
     request: Request,
     document: Annotated[UploadFile, File(...)],
-    document_type: Annotated[str, Form(...)],
+    document_type: Annotated[str, Form(..., max_length=32)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
     actor: OrchestrationActorDependency,
     session: SessionDependency,
     response: Response,
-    message_id: Annotated[str | None, Form()] = None,
-    source_system: Annotated[str | None, Form()] = None,
+    message_id: Annotated[str | None, Form(max_length=256)] = None,
+    source_system: Annotated[str | None, Form(max_length=32)] = None,
 ) -> OrchestrationIntakeResponse:
     """Accept one authenticated document and delegate to orchestration intake."""
 

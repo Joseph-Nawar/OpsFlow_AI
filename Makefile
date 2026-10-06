@@ -1,4 +1,4 @@
-.PHONY: test test-integration lint format typecheck backend-check frontend-check check up down migrate
+.PHONY: test test-integration lint format typecheck backend-check frontend-check dependency-audit frontend-audit security-audit check up down migrate
 
 UV ?= uv
 NPM ?= npm
@@ -29,6 +29,14 @@ frontend-check:
 	$(NPM) --prefix web test -- --run
 	$(NPM) --prefix web run lint
 	$(NPM) --prefix web run build
+
+dependency-audit:
+	./scripts/audit-production-dependencies.sh
+
+frontend-audit:
+	$(NPM) audit --omit=dev --audit-level=high --prefix web
+
+security-audit: dependency-audit frontend-audit
 
 check: backend-check frontend-check
 

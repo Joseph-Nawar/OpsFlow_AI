@@ -70,7 +70,7 @@ class _ReviewRoute(APIRoute):
         async def handler(request: Request) -> Response:
             try:
                 return await original_handler(request)
-            except RequestValidationError:
+            except RequestValidationError as error:
                 if is_draft_command:
                     return JSONResponse(
                         status_code=422,
@@ -83,9 +83,17 @@ class _ReviewRoute(APIRoute):
                     )
                 if not is_review_command:
                     raise
+                is_rejection = self.path.endswith("/reject")
+                rejection_reason_is_bounded = is_rejection and any(
+                    error_detail.get("type") == "string_too_long"
+                    and tuple(error_detail.get("loc", ())) == ("body", "reason")
+                    for error_detail in error.errors()
+                )
                 code = (
-                    "INVALID_REJECTION_REQUEST"
-                    if self.path.endswith("/reject")
+                    "INVALID_REJECTION_REASON"
+                    if rejection_reason_is_bounded
+                    else "INVALID_REJECTION_REQUEST"
+                    if is_rejection
                     else "INVALID_COMMAND_REQUEST"
                 )
                 return JSONResponse(
@@ -126,6 +134,7 @@ _IF_MATCH_OPENAPI_EXTRA = {
 _IF_MATCH_HEADER = Header(
     alias="If-Match",
     description="Required strong review ETag; missing values return HTTP 428.",
+    max_length=256,
     include_in_schema=False,
 )
 
@@ -264,6 +273,7 @@ async def save_review_draft_endpoint(
         Header(
             alias="If-Match",
             description="Required strong review ETag; if omitted, the service returns HTTP 428.",
+            max_length=256,
             include_in_schema=False,
         ),
     ] = None,
