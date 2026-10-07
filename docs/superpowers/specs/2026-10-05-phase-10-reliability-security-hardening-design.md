@@ -705,6 +705,13 @@ The remediation is recorded as the continuation of the original review
 history. M10E remains `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains
 `NOT STARTED`; Phase 10 remains `IN PROGRESS`.
 
+The first pushed remediation run also exposed two Gitleaks false positives in
+the immutable test commit `be8322e`: synthetic idempotency identities assigned
+to variables named `key`. The current test source renames those variables, and
+`8ad3f47` adds only the two exact historical commit/file/rule/line fingerprints
+to `.gitleaksignore`. Current-file and full-history scans are clean; no broad
+rule, path, or secret-pattern suppression was added.
+
 ## 9. Phase 10 decomposition and gates
 
 | Milestone | Scope | Observable acceptance gate |

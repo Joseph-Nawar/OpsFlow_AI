@@ -654,6 +654,12 @@ production finding: raw PostgreSQL `ConnectionRefusedError` before claim was
 fixed by `38ad89f`. M10E remains `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F
 remains `NOT STARTED`; Phase 10 remains `IN PROGRESS`.
 
+The first pushed remediation run reported two Gitleaks false positives for
+synthetic idempotency identities in immutable commit `be8322e`. The follow-up
+renamed the current test variables and added only exact historical
+commit/file/rule/line fingerprints to `.gitleaksignore`; current-file and
+full-history scans pass without broad suppression.
+
 ## M10F — Independent Phase 10 Audit & Closeout
 
 ### Boundary
