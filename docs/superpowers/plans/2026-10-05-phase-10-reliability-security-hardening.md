@@ -603,6 +603,57 @@ unavailable; M10E does not claim infinite retries or exactly-once physical
 execution. M10E is `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains
 `NOT STARTED`, and Phase 10 remains `IN PROGRESS`.
 
+### M10E independent-review remediation record
+
+The initial candidate was `2397244fc594c8a6986bd84b86fd998bf70e3dd9`.
+Independent review recorded:
+
+- M10E-01 MEDIUM — the focused matrix did not directly cover the complete
+  approved corrupt-document, Gemini-adapter, Gmail/Slack, Odoo, HubSpot, and
+  repeated n8n-equivalent scenario set;
+- M10E-02 MEDIUM — retry-owner rows were prose-only and included an ambiguous
+  invalid-response owner;
+- M10E-03 MEDIUM — failure observability leak checks did not inspect the full
+  required sentinel set in both structured events and metric snapshots.
+
+The remediation expands the focused matrix to 21 executable provider-free
+scenario tests plus one matrix assertion and 34 explicit rows. It reuses the
+existing Phase 2–9 helpers and real PostgreSQL/adapter seams for corrupt PDF
+and XLSX handling, Gemini SDK faults, both Gmail and Slack lost outcomes and
+attempt bounds, Odoo and HubSpot transport/configuration/response/replay
+faults, repeated intake/notification/order-sync calls, and failure-path
+structured-event/metric non-leakage. The test-only retry-owner vocabulary is
+fixed and exact: `CALLER_TRANSPORT`, `PHASE7_STALE_RECOVERY`, `HUMAN_RETRY`,
+`NOTIFICATION_LIFECYCLE`, `M9B_COORDINATOR`,
+`M9B_STABLE_IDENTITY_RECOVERY`, or `NONE`, with explicit durable state and
+external-effect possibility per row.
+
+The accepted production repair `38ad89f9defc3d7f846bbfa20e7f9f34c0c730dc`
+was preserved. A new Odoo business-data transport guard passed: raw socket
+failure remains the typed provider/business-data failure contract rather than
+generic `ORCHESTRATION_UNAVAILABLE`. No additional production defect was
+found; production files remain unchanged.
+
+The reproducible clean-clone record for M10F is: use
+`git clone --no-local --branch phase/10-reliability-security-hardening
+<local-repository> <temporary-clone>`, check out the exact remediation SHA,
+write only a synthetic ignored `.env`, start a newly named disposable
+PostgreSQL/database, run `uv sync --frozen` and `npm ci --prefix web`, validate
+`docker compose config --quiet`, apply and inspect Alembic in the isolated
+database, run `uv run pytest tests/integration/test_phase10_failure_drills.py
+-q --no-cov`, run `uv run pytest tests/unit/workflows/test_n8n_contract.py -q
+--no-cov`, run the standard-library relative-Markdown checker from the M10E
+plan, run `make security-audit` and pinned Gitleaks changed/full-history scans,
+then
+stop/remove the disposable database and delete the temporary clone. The clone
+receives no original `.env`, database, SDD workspace, generated files, caches,
+or credentials.
+
+This remediation preserves the original candidate and the earlier M10E
+production finding: raw PostgreSQL `ConnectionRefusedError` before claim was
+fixed by `38ad89f`. M10E remains `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F
+remains `NOT STARTED`; Phase 10 remains `IN PROGRESS`.
+
 ## M10F — Independent Phase 10 Audit & Closeout
 
 ### Boundary

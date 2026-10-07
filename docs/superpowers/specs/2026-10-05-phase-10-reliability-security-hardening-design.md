@@ -651,6 +651,60 @@ recovery attempt can still fail visibly while PostgreSQL is unavailable. This
 does not claim exactly-once physical execution or infinite transport retry.
 M10E is `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains `NOT STARTED`.
 
+### M10E independent-review remediation record
+
+The initial M10E candidate was `2397244fc594c8a6986bd84b86fd998bf70e3dd9`.
+Independent review found three MEDIUM proof/coverage findings:
+
+- M10E-01: the focused matrix did not directly index the complete approved
+  corrupt-document, Gemini-adapter, Gmail/Slack, Odoo, HubSpot, and repeated
+  n8n-equivalent invocation scenarios;
+- M10E-02: the retry-owner assertion accepted non-empty prose and an ambiguous
+  invalid-response owner instead of one deterministic owner per row;
+- M10E-03: representative failure-path sentinel checks did not inspect both
+  structured events and process-local metric snapshots for authorization,
+  document, provider, and notification payload markers.
+
+The remediation expands
+`tests/integration/test_phase10_failure_drills.py` to 21 executable
+provider-free scenario tests plus one typed retry-owner matrix assertion. The
+matrix now contains 34 explicit rows with exact durable-state, retry-owner,
+and external-effect expectations. It directly covers corrupt PDF/XLSX,
+Gemini SDK timeout/unavailable/malformed/schema-invalid responses, both Gmail
+and Slack lost-outcome/claim-recovery paths, Odoo and HubSpot adapter fault
+seams, repeated intake/notification/order-sync API invocation, and structured
+event/metric sentinel exclusion. The test-only retry-owner vocabulary is
+`CALLER_TRANSPORT`, `PHASE7_STALE_RECOVERY`, `HUMAN_RETRY`,
+`NOTIFICATION_LIFECYCLE`, `M9B_COORDINATOR`,
+`M9B_STABLE_IDENTITY_RECOVERY`, and `NONE`; no ambiguous owner is permitted.
+
+The existing production repair in `38ad89f9defc3d7f846bbfa20e7f9f34c0c730dc`
+is unchanged. A focused Odoo business-data `OSError` guard confirms that the
+widened Phase 7 persistence exception boundary does not reclassify typed Odoo
+provider failures as generic `ORCHESTRATION_UNAVAILABLE`. No additional
+production defect was found, so no production file, migration, workflow,
+dependency, or CI change was made.
+
+The remediation clean-clone procedure is recorded for M10F reuse: clone the
+local repository with `git clone --no-local --branch
+phase/10-reliability-security-hardening <local-repository> <temporary-clone>`;
+check out the exact remediation SHA; create only a synthetic ignored `.env`
+with non-secret local settings; start a newly named disposable PostgreSQL
+container/database outside the developer database; run `uv sync --frozen` and
+`npm ci --prefix web`; validate `docker compose config --quiet`; run isolated
+`uv run alembic upgrade head` and `uv run alembic current`; run
+`uv run pytest tests/integration/test_phase10_failure_drills.py -q --no-cov`;
+run `uv run pytest tests/unit/workflows/test_n8n_contract.py -q --no-cov`, the
+standard-library relative-Markdown checker from the M10E plan,
+`make security-audit`, and pinned Gitleaks changed-content/full-history checks;
+then stop/remove the disposable database and delete the temporary clone. No
+`.env`, database, workspace residue, generated files, caches, or provider
+credentials are copied from the original checkout.
+
+The remediation is recorded as the continuation of the original review
+history. M10E remains `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains
+`NOT STARTED`; Phase 10 remains `IN PROGRESS`.
+
 ## 9. Phase 10 decomposition and gates
 
 | Milestone | Scope | Observable acceptance gate |
