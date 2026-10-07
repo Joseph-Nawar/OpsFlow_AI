@@ -660,6 +660,42 @@ renamed the current test variables and added only exact historical
 commit/file/rule/line fingerprints to `.gitleaksignore`; current-file and
 full-history scans pass without broad suppression.
 
+### M10E final focused-coverage remediation
+
+The targeted re-review of remediation
+`13e5dbe69962b1cd8b897dccfdf77fa8f59bcc28` identified M10E-04 MEDIUM: the
+declared Odoo transport-timeout case and the Gmail/Slack rejected and timeout
+rows lacked complete executable focused evidence.
+
+The final test-only change keeps the 34-row matrix unchanged and adds the
+missing production-boundary cases to its existing composed tests:
+
+- `OdooERPAdapter.get_validation_data()` receives an `httpx.ReadTimeout`
+  through `MockTransport` and is asserted to produce
+  `PROVIDER_UNAVAILABLE`, without raw timeout text, with `M9B_COORDINATOR` as
+  the documented retry owner.
+- The real notification claim/outcome persistence boundary is exercised for
+  `GMAIL` and `SLACK`, each with `DELIVERY_REJECTED` and `TIMEOUT`, using the
+  current claim token. Each remains bounded at attempt one, stores the exact
+  failure code, clears the claim, and leaves the order state unchanged.
+
+Existing Odoo 503/unavailable, malformed-response, configuration, and
+stable-identity lost-response drills remain. Existing notification rate-limit,
+lost-outcome, stale-claim, lease-recovery, attempt-three, and no-fourth-attempt
+drills remain. A review of every `FAILURE_DRILLS` row confirms each declared
+category has executable focused evidence in
+`tests/integration/test_phase10_failure_drills.py` or an explicitly invoked
+Phase 2–9 production-boundary assertion helper; no rows were added merely to
+inflate the matrix.
+
+No production behavior changed. The accepted `38ad89f` PostgreSQL repair and
+all M10B–M10D behavior remain unchanged. The original candidate
+`2397244fc594c8a6986bd84b86fd998bf70e3dd9`, first remediation
+`13e5dbe69962b1cd8b897dccfdf77fa8f59bcc28`, M10E-01/02/03 findings and
+dispositions, and the earlier Phase 7 `ConnectionRefusedError` finding/fix
+remain in the record. M10E remains `IMPLEMENTED — PENDING HUMAN REVIEW` and
+M10F remains `NOT STARTED`.
+
 ## M10F — Independent Phase 10 Audit & Closeout
 
 ### Boundary

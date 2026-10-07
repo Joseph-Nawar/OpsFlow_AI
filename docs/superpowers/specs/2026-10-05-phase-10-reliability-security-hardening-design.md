@@ -712,6 +712,40 @@ to variables named `key`. The current test source renames those variables, and
 to `.gitleaksignore`. Current-file and full-history scans are clean; no broad
 rule, path, or secret-pattern suppression was added.
 
+### M10E final focused-coverage remediation record
+
+Targeted review identified one remaining MEDIUM evidence gap in remediation
+`13e5dbe69962b1cd8b897dccfdf77fa8f59bcc28`:
+
+- M10E-04 — the declared Odoo transport-timeout case and the Gmail/Slack
+  rejected and timeout outcome cases were not all backed by executable focused
+  drills.
+
+The final test-only remediation adds a real `httpx.ReadTimeout` fault through
+`OdooERPAdapter.get_validation_data()`. The adapter still produces the bounded
+`PROVIDER_UNAVAILABLE` code, the timeout sentinel is absent from the bounded
+failure, `MockTransport` makes the case provider-free, and the matrix retains
+`M9B_COORDINATOR` as the retry owner. Existing Odoo unavailable, malformed
+response, configuration, and stable-identity lost-response cases remain.
+
+The notification matrix now invokes the persisted claim/outcome boundary for
+both `GMAIL` and `SLACK` with both `DELIVERY_REJECTED` and `TIMEOUT`. Each case
+proves a current claim token is required, attempt one returns to bounded
+`PENDING`, the exact failure code is retained, claim fields are cleared, and
+the order remains `NEEDS_REVIEW`. Existing rate-limit, lost-outcome, stale
+claim, lease recovery, attempt-three finalization, and no-fourth-attempt cases
+remain. These additions do not add matrix rows: all 34 declared
+`FAILURE_DRILLS` rows were reviewed and now have executable focused coverage or
+an explicitly invoked existing production-boundary helper.
+
+No production file changed, and the accepted PostgreSQL repair
+`38ad89f9defc3d7f846bbfa20e7f9f34c0c730dc` remains unchanged. The original
+candidate `2397244fc594c8a6986bd84b86fd998bf70e3dd9`, first remediation
+`13e5dbe69962b1cd8b897dccfdf77fa8f59bcc28`, M10E-01/02/03 findings and
+dispositions, and the earlier Phase 7 connection defect/fix remain preserved.
+M10E remains `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains `NOT STARTED`;
+Phase 10 remains `IN PROGRESS`.
+
 ## 9. Phase 10 decomposition and gates
 
 | Milestone | Scope | Observable acceptance gate |

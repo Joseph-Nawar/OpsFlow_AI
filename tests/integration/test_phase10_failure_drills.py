@@ -129,7 +129,11 @@ from opsflow.extraction.gemini import GeminiConfig, GeminiProvider
 from opsflow.extraction.provider import StructuredGenerationRequest, StructuredGenerationResult
 from opsflow.hubspot import HubSpotCRMAdapter
 from opsflow.main import create_app
-from opsflow.notifications.contracts import NotificationOutcome, NotificationOutcomeKind
+from opsflow.notifications.contracts import (
+    NotificationFailureCode,
+    NotificationOutcome,
+    NotificationOutcomeKind,
+)
 from opsflow.notifications.service import (
     StaleNotificationClaimError,
     claim_next_notification,
@@ -734,6 +738,7 @@ async def _assert_notification_matrix() -> None:
     await _assert_claim_and_lease_recovery()
     await _assert_retry(1, 30, hint=None, channel="GMAIL")
     await _assert_retry(2, 120, hint=None, channel="SLACK")
+    await _assert_channel_failure_outcomes()
     await _assert_attempt_three_final()
     await _assert_no_fourth_claim_for_pending_attempt_three()
     await _assert_expired_third_claim_finalized()
@@ -777,6 +782,57 @@ async def _assert_lost_notification_outcome(channel: str) -> None:
         assert order is not None and order.state == OrderState.NEEDS_REVIEW.value
     finally:
         await _dispose_notification(engine, sessions, order_id)
+
+
+async def _assert_channel_failure_outcomes() -> None:
+    """Exercise both bounded failure codes through the persisted claim boundary."""
+
+    for channel in ("GMAIL", "SLACK"):
+        for failure_code in (
+            NotificationFailureCode.DELIVERY_REJECTED,
+            NotificationFailureCode.TIMEOUT,
+        ):
+            engine, sessions, notification_id, order_id = await _seed_delivery(channel=channel)
+            try:
+                claim = await _claim_attempt(sessions, notification_id, 1)
+                with pytest.raises(StaleNotificationClaimError):
+                    async with sessions() as session:
+                        await record_notification_outcome(
+                            session,
+                            notification_id,
+                            NotificationOutcome(
+                                claim_token=uuid4(),
+                                kind=NotificationOutcomeKind.FAILED,
+                                failure_code=failure_code,
+                            ),
+                        )
+
+                async with sessions() as session:
+                    result = await record_notification_outcome(
+                        session,
+                        notification_id,
+                        NotificationOutcome(
+                            claim_token=claim.claim_token,
+                            kind=NotificationOutcomeKind.FAILED,
+                            failure_code=failure_code,
+                        ),
+                    )
+                assert result.status.value == "PENDING"
+                assert result.attempt_count == 1
+                assert result.last_failure_code is failure_code
+
+                async with sessions() as session:
+                    delivery = await session.get(NotificationDeliveryModel, notification_id)
+                    order = await session.get(OrderModel, order_id)
+                assert delivery is not None
+                assert delivery.status == "PENDING"
+                assert delivery.attempt_count == 1
+                assert delivery.claim_token is None
+                assert delivery.claim_expires_at is None
+                assert delivery.last_failure_code == failure_code.value
+                assert order is not None and order.state == OrderState.NEEDS_REVIEW.value
+            finally:
+                await _dispose_notification(engine, sessions, order_id)
 
 
 def test_order_sync_claims_and_external_receipts_replay_stable_identities(
@@ -852,6 +908,25 @@ async def _assert_odoo_adapter_fault_matrix() -> None:
         "M10E_ODOO_CONFIG_SENTINEL",
         OrderSyncFailureCode.INTEGRATION_CONFIG,
     )
+
+    def timeout_handle(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("M10E_ODOO_TIMEOUT_SENTINEL", request=request)
+
+    timeout_adapter = OdooERPAdapter(settings, transport=httpx.MockTransport(timeout_handle))
+    try:
+        with pytest.raises(_OdooFailure) as captured:
+            await timeout_adapter.get_validation_data(request)
+        assert captured.value.code is OrderSyncFailureCode.PROVIDER_UNAVAILABLE
+        assert "M10E_ODOO_TIMEOUT_SENTINEL" not in str(captured.value)
+        assert (
+            next(
+                drill for drill in FAILURE_DRILLS if drill.name == "Odoo transport timeout"
+            ).retry_owner
+            is RetryOwner.M9B_COORDINATOR
+        )
+    finally:
+        await timeout_adapter.aclose()
+
     with pytest.raises(ValueError):
         OdooERPAdapter(Settings(_env_file=None))
 
