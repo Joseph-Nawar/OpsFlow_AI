@@ -1,14 +1,15 @@
 # Phase 10 Independent Audit and Closeout Assessment
 
-> This is an independent assessment of the frozen Phase 10 technical baseline. It does not remediate findings and does not mark Phase 10 complete.
+> This report preserves the independent assessment of the frozen Phase 10 technical baseline, including its original provisional verdict. The final disposition after remediation and targeted independent re-review is recorded below.
 
 - **Audit date:** 2026-10-07
-- **Audit status:** In progress — remediation required
-- **Phase status:** IN PROGRESS
-- **M10F status:** IN PROGRESS — AUDIT PENDING
+- **Audit status:** Finalized after remediation and targeted independent re-review
+- **Phase status:** COMPLETE
+- **M10F status:** COMPLETE
 - **Frozen technical baseline:** `ca2f3ef189806f73b4facce94859cb9f942fb402`
 - **Audited branch:** `phase/10-reliability-security-hardening`
-- **Provisional verdict:** **FAIL — remediation required**
+- **Provisional verdict at frozen baseline:** **FAIL — remediation required**
+- **Final verdict after remediation:** **PASS — Phase 10 complete after M10F-001 remediation and targeted independent re-review**
 
 ## Audit identity and scope
 
@@ -68,7 +69,7 @@ configuration was changed to address a finding during this audit.
   `repr()` and `str()`. Do not add a generic redaction framework.
 - **Status:** `OPEN`
 
-### Finding totals
+### Finding totals at the frozen baseline
 
 | Severity | Open | Closed during this audit |
 | --- | ---: | ---: |
@@ -77,8 +78,9 @@ configuration was changed to address a finding during this audit.
 | MEDIUM | 1 | 0 |
 | LOW | 0 | 0 |
 
-Because an unresolved MEDIUM finding remains, the audit verdict is FAIL and
-M10F remains pending remediation and a fresh independent review.
+At the frozen baseline, the unresolved MEDIUM finding made the provisional
+audit verdict FAIL and left M10F pending remediation and fresh independent
+review. The final disposition is recorded below.
 
 ## Requirement-to-evidence traceability
 
@@ -94,7 +96,7 @@ M10F remains pending remediation and a fresh independent review.
 | 8 | Schema/Decimal caps | PASS | Transport schemas and exact-boundary/count/precision tests; response models are separated |
 | 9 | Human/service auth separation | PASS | Core route dependencies, settings validation, auth/API tests |
 | 10 | Safe error boundary | PASS | Request-validation handler, bounded order errors, sentinel non-echo tests |
-| 11 | Secret/history hygiene | **FAIL** | Gitleaks and workflow scans pass, but M10F-001 remains for `Settings` representations |
+| 11 | Secret/history hygiene | PASS | Gitleaks/history scans pass; M10F-001 is resolved by the approved settings-representation remediation and targeted independent PASS |
 | 12 | Dependency audit | PASS | Pinned Python audit, production-only frontend audit, `make security-audit` |
 | 13 | SQL safety | PASS | Runtime SQL construction review; user values are bound and no unsafe interpolation was found |
 | 14 | AI authority | PASS | Extraction schemas, deterministic validation, review/approval gates, prompt-injection tests |
@@ -113,7 +115,7 @@ M10F remains pending remediation and a fresh independent review.
 | 27 | `$0` mandatory cost | PASS | Local PostgreSQL/Compose and standard-library observability; no paid service is required |
 | 28 | Documentation truth | PASS | Current status prose, architecture boundary, workflow guidance, and Phase 10 plan reviewed; no unsupported exactly-once or public-IAM claim found |
 | 29 | No Phase 11/12 scope creep | PASS | Change-range review and documentation review found no benchmark, cost study, optimization, marketing, or release work |
-| 30 | Whole-phase eligibility for closeout | **FAIL** | M10F-001 is an unresolved MEDIUM finding; Phase 10 cannot close |
+| 30 | Whole-phase eligibility for closeout | PASS | M10F-001 is resolved; final targeted independent review found zero open findings |
 
 ## Phase 10 acceptance matrix
 
@@ -127,14 +129,14 @@ M10F remains pending remediation and a fresh independent review.
 | Input/resource safety | PASS | ASGI streaming limits, transport caps, parser limits, and Decimal bounds are enforced without truncation |
 | Authentication/authorization review | PASS | Human view, orchestration create, review/approval, and operational endpoint boundaries are server-derived and tested |
 | AI authority boundary | PASS | LLM output remains extraction data; deterministic validation and human approval control routing and side effects |
-| Secret/log hygiene | FAIL | M10F-001: `Settings` `repr()`/`str()` expose two configured secret-bearing values |
+| Secret/log hygiene | PASS | M10F-001 remediation protects Gemini and database settings representations; focused verification and targeted independent review passed |
 | SQL safety | PASS | No user-controlled SQL syntax interpolation found |
 | Dependency posture | PASS | Pinned production-only Python and frontend audits pass; the dev-only `brace-expansion@5.0.9` advisory remains correctly classified |
 | Structured observability | PASS | Allowlisted events, bounded correlation, provider timing, metrics, and passive health are implemented |
 | Readiness/integration health | PASS | `/ready` remains database-only; integration status is passive last-observed state |
 | Adversarial/fault drills | PASS | Focused provider-free M10E matrix passed in isolated PostgreSQL; independent source review found real production boundaries rather than answer-encoding fakes for representative cases |
 | Clean clone and reproducibility | PASS | Required clean-clone sequence succeeded at the frozen technical SHA |
-| Phase 10 closeout eligibility | FAIL | Open MEDIUM finding prevents a PASS closeout |
+| Phase 10 closeout eligibility | PASS | M10F-001 is resolved and human-approved; the final audit disposition is PASS |
 
 ## M10B recovery assessment
 
@@ -440,9 +442,10 @@ model/prompt optimization were not implemented. Phase 12 marketing, release,
 screenshot, video, and publication work was not implemented. M10D telemetry is
 raw operational duration/usage visibility only.
 
-Current README, roadmap, development guide, architecture overview, Phase 10
-design, and implementation plan now identify M10F as `IN PROGRESS — AUDIT
-PENDING` and link this provisional report. They continue to distinguish
+At the frozen audit point, the README, roadmap, development guide, architecture
+overview, Phase 10 design, and implementation plan identified M10F as
+`IN PROGRESS — AUDIT PENDING` and linked this provisional report. They continue
+to distinguish
 production-style engineering from production deployment, local/demo bearer
 authentication from public IAM, passive last-observed health from active
 availability, and logical convergence from physical exactly-once execution.
@@ -461,7 +464,7 @@ baseline, not audited implementation changes.
   duplicate email or Slack delivery.
 - The fixed bearer credentials are a local/demo development authentication
   boundary, not production identity or internet-edge protection.
-- M10F-001 remains open and prevents a successful Phase 10 closeout.
+- At the frozen baseline, M10F-001 remained open; its approved remediation and final disposition are recorded below.
 
 ## Provisional audit verdict
 
@@ -504,8 +507,8 @@ dependency, retry, authentication, or observability architecture changed.
 
 **M10F-001 status:** `REMEDIATED — PENDING TARGETED INDEPENDENT RE-REVIEW`.
 The original audit verdict remains historically **FAIL — remediation
-required** until that targeted independent re-review passes. M10F and Phase 10
-remain in progress; no approval or completion claim is made here.
+required** at that audit-record commit. The final disposition after targeted
+independent re-review is recorded below.
 
 ### Status at audit commit
 
@@ -516,5 +519,43 @@ remain in progress; no approval or completion claim is made here.
 - M10E: `COMPLETE`
 - M10F: `IN PROGRESS — AUDIT PENDING`
 - Phase 10: `IN PROGRESS`
+- Phase 11: `NOT STARTED`
+- Phase 12: `NOT STARTED`
+
+## Final disposition after remediation and targeted independent re-review
+
+The original frozen audit baseline remains
+`ca2f3ef189806f73b4facce94859cb9f942fb402`, with original audit/status commit
+`c0e3708c930672fe445ef613f83f69fae97b34f9`. The original
+`M10F-001 — MEDIUM — Runtime settings representation exposes configured
+secrets` finding and provisional `FAIL — remediation required` verdict remain
+historical and visible above.
+
+The approved technical remediation is
+`3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; the audit-record commit before
+this closeout was `064fc22d053d72acc96ad28be195011d60e6673e`. It changed
+`Settings.gemini_api_key` to `SecretStr | None` with blank values treated as
+unconfigured, unwraps the Gemini secret only at `GeminiConfig` construction,
+and keeps `database_url` as the exact runtime string while excluding it from
+ordinary settings representations with `Field(repr=False)`. Existing Odoo,
+HubSpot, orchestration, and review credentials remain secret-safe. No generic
+redaction framework was introduced.
+
+Targeted independent re-review returned `PASS`. M10F-001 is `RESOLVED`, with
+final open finding totals of CRITICAL 0, HIGH 0, MEDIUM 0, and LOW 0. The
+focused remediation evidence was already recorded as 61 settings/composition
+tests and 222 relevant regressions; the technical remediation and final-head
+CI were independently reviewed. No live provider rerun was required for this
+documentation-only final disposition.
+
+### Final status
+
+- M10A: `COMPLETE`
+- M10B: `COMPLETE`
+- M10C: `COMPLETE`
+- M10D: `COMPLETE`
+- M10E: `COMPLETE`
+- M10F: `COMPLETE`
+- Phase 10: `COMPLETE`
 - Phase 11: `NOT STARTED`
 - Phase 12: `NOT STARTED`

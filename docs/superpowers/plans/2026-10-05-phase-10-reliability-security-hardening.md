@@ -727,7 +727,7 @@ commit/file/rule/line entry, and current/full-history scans pass. M10F remains
 
 ## M10F — Independent Phase 10 Audit & Closeout
 
-**Status:** M10F `IN PROGRESS — AUDIT PENDING`; Phase 10 `IN PROGRESS`; Phases 11–12 `NOT STARTED`.
+**Status:** M10F `COMPLETE` after final audit disposition on technical remediation SHA `3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; Phase 10 `COMPLETE`; Phases 11–12 `NOT STARTED`.
 
 ### Boundary
 
@@ -765,8 +765,22 @@ Gitleaks, dependency audits, migration/clean-clone checks, and the complete
 M10E fault matrix. Commit the audit as:
 `docs(audit): close Phase 10 hardening review`.
 
-Only after the independent audit and human approval may the roadmap change
-Phase 10 to `COMPLETE` and M10F to `COMPLETE`.
+The independent audit and human approval are now recorded in the final audit
+disposition. The roadmap records Phase 10 and M10F as `COMPLETE`; the audit
+artifact preserves the original frozen-baseline FAIL and the subsequent PASS.
+
+### M10F final human-approval closeout
+
+The frozen technical baseline was `ca2f3ef189806f73b4facce94859cb9f942fb402`.
+The original audit/status commit was `c0e3708c930672fe445ef613f83f69fae97b34f9`,
+which recorded M10F-001 as MEDIUM and the provisional verdict
+`FAIL — remediation required`. The technical remediation is approved at
+`3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; the audit-record commit before this
+closeout was `064fc22d053d72acc96ad28be195011d60e6673e`. Targeted independent
+re-review returned `PASS`, with zero open CRITICAL, HIGH, MEDIUM, or LOW
+findings. M10F and Phase 10 are now `COMPLETE`; Phase 11 and Phase 12 remain
+`NOT STARTED`. The later documentation-only closeout commit is not the
+technical implementation SHA.
 
 ## Review focus
 
