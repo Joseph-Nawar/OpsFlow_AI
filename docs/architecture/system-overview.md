@@ -117,8 +117,10 @@ Odoo/HubSpot synchronization with stable external identities and receipts.
 Python owns business state, provenance, notification eligibility, claims,
 retry schedules, leases, synchronization state, and outcomes; the sanitized
 n8n 2.40.5 workflows perform provider transport and thin scheduling. Phase 9
-is complete. Phase 10 is the next boundary: it will harden the existing
+is complete. Phase 10 hardening is implemented through M10E; M10F is the
+current independent audit boundary. The audit assesses the existing
 cross-boundary reliability, security, recovery, and operational visibility
 contracts without changing the AI/deterministic or n8n/Python authority
 boundaries. The full phased scope and status are maintained in the [project
-roadmap](../roadmap/project-roadmap.md).
+roadmap](../roadmap/project-roadmap.md), and the current audit is recorded in
+[the Phase 10 audit](../audits/phase-10-audit.md).

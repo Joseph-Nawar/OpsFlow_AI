@@ -727,6 +727,8 @@ commit/file/rule/line entry, and current/full-history scans pass. M10F remains
 
 ## M10F — Independent Phase 10 Audit & Closeout
 
+**Status:** M10F `IN PROGRESS — AUDIT PENDING`; Phase 10 `IN PROGRESS`; Phases 11–12 `NOT STARTED`.
+
 ### Boundary
 
 Perform a fresh review by a separate audit pass/person when available. The
