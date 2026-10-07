@@ -107,15 +107,20 @@ Trusted business data—customers, products, catalogue prices, inventory, and ex
 
 ## Current implementation and next boundary
 
-Phases 0–8 are implemented and independently audited, including the order
+Phases 0–9 are implemented and independently audited, including the order
 aggregate and state machine, PostgreSQL persistence and idempotent order
 creation, document processing and extraction, deterministic validation, the
 Phase 6 human-review application, the Phase 7 authenticated intake pipeline,
-and Phase 8 labeled Gmail intake with durable notification delivery, Slack
-notifications, and sender-only Gmail approval replies. Python owns business
-state, provenance, notification eligibility, claims, retry schedules, leases,
-and outcomes; the sanitized n8n 2.40.5 workflows perform provider transport.
-Phase 8 ends at approval-for-processing. ERP/CRM synchronization, `SYNCING`,
-and completion claims remain later work; the intended-flow diagram above is a
-phased target for those capabilities, not a claim that they exist. The full
-phased scope and status are maintained in the [project roadmap](../roadmap/project-roadmap.md).
+Phase 8 labeled Gmail intake with durable notification delivery, Slack
+notifications, and sender-only Gmail approval replies, and Phase 9 durable
+Odoo/HubSpot synchronization with stable external identities and receipts.
+Python owns business state, provenance, notification eligibility, claims,
+retry schedules, leases, synchronization state, and outcomes; the sanitized
+n8n 2.40.5 workflows perform provider transport and thin scheduling. Phase 9
+is complete. Phase 10 hardening and independent audit closeout are complete
+through M10F. The final audit assesses the existing
+cross-boundary reliability, security, recovery, and operational visibility
+contracts without changing the AI/deterministic or n8n/Python authority
+boundaries. The full phased scope and status are maintained in the [project
+roadmap](../roadmap/project-roadmap.md), and the current audit is recorded in
+[the Phase 10 audit](../audits/phase-10-audit.md).

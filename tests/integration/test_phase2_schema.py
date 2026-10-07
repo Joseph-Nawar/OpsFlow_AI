@@ -102,6 +102,7 @@ async def _assert_schema() -> None:
                 "ck_orders_state",
                 "ck_orders_currency",
                 "ck_orders_failure_origin",
+                "ck_orders_intake_claim_pair",
                 "ck_order_lines_position",
                 "ck_order_lines_quantity",
                 "ck_order_lines_submitted_price",

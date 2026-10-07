@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from opsflow.application.review_commands import ReviewCommandResult
 from opsflow.application.review_reads import (
@@ -19,6 +19,8 @@ from opsflow.extraction.models import ExtractionDraft
 from opsflow.persistence.mappers import PersistedExtractionSnapshot
 from opsflow.review import OperatorRole, ReviewChange, ReviewDraft, ReviewLine, ReviewRevision
 from opsflow.validation import TrustedBusinessData
+
+from .constraints import NonNegativeTransportDecimal, PositiveTransportDecimal
 
 
 class ReviewQueueItemResponse(BaseModel):
@@ -61,10 +63,10 @@ class ReviewLineRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sku: StrictStr | None
-    description: StrictStr | None
-    quantity: Decimal | None
-    submitted_price: Decimal | None
+    sku: StrictStr | None = Field(max_length=256)
+    description: StrictStr | None = Field(max_length=2_048)
+    quantity: PositiveTransportDecimal | None
+    submitted_price: NonNegativeTransportDecimal | None
 
 
 class ReviewDraftRequest(BaseModel):
@@ -72,13 +74,13 @@ class ReviewDraftRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    customer_name: StrictStr | None
-    customer_reference: StrictStr | None
-    po_number: StrictStr | None
+    customer_name: StrictStr | None = Field(max_length=255)
+    customer_reference: StrictStr | None = Field(max_length=256)
+    po_number: StrictStr | None = Field(max_length=256)
     order_date: date | None
     requested_delivery_date: date | None
     currency: StrictStr | None
-    lines: list[ReviewLineRequest]
+    lines: list[ReviewLineRequest] = Field(max_length=200)
 
     def to_contract(self) -> ReviewDraft:
         """Convert mutable transport arrays to the immutable application value."""
@@ -298,7 +300,7 @@ class ReviewRejectRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    reason: StrictStr
+    reason: StrictStr = Field(max_length=500)
 
 
 class ReviewCommandResponse(BaseModel):

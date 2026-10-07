@@ -41,6 +41,8 @@ EXPECTED_COLUMNS = {
         "currency",
         "state",
         "failure_origin",
+        "intake_claim_token",
+        "intake_claim_expires_at",
         "created_at",
     },
     "order_lines": {

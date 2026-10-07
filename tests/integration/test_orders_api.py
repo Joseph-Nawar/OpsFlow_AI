@@ -16,7 +16,36 @@ from opsflow.persistence.models import (
     OrderModel,
     SourceDocumentModel,
 )
-from opsflow.settings import Settings
+from opsflow.review import OperatorRole
+from opsflow.settings import DevelopmentOperatorConfig, Settings
+
+ORCHESTRATION_TOKEN = "phase2-api-orchestration-token"
+VIEW_TOKEN = "phase2-api-view-token"
+
+
+def _core_settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        orchestration_token=ORCHESTRATION_TOKEN,
+        review_dev_operators=(
+            DevelopmentOperatorConfig(
+                token=VIEW_TOKEN,
+                actor="phase2-api-viewer",
+                role=OperatorRole.REVIEWER,
+            ),
+        ),
+    )
+
+
+def _orchestration_headers(idempotency_key: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {ORCHESTRATION_TOKEN}",
+        "Idempotency-Key": idempotency_key,
+    }
+
+
+def _view_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {VIEW_TOKEN}"}
 
 
 def test_openapi_exposes_only_the_approved_business_routes() -> None:
@@ -74,6 +103,8 @@ def test_openapi_exposes_only_the_approved_business_routes() -> None:
         "/v1/orchestration/order-sync/execute-next",
         "/v1/integrations/notifications/claim",
         "/v1/integrations/notifications/{notification_id}/outcome",
+        "/v1/operations/metrics",
+        "/v1/operations/integrations",
     }
 
 
@@ -241,20 +272,22 @@ def test_list_returns_paginated_lightweight_summaries() -> None:
 async def _post_order(
     payload: dict[str, object], *, headers: dict[str, str] | None = None
 ) -> httpx.Response:
-    app = create_app(Settings())
+    app = create_app(_core_settings())
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            request_headers = {"Idempotency-Key": f"api-test-{uuid4()}"}
-            if headers is not None:
-                request_headers = headers
+            request_headers = {"Authorization": f"Bearer {ORCHESTRATION_TOKEN}"}
+            if headers is None:
+                request_headers["Idempotency-Key"] = f"api-test-{uuid4()}"
+            else:
+                request_headers.update(headers)
             return await client.post("/v1/orders", json=payload, headers=request_headers)
 
 
 async def _post_order_and_count_tables(
     payload: dict[str, object],
 ) -> tuple[httpx.Response, dict[str, int], dict[str, int]]:
-    app = create_app(Settings())
+    app = create_app(_core_settings())
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -262,7 +295,7 @@ async def _post_order_and_count_tables(
             response = await client.post(
                 "/v1/orders",
                 json=payload,
-                headers={"Idempotency-Key": f"api-forged-gmail-{uuid4()}"},
+                headers=_orchestration_headers(f"api-forged-gmail-{uuid4()}"),
             )
             after = await _order_table_counts()
     return response, before, after
@@ -306,15 +339,21 @@ def _gmail_forgery_payload() -> dict[str, object]:
 async def _assert_replay() -> None:
     key = f"api-replay-{uuid4()}"
     payload = _populated_payload()
-    app = create_app(Settings())
+    app = create_app(_core_settings())
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            before = (await client.get("/v1/orders")).json()["total"]
-            first = await client.post("/v1/orders", json=payload, headers={"Idempotency-Key": key})
-            second = await client.post("/v1/orders", json=payload, headers={"Idempotency-Key": key})
-            after = (await client.get("/v1/orders")).json()["total"]
-            audit = await client.get(f"/v1/orders/{first.json()['id']}/audit")
+            before = (await client.get("/v1/orders", headers=_view_headers())).json()["total"]
+            first = await client.post(
+                "/v1/orders", json=payload, headers=_orchestration_headers(key)
+            )
+            second = await client.post(
+                "/v1/orders", json=payload, headers=_orchestration_headers(key)
+            )
+            after = (await client.get("/v1/orders", headers=_view_headers())).json()["total"]
+            audit = await client.get(
+                f"/v1/orders/{first.json()['id']}/audit", headers=_view_headers()
+            )
 
     assert first.status_code == 201
     assert second.status_code == 201
@@ -325,15 +364,15 @@ async def _assert_replay() -> None:
 
 async def _assert_conflict() -> None:
     key = f"api-conflict-{uuid4()}"
-    app = create_app(Settings())
+    app = create_app(_core_settings())
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            first = await client.post("/v1/orders", json={}, headers={"Idempotency-Key": key})
+            first = await client.post("/v1/orders", json={}, headers=_orchestration_headers(key))
             conflict = await client.post(
                 "/v1/orders",
                 json={"customer_reference": "different"},
-                headers={"Idempotency-Key": key},
+                headers=_orchestration_headers(key),
             )
 
     assert first.status_code == 201
@@ -348,16 +387,18 @@ async def _assert_conflict() -> None:
 
 
 async def _assert_detail_and_audit() -> None:
-    app = create_app(Settings())
+    app = create_app(_core_settings())
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             created = await client.post(
-                "/v1/orders", json=_populated_payload(), headers={"Idempotency-Key": str(uuid4())}
+                "/v1/orders",
+                json=_populated_payload(),
+                headers=_orchestration_headers(str(uuid4())),
             )
             order_id = created.json()["id"]
-            detail = await client.get(f"/v1/orders/{order_id}")
-            audit = await client.get(f"/v1/orders/{order_id}/audit")
+            detail = await client.get(f"/v1/orders/{order_id}", headers=_view_headers())
+            audit = await client.get(f"/v1/orders/{order_id}/audit", headers=_view_headers())
 
     assert detail.status_code == 200
     assert set(detail.json()) == {
@@ -381,12 +422,12 @@ async def _assert_detail_and_audit() -> None:
 
 async def _assert_missing_reads() -> None:
     missing = uuid4()
-    app = create_app(Settings())
+    app = create_app(_core_settings())
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            detail = await client.get(f"/v1/orders/{missing}")
-            audit = await client.get(f"/v1/orders/{missing}/audit")
+            detail = await client.get(f"/v1/orders/{missing}", headers=_view_headers())
+            audit = await client.get(f"/v1/orders/{missing}/audit", headers=_view_headers())
 
     expected = {"detail": {"code": "ORDER_NOT_FOUND", "message": "Order was not found."}}
     assert detail.status_code == 404
@@ -396,25 +437,25 @@ async def _assert_missing_reads() -> None:
 
 
 async def _assert_list() -> None:
-    app = create_app(Settings())
+    app = create_app(_core_settings())
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            before = await client.get("/v1/orders?limit=2&offset=0")
+            before = await client.get("/v1/orders?limit=2&offset=0", headers=_view_headers())
             before_total = before.json()["total"]
             created_ids: set[str] = set()
             for index in range(2):
                 response = await client.post(
                     "/v1/orders",
                     json={"po_number": f"PO-LIST-{index}"},
-                    headers={"Idempotency-Key": f"api-list-{uuid4()}"},
+                    headers=_orchestration_headers(f"api-list-{uuid4()}"),
                 )
                 assert response.status_code == 201
                 created_ids.add(response.json()["id"])
-            first_page = await client.get("/v1/orders?limit=2&offset=0")
-            page = await client.get("/v1/orders?limit=1&offset=1")
-            invalid_limit = await client.get("/v1/orders?limit=0")
-            invalid_offset = await client.get("/v1/orders?offset=-1")
+            first_page = await client.get("/v1/orders?limit=2&offset=0", headers=_view_headers())
+            page = await client.get("/v1/orders?limit=1&offset=1", headers=_view_headers())
+            invalid_limit = await client.get("/v1/orders?limit=0", headers=_view_headers())
+            invalid_offset = await client.get("/v1/orders?offset=-1", headers=_view_headers())
 
     assert before.status_code == 200
     assert first_page.status_code == 200

@@ -31,7 +31,12 @@ def test_request_and_result_are_frozen_slotted_provider_neutral_records() -> Non
         "user_content",
         "response_schema",
     ]
-    assert [field.name for field in fields(result)] == ["payload"]
+    assert [field.name for field in fields(result)] == [
+        "payload",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+    ]
 
     with pytest.raises(FrozenInstanceError):
         request.prompt_version = "changed"  # type: ignore[misc]

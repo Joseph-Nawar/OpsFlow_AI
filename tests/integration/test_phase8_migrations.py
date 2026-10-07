@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import delete, inspect, select
+from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -26,7 +26,7 @@ from opsflow.persistence.models import (
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
 PHASE_8_REVISION = "0005_phase8_notification_deliveries"
-CURRENT_HEAD_REVISION = "0006_phase9_order_syncs"
+CURRENT_HEAD_REVISION = "0007_phase7_intake_ownership"
 _NOW = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
 
 
@@ -111,7 +111,12 @@ async def _assert_schema_and_constraints(database_url: str) -> None:
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     order_id, event_id = uuid4(), uuid4()
     async with session_factory() as session:
-        session.add(OrderModel(id=order_id, state="RECEIVED", created_at=_NOW))
+        await session.execute(
+            text(
+                "INSERT INTO orders (id, state, created_at) VALUES (:id, 'RECEIVED', :created_at)"
+            ),
+            {"id": order_id, "created_at": _NOW},
+        )
         await session.flush()
         session.add(
             AuditEventModel(
@@ -323,7 +328,12 @@ async def _insert_phase6_revision(database_url: str) -> object:
     order_id, source_id, snapshot_id, revision_id = uuid4(), uuid4(), uuid4(), uuid4()
     digest = "a" * 64
     async with session_factory() as session:
-        session.add(OrderModel(id=order_id, state="RECEIVED", created_at=_NOW))
+        await session.execute(
+            text(
+                "INSERT INTO orders (id, state, created_at) VALUES (:id, 'RECEIVED', :created_at)"
+            ),
+            {"id": order_id, "created_at": _NOW},
+        )
         await session.flush()
         session.add(
             SourceDocumentModel(

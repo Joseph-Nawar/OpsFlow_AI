@@ -11,6 +11,7 @@ from pydantic import (
     AnyHttpUrl,
     BaseModel,
     ConfigDict,
+    Field,
     SecretStr,
     TypeAdapter,
     ValidationError,
@@ -58,9 +59,12 @@ class DevelopmentOperatorConfig(BaseModel):
 class Settings(BaseSettings):
     """Runtime settings with safe local-development defaults."""
 
-    database_url: str = "postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow"
+    database_url: str = Field(
+        default="postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow",
+        repr=False,
+    )
     orchestration_token: SecretStr | None = None
-    gemini_api_key: str | None = None
+    gemini_api_key: SecretStr | None = None
     gemini_model: str | None = None
     gemini_timeout_seconds: float | None = None
     review_base_url: str = "http://localhost:5173"
@@ -94,6 +98,15 @@ class Settings(BaseSettings):
         except ValidationError as error:
             raise ValueError("review base URL must be an absolute HTTP or HTTPS URL") from error
         return str(parsed).rstrip("/")
+
+    @field_validator("gemini_api_key", mode="before")
+    @classmethod
+    def validate_gemini_api_key(cls, value: object) -> object:
+        if value is None or (type(value) is str and not value.strip()):
+            return None
+        if isinstance(value, SecretStr) and not value.get_secret_value().strip():
+            return None
+        return value
 
     @field_validator("odoo_base_url", mode="before")
     @classmethod

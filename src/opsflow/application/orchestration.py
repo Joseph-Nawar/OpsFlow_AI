@@ -1,5 +1,7 @@
 """Application service for one Phase 7 orchestration intake execution."""
 
+import asyncio
+import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -48,6 +50,11 @@ from opsflow.orchestration.failures import (
     classify_processing_failure,
     persist_orchestration_failure,
 )
+from opsflow.orchestration.ownership import (
+    INTAKE_EXECUTION_BUDGET_SECONDS,
+    StaleIntakeOwnershipError,
+    require_current_intake_ownership,
+)
 from opsflow.persistence.repositories import (
     PersistedOrder,
     get_order_for_update,
@@ -60,6 +67,8 @@ _UNAVAILABLE_MESSAGE = "Orchestration intake is currently unavailable."
 _EXTRACTION_COMPLETED_DESCRIPTION = (
     "Document processing and structured extraction completed; validation is pending."
 )
+_PERSISTENCE_ERRORS = (SQLAlchemyError, OSError)
+_OWNERSHIP_PERSISTENCE_ERRORS = (*_PERSISTENCE_ERRORS, StaleIntakeOwnershipError)
 
 
 class OrchestrationUnavailableError(Exception):
@@ -67,6 +76,13 @@ class OrchestrationUnavailableError(Exception):
 
     def __init__(self) -> None:
         super().__init__(_UNAVAILABLE_MESSAGE)
+
+
+def _require_execution_budget(deadline: float) -> None:
+    """Stop before another blocking boundary can outlive the intake lease."""
+
+    if time.monotonic() >= deadline:
+        raise OrchestrationUnavailableError()
 
 
 def _basename(filename: str) -> str:
@@ -117,6 +133,7 @@ def _standing_down_result(
         failure_origin=claim.persisted.order.failure_origin,
         idempotent_replay=idempotent_replay,
         execution=IntakeExecution.STANDING_DOWN,
+        retry_after_seconds=claim.retry_after_seconds,
     )
 
 
@@ -130,6 +147,7 @@ async def _persist_failure_result(
     recorded_at: datetime,
     review_base_url: str,
     idempotent_replay: bool,
+    ownership_token: UUID | None,
 ) -> OrchestrationIntakeResult:
     classification = classifier(error)
     try:
@@ -140,8 +158,9 @@ async def _persist_failure_result(
             actor=actor,
             recorded_at=recorded_at,
             review_base_url=review_base_url,
+            ownership_token=ownership_token,
         )
-    except SQLAlchemyError:
+    except _OWNERSHIP_PERSISTENCE_ERRORS:
         raise OrchestrationUnavailableError() from None
     return _completed_result(persisted, idempotent_replay=idempotent_replay)
 
@@ -152,6 +171,7 @@ async def _persist_extraction_completed(
     order_id: UUID,
     actor: str,
     recorded_at: datetime,
+    ownership_token: UUID | None = None,
 ) -> PersistedOrder:
     _require_aware_recorded_at(recorded_at)
     async with session.begin():
@@ -160,6 +180,7 @@ async def _persist_extraction_completed(
             raise OrderNotFoundError(order_id)
         if locked.order.state is not OrderState.PROCESSING:
             raise OrderValidationStateError(order_id, locked.order.state)
+        await require_current_intake_ownership(session, locked, ownership_token)
 
         extracted = locked.order.transition_to(OrderState.EXTRACTED)
         await update_order_snapshot(session, extracted)
@@ -182,12 +203,14 @@ async def _persist_extraction_completed(
     return persisted
 
 
-async def execute_orchestration_intake(
+async def _execute_orchestration_intake(
     session: AsyncSession,
     command: OrchestrationIntakeCommand,
     runtime: OrchestrationRuntime,
     actor: str,
     recorded_at: datetime,
+    *,
+    deadline: float,
 ) -> OrchestrationIntakeResult:
     """Execute one claimed document through Phases 2–5."""
 
@@ -237,7 +260,7 @@ async def execute_orchestration_intake(
             command.idempotency_key,
             now=recorded_at,
         )
-    except SQLAlchemyError:
+    except _PERSISTENCE_ERRORS:
         raise OrchestrationUnavailableError() from None
 
     idempotent_replay = creation.disposition is CreateOrderDisposition.REPLAYED_EXISTING
@@ -251,15 +274,21 @@ async def execute_orchestration_intake(
             actor=actor,
             recorded_at=recorded_at + timedelta(microseconds=1),
         )
-    except SQLAlchemyError:
+    except _PERSISTENCE_ERRORS:
         raise OrchestrationUnavailableError() from None
 
     if claim.kind is IntakeClaimKind.STAND_DOWN:
         return _standing_down_result(claim, idempotent_replay=idempotent_replay)
 
+    _require_execution_budget(deadline)
     processing_classifier = (
         classify_processing_failure
-        if claim.kind in (IntakeClaimKind.INITIAL, IntakeClaimKind.RESUME_PROCESSING)
+        if claim.kind
+        in (
+            IntakeClaimKind.INITIAL,
+            IntakeClaimKind.RESUME_PROCESSING,
+            IntakeClaimKind.RECOVER_PROCESSING,
+        )
         else classify_extracted_failure
     )
     failure_at = recorded_at + timedelta(microseconds=2)
@@ -275,8 +304,10 @@ async def execute_orchestration_intake(
             recorded_at=failure_at,
             review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
+            ownership_token=claim.ownership_token,
         )
 
+    _require_execution_budget(deadline)
     if session.in_transaction():
         raise RuntimeError("orchestration provider call requires no active transaction")
     try:
@@ -292,8 +323,10 @@ async def execute_orchestration_intake(
             recorded_at=failure_at,
             review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
+            ownership_token=claim.ownership_token,
         )
 
+    _require_execution_budget(deadline)
     if (
         draft.source_sha256 != source_identity.sha256
         or draft.source_document_type is not source_identity.document_type
@@ -303,15 +336,20 @@ async def execute_orchestration_intake(
             claim.source_document_id,
         )
 
-    if claim.kind in (IntakeClaimKind.INITIAL, IntakeClaimKind.RESUME_PROCESSING):
+    if claim.kind in (
+        IntakeClaimKind.INITIAL,
+        IntakeClaimKind.RESUME_PROCESSING,
+        IntakeClaimKind.RECOVER_PROCESSING,
+    ):
         try:
             await _persist_extraction_completed(
                 session,
                 order_id=claim.persisted.order.id,
                 actor=actor,
                 recorded_at=failure_at,
+                ownership_token=claim.ownership_token,
             )
-        except SQLAlchemyError:
+        except _OWNERSHIP_PERSISTENCE_ERRORS:
             raise OrchestrationUnavailableError() from None
 
     try:
@@ -325,6 +363,7 @@ async def execute_orchestration_intake(
             ValidationContext(evaluation_date=runtime.date_provider.current_date()),
             recorded_at + timedelta(microseconds=3),
             runtime.review_base_url,
+            ownership_token=claim.ownership_token,
         )
     except (
         BusinessDataProviderError,
@@ -340,11 +379,37 @@ async def execute_orchestration_intake(
             recorded_at=recorded_at + timedelta(microseconds=3),
             review_base_url=runtime.review_base_url,
             idempotent_replay=idempotent_replay,
+            ownership_token=claim.ownership_token,
         )
-    except SQLAlchemyError:
+    except _OWNERSHIP_PERSISTENCE_ERRORS:
         raise OrchestrationUnavailableError() from None
 
+    _require_execution_budget(deadline)
     return _completed_order_result(validation.order, idempotent_replay=idempotent_replay)
+
+
+async def execute_orchestration_intake(
+    session: AsyncSession,
+    command: OrchestrationIntakeCommand,
+    runtime: OrchestrationRuntime,
+    actor: str,
+    recorded_at: datetime,
+) -> OrchestrationIntakeResult:
+    """Execute intake within the bounded lifetime protected by its lease."""
+
+    try:
+        deadline = time.monotonic() + INTAKE_EXECUTION_BUDGET_SECONDS
+        async with asyncio.timeout(INTAKE_EXECUTION_BUDGET_SECONDS):
+            return await _execute_orchestration_intake(
+                session,
+                command,
+                runtime,
+                actor,
+                recorded_at,
+                deadline=deadline,
+            )
+    except TimeoutError:
+        raise OrchestrationUnavailableError() from None
 
 
 __all__ = ["OrchestrationUnavailableError", "execute_orchestration_intake"]

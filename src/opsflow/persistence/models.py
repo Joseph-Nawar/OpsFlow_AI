@@ -74,6 +74,11 @@ class OrderModel(Base):
             "AND failure_origin IS NULL))",
             name="ck_orders_failure_origin",
         ),
+        CheckConstraint(
+            "(intake_claim_token IS NULL AND intake_claim_expires_at IS NULL) OR "
+            "(intake_claim_token IS NOT NULL AND intake_claim_expires_at IS NOT NULL)",
+            name="ck_orders_intake_claim_pair",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -86,6 +91,8 @@ class OrderModel(Base):
     currency: Mapped[str | None] = mapped_column(Text)
     state: Mapped[str] = mapped_column(Text, nullable=False)
     failure_origin: Mapped[str | None] = mapped_column(Text)
+    intake_claim_token: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True))
+    intake_claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

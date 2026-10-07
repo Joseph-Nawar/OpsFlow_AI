@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import cast
@@ -14,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from opsflow.application.errors import OrderNotFoundError
 from opsflow.application.orders import get_order
 from opsflow.domain import Order, OrderState, ValidationIssue
+from opsflow.observability.runtime import current_observability, duration_ms
 from opsflow.order_sync.contracts import (
     OdooOrderReceipt,
     OrderSyncFailureCode,
@@ -141,7 +144,28 @@ class OdooERPAdapter(BusinessDataProvider):
     ) -> TrustedBusinessData:
         """Return Odoo-backed trusted records without provider IDs in the contract."""
 
-        return (await self._lookup_snapshot(request)).trusted_data
+        started_ns = time.perf_counter_ns()
+        success = False
+        failure_code: str | None = None
+        try:
+            result = (await self._lookup_snapshot(request)).trusted_data
+            success = True
+            failure_code = None
+            return result
+        except _OdooFailure as failure:
+            failure_code = failure.code.value
+            raise
+        finally:
+            observer = current_observability()
+            if observer is not None and (success or failure_code is not None):
+                with suppress(Exception):
+                    observer.provider_completed(
+                        provider="odoo",
+                        operation=OrderSyncStep.ODOO_LOOKUP.value,
+                        success=success,
+                        duration_ms=duration_ms(started_ns),
+                        failure_code=failure_code,
+                    )
 
     async def execute(self, order_id: UUID, step: OrderSyncStep) -> OrderSyncStepResult:
         """Execute one Odoo checkpoint through the unchanged M9B executor seam."""

@@ -84,6 +84,11 @@ class _Provider:
     pass
 
 
+def test_execution_budget_rejects_expired_synchronous_boundary() -> None:
+    with pytest.raises(orchestration_module.OrchestrationUnavailableError):
+        orchestration_module._require_execution_budget(0.0)
+
+
 def _source() -> SourceDocument:
     return SourceDocument(
         id=SOURCE_ID,
@@ -249,7 +254,9 @@ def _install_pipeline(
         order_id: UUID,
         actor: str,
         recorded_at: datetime,
+        ownership_token: UUID | None = None,
     ) -> PersistedOrder:
+        del ownership_token
         assert not received_session.in_transaction()
         calls["sequence"].append("extraction_completed")  # type: ignore[attr-defined]
         calls["extraction_completed"] = (order_id, actor, recorded_at)
@@ -265,7 +272,9 @@ def _install_pipeline(
         context: object,
         recorded_at: datetime,
         review_base_url: str,
+        ownership_token: UUID | None = None,
     ) -> ValidationApplicationResult:
+        del ownership_token
         assert not received_session.in_transaction()
         calls["sequence"].append("validate")  # type: ignore[attr-defined]
         calls["validate"] = (
@@ -295,7 +304,9 @@ def _install_pipeline(
         actor: str,
         recorded_at: datetime,
         review_base_url: str,
+        ownership_token: UUID | None = None,
     ) -> PersistedOrder:
+        del ownership_token
         assert not received_session.in_transaction()
         calls["sequence"].append("failure")  # type: ignore[attr-defined]
         calls["failure"] = (order_id, classification, actor, recorded_at, review_base_url)

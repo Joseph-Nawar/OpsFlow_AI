@@ -1,6 +1,8 @@
 """Authenticated HTTP boundary for orchestration intake and order synchronization."""
 
+import time
 from collections.abc import Callable, Coroutine
+from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 
@@ -38,6 +40,7 @@ from opsflow.documents.errors import (
     UnsupportedDocumentTypeError,
 )
 from opsflow.domain import OrderState
+from opsflow.observability.runtime import current_observability, duration_ms
 from opsflow.orchestration.auth import get_orchestration_actor
 from opsflow.orchestration.contracts import (
     IntakeExecution,
@@ -95,16 +98,17 @@ OrchestrationActorDependency = Annotated[str, Depends(get_orchestration_actor)]
 async def create_orchestration_intake_endpoint(
     request: Request,
     document: Annotated[UploadFile, File(...)],
-    document_type: Annotated[str, Form(...)],
+    document_type: Annotated[str, Form(..., max_length=32)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
     actor: OrchestrationActorDependency,
     session: SessionDependency,
     response: Response,
-    message_id: Annotated[str | None, Form()] = None,
-    source_system: Annotated[str | None, Form()] = None,
+    message_id: Annotated[str | None, Form(max_length=256)] = None,
+    source_system: Annotated[str | None, Form(max_length=32)] = None,
 ) -> OrchestrationIntakeResponse:
     """Accept one authenticated document and delegate to orchestration intake."""
 
+    started_ns = time.perf_counter_ns()
     try:
         command = await build_intake_command(
             document,
@@ -135,11 +139,25 @@ async def create_orchestration_intake_endpoint(
         raise _source_identity_conflict() from error
 
     response.status_code = _status_for_result(result)
+    observer = current_observability()
+    if observer is not None:
+        with suppress(Exception):
+            observer.intake_outcome(
+                state=result.state.value,
+                duration_ms=duration_ms(started_ns),
+                order_id=str(result.order_id),
+                retry_outcome=(
+                    "DELAYED_RECOVERY"
+                    if result.retry_after_seconds is not None
+                    else result.execution.value
+                ),
+            )
     return OrchestrationIntakeResponse(
         order_id=result.order_id,
         state=result.state,
         failure_origin=result.failure_origin,
         idempotent_replay=result.idempotent_replay,
+        retry_after_seconds=result.retry_after_seconds,
     )
 
 

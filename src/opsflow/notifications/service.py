@@ -1,6 +1,8 @@
 """Durable notification intent, claim, and outcome application services."""
 
+import time
 from collections.abc import Sequence
+from contextlib import suppress
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -19,6 +21,7 @@ from opsflow.notifications.contracts import (
     NotificationStatus,
 )
 from opsflow.notifications.payloads import render_gmail_approval_payload, render_slack_payload
+from opsflow.observability.runtime import current_observability, duration_ms
 from opsflow.persistence.mappers import notification_delivery_from_model
 from opsflow.persistence.notification_repository import (
     claim_one_eligible_notification,
@@ -115,6 +118,7 @@ async def record_notification_outcome(
 ) -> NotificationOutcomeResult:
     """Persist a bounded provider outcome for the current unexpired claim only."""
 
+    started_ns = time.perf_counter_ns()
     async with session.begin():
         row = await get_notification_delivery_for_update(session, notification_id)
         if row is None:
@@ -154,7 +158,7 @@ async def record_notification_outcome(
         await session.flush()
         await session.refresh(row)
         delivery = notification_delivery_from_model(row)
-        return NotificationOutcomeResult(
+        result = NotificationOutcomeResult(
             notification_id=delivery.id,
             status=delivery.status,
             attempt_count=delivery.attempt_count,
@@ -162,6 +166,19 @@ async def record_notification_outcome(
             provider_reference=delivery.provider_reference,
             last_failure_code=delivery.last_failure_code,
         )
+    observer = current_observability()
+    if observer is not None:
+        with suppress(Exception):
+            observer.notification_outcome(
+                channel=delivery.channel.value.lower(),
+                state=result.status.value,
+                duration_ms=duration_ms(started_ns),
+                order_id=str(delivery.order_id),
+                failure_code=(
+                    result.last_failure_code.value if result.last_failure_code is not None else None
+                ),
+            )
+    return result
 
 
 def _retry_delay_seconds(

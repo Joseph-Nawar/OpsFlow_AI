@@ -44,6 +44,11 @@ EXPECTED_NODE_IDS = {
     "Restore Original After Retry Wait 2": "8c000000-0000-4000-8000-000000000025",
     "Submit to OpsFlow API Retry 2": "8c000000-0000-4000-8000-000000000026",
     "Route Attempt 2 Status": "8c000000-0000-4000-8000-000000000027",
+    "Route Recovery Hint": "8c000000-0000-0000-0000-000000000037",
+    "Wait For Backend Recovery": "8c000000-0000-0000-0000-000000000038",
+    "Restore Original After Backend Recovery": "8c000000-0000-0000-0000-000000000039",
+    "Submit to OpsFlow API After Backend Recovery": "8c000000-0000-0000-0000-000000000040",
+    "Route Backend Recovery Status": "8c000000-0000-0000-0000-000000000041",
     "Route Backend State": "8c000000-0000-4000-8000-000000000028",
     "Transport Unavailable": "8c000000-0000-4000-8000-000000000029",
     "Review Required": "8c000000-0000-4000-8000-000000000030",
@@ -157,6 +162,11 @@ def test_workflow_has_frozen_node_inventory_versions_and_wiring() -> None:
         "Restore Original After Retry Wait 2": ("n8n-nodes-base.merge", 3.2),
         "Submit to OpsFlow API Retry 2": ("n8n-nodes-base.httpRequest", 4.5),
         "Route Attempt 2 Status": ("n8n-nodes-base.if", 2.3),
+        "Route Recovery Hint": ("n8n-nodes-base.if", 2.3),
+        "Wait For Backend Recovery": ("n8n-nodes-base.wait", 1.1),
+        "Restore Original After Backend Recovery": ("n8n-nodes-base.merge", 3.2),
+        "Submit to OpsFlow API After Backend Recovery": ("n8n-nodes-base.httpRequest", 4.5),
+        "Route Backend Recovery Status": ("n8n-nodes-base.if", 2.3),
         "Route Backend State": ("n8n-nodes-base.switch", 3.4),
         "Transport Unavailable": ("n8n-nodes-base.stopAndError", 1),
         "Review Required": ("n8n-nodes-base.noOp", 1),
@@ -387,6 +397,7 @@ def test_multipart_identity_and_binary_property_are_constant_across_attempts() -
             "Submit to OpsFlow API",
             "Submit to OpsFlow API Retry 1",
             "Submit to OpsFlow API Retry 2",
+            "Submit to OpsFlow API After Backend Recovery",
         )
     ]
     assert all(attempt["typeVersion"] == 4.5 for attempt in attempts)
@@ -434,7 +445,8 @@ def test_multipart_identity_and_binary_property_are_constant_across_attempts() -
         == "={{ $json.source_system }}"
     )
     assert parameters["headerParameters"]["parameters"] == [
-        {"name": "Idempotency-Key", "value": "={{ $json.idempotency_key }}"}
+        {"name": "Idempotency-Key", "value": "={{ $json.idempotency_key }}"},
+        {"name": "X-Workflow-Execution-ID", "value": "={{ $execution.id }}"},
     ]
     assert nodes["Preserve Original Gmail Intake"]["parameters"]["options"] == {
         "stripBinary": False
@@ -449,14 +461,42 @@ def test_multipart_identity_and_binary_property_are_constant_across_attempts() -
             "unit": "seconds",
         }
     assert _targets(workflow, "Route Attempt 0 Status") == [("Wait Before Retry 1", 0)]
-    assert _targets(workflow, "Route Attempt 0 Status", 1) == [("Route Backend State", 0)]
+    assert _targets(workflow, "Route Attempt 0 Status", 1) == [("Route Recovery Hint", 0)]
     assert _targets(workflow, "Submit to OpsFlow API", 1) == [("Wait Before Retry 1", 0)]
     assert _targets(workflow, "Route Attempt 1 Status") == [("Wait Before Retry 2", 0)]
-    assert _targets(workflow, "Route Attempt 1 Status", 1) == [("Route Backend State", 0)]
+    assert _targets(workflow, "Route Attempt 1 Status", 1) == [("Route Recovery Hint", 0)]
     assert _targets(workflow, "Submit to OpsFlow API Retry 1", 1) == [("Wait Before Retry 2", 0)]
     assert _targets(workflow, "Route Attempt 2 Status") == [("Transport Unavailable", 0)]
-    assert _targets(workflow, "Route Attempt 2 Status", 1) == [("Route Backend State", 0)]
+    assert _targets(workflow, "Route Attempt 2 Status", 1) == [("Route Recovery Hint", 0)]
     assert _targets(workflow, "Submit to OpsFlow API Retry 2", 1) == [("Transport Unavailable", 0)]
+    assert _targets(workflow, "Route Recovery Hint") == [("Wait For Backend Recovery", 0)]
+    assert _targets(workflow, "Route Recovery Hint", 1) == [("Route Backend State", 0)]
+    assert _targets(workflow, "Wait For Backend Recovery") == [
+        ("Restore Original After Backend Recovery", 1)
+    ]
+    assert _targets(workflow, "Restore Original After Backend Recovery") == [
+        ("Submit to OpsFlow API After Backend Recovery", 0)
+    ]
+    assert _targets(workflow, "Submit to OpsFlow API After Backend Recovery") == [
+        ("Route Backend Recovery Status", 0)
+    ]
+    assert _targets(workflow, "Submit to OpsFlow API After Backend Recovery", 1) == [
+        ("Transport Unavailable", 0)
+    ]
+    assert _targets(workflow, "Route Backend Recovery Status") == [("Transport Unavailable", 0)]
+    assert _targets(workflow, "Route Backend Recovery Status", 1) == [("Route Backend State", 0)]
+    assert nodes["Wait For Backend Recovery"]["parameters"] == {
+        "resume": "timeInterval",
+        "amount": "={{ $json.body.retry_after_seconds }}",
+        "unit": "seconds",
+    }
+    recovery_condition = nodes["Route Recovery Hint"]["parameters"]["conditions"]["conditions"][0]
+    assert recovery_condition["leftValue"] == "={{ $json.body.retry_after_seconds }}"
+    assert recovery_condition["rightValue"] == 0
+    assert recovery_condition["operator"] == {"type": "number", "operation": "largerEqual"}
+    serialized = json.dumps(workflow, sort_keys=True)
+    assert '"amount": 210' not in serialized
+    assert '"rightValue": 210' not in serialized
     for name in ("Route Attempt 0 Status", "Route Attempt 1 Status", "Route Attempt 2 Status"):
         condition = nodes[name]["parameters"]["conditions"]["conditions"][0]
         assert condition["leftValue"] == "={{ $json.statusCode }}"
@@ -520,6 +560,7 @@ def test_backend_state_routing_is_exact_and_sanitized() -> None:
     ]
     assert credentials == [
         {"name": "OpsFlow Gmail Sandbox"},
+        {"name": "OpsFlow Orchestration"},
         {"name": "OpsFlow Orchestration"},
         {"name": "OpsFlow Orchestration"},
         {"name": "OpsFlow Orchestration"},

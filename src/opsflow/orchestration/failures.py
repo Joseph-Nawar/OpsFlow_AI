@@ -23,8 +23,10 @@ from opsflow.extraction.errors import (
 )
 from opsflow.notifications.contracts import NotificationChannel, NotificationKind
 from opsflow.notifications.service import create_notification_intent
+from opsflow.orchestration.ownership import require_current_intake_ownership
 from opsflow.persistence.repositories import (
     PersistedOrder,
+    clear_intake_ownership,
     get_order_for_update,
     insert_audit_event,
     update_order_snapshot,
@@ -153,6 +155,7 @@ async def persist_orchestration_failure(
     actor: str,
     recorded_at: datetime,
     review_base_url: str,
+    ownership_token: UUID | None = None,
 ) -> PersistedOrder:
     """Persist one typed failure and its audit event in one short transaction."""
 
@@ -169,9 +172,11 @@ async def persist_orchestration_failure(
                 classification.target,
                 "persist_orchestration_failure",
             )
+        await require_current_intake_ownership(session, locked, ownership_token)
 
         failed_order = locked.order.transition_to(classification.target)
         await update_order_snapshot(session, failed_order)
+        await clear_intake_ownership(session, order_id)
         event = AuditEvent(
             id=uuid4(),
             order_id=order_id,

@@ -1,0 +1,9 @@
+# Historical M10C test fixture; it was a synthetic Idempotency-Key value,
+# not a credential, and was replaced by commit dd18b46.
+827782df6664c7e92e90330d61fb97f276b1c1d1:tests/integration/test_m10c_http_limits.py:generic-api-key:253
+
+# Historical M10E test fixtures; synthetic idempotency identities, not
+# credentials. The remediation commit is immutable and current source is
+# scan-clean after the assignments were renamed.
+be8322e4331e8c13d83bc4f940cc10a1a07758db:tests/integration/test_phase10_failure_drills.py:generic-api-key:1074
+be8322e4331e8c13d83bc4f940cc10a1a07758db:tests/integration/test_phase10_failure_drills.py:generic-api-key:1252

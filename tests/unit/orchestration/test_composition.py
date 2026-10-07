@@ -79,6 +79,13 @@ def test_default_runtime_uses_demo_review_runtime_and_fresh_fake_providers() -> 
     assert type(runtime.date_provider) is type(demo.date_provider)
 
 
+@pytest.mark.parametrize("gemini_api_key", ["", "   "])
+def test_blank_gemini_key_keeps_fake_provider_semantics(gemini_api_key: str) -> None:
+    runtime = build_orchestration_runtime(_settings(gemini_api_key=gemini_api_key))
+
+    assert isinstance(runtime.extraction_provider_factory(), FakeProvider)
+
+
 def test_fresh_fake_provider_factory_isolates_destructive_queues() -> None:
     runtime = build_orchestration_runtime(_settings())
     first = runtime.extraction_provider_factory()
@@ -154,6 +161,7 @@ def test_complete_gemini_settings_create_fresh_configured_providers() -> None:
     assert first is not second
     assert first._config.model == "gemini-test-model"
     assert first._config.timeout_seconds == 12.5
+    assert first._config.api_key == "configured-test-value"
     assert "configured-test-value" not in repr(runtime)
     assert "configured-test-value" not in repr(first._config)
 

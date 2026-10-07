@@ -511,6 +511,7 @@ async def _assert_simultaneous_same_key_http_execution(
         await blocking.started.wait()
         second = await _post_intake(client, key)
         assert second.status_code == 202
+        assert 1 <= second.json()["retry_after_seconds"] <= 210
         blocking.release.set()
         first = await first_task
     assert first.status_code in {200, 201}

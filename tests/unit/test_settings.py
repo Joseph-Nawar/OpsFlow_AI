@@ -1,8 +1,9 @@
 """Environment settings validation tests for the Phase 8 review URL."""
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
+import opsflow.database as database_module
 from opsflow.review import OperatorRole
 from opsflow.settings import Settings
 
@@ -171,6 +172,64 @@ def test_odoo_api_key_is_secret_and_never_rendered() -> None:
     assert key not in str(settings)
     assert settings.odoo_api_key is not None
     assert settings.odoo_api_key.get_secret_value() == key
+
+
+def test_gemini_api_key_is_secret_and_never_rendered() -> None:
+    key = "synthetic-gemini-config-value"
+    settings = Settings(_env_file=None, gemini_api_key=key)
+
+    assert key not in repr(settings)
+    assert key not in str(settings)
+    assert isinstance(settings.gemini_api_key, SecretStr)
+    assert settings.gemini_api_key.get_secret_value() == key
+
+
+def test_database_url_is_not_rendered_but_remains_exact() -> None:
+    database_url = (
+        "postgresql+asyncpg://synthetic_user:synthetic_password@localhost:5432/synthetic_db"
+    )
+    settings = Settings(_env_file=None, database_url=database_url)
+
+    assert database_url not in repr(settings)
+    assert database_url not in str(settings)
+    assert "synthetic_password" not in repr(settings)
+    assert settings.database_url == database_url
+
+
+def test_create_engine_receives_the_exact_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    database_url = (
+        "postgresql+asyncpg://synthetic_user:synthetic_password@localhost:5432/synthetic_db"
+    )
+    captured: dict[str, object] = {}
+    engine = object()
+
+    def fake_create_async_engine(url: str, **kwargs: object) -> object:
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return engine
+
+    monkeypatch.setattr(database_module, "create_async_engine", fake_create_async_engine)
+
+    assert (
+        database_module.create_engine(Settings(_env_file=None, database_url=database_url)) is engine
+    )
+    assert captured == {"url": database_url, "kwargs": {"pool_pre_ping": True}}
+
+
+@pytest.mark.parametrize("gemini_api_key", [None, "", "   "])
+def test_blank_gemini_api_key_is_unconfigured(gemini_api_key: str | None) -> None:
+    settings = Settings(_env_file=None, gemini_api_key=gemini_api_key)
+
+    assert settings.gemini_api_key is None
+
+
+def test_secret_is_not_rendered_in_configuration_validation_errors() -> None:
+    key = "SECRET_SENTINEL_DO_NOT_ECHO"
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None, odoo_api_key=key)
+
+    assert key not in str(raised.value)
 
 
 def test_hubspot_settings_are_optional_but_complete_when_present() -> None:

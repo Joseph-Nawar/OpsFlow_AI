@@ -2,9 +2,10 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from opsflow.domain import OrderState
+from opsflow.orchestration.ownership import INTAKE_OWNERSHIP_LEASE_SECONDS
 from opsflow.order_sync.contracts import ExecuteNextKind
 
 
@@ -17,6 +18,11 @@ class OrchestrationIntakeResponse(BaseModel):
     state: OrderState
     failure_origin: OrderState | None
     idempotent_replay: bool
+    retry_after_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        le=INTAKE_OWNERSHIP_LEASE_SECONDS,
+    )
 
 
 class OrderSyncExecutionResponse(BaseModel):
