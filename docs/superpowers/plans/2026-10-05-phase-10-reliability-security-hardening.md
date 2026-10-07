@@ -497,7 +497,7 @@ while Phase 10 remains `IN PROGRESS`.
 
 ## M10E — Adversarial Resilience & Whole-System Failure Drills
 
-**Status:** M10E `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F `NOT STARTED`; Phase 10 `IN PROGRESS`; Phases 11–12 `NOT STARTED`.
+**Status:** M10E `COMPLETE` (human-approved technical SHA `b73d7add25c273b5efac10f86bdd3ebef952d6da`); M10F `NOT STARTED`; Phase 10 `IN PROGRESS`; Phases 11–12 `NOT STARTED`.
 
 ### Boundary
 
@@ -695,6 +695,35 @@ all M10B–M10D behavior remain unchanged. The original candidate
 dispositions, and the earlier Phase 7 `ConnectionRefusedError` finding/fix
 remain in the record. M10E remains `IMPLEMENTED — PENDING HUMAN REVIEW` and
 M10F remains `NOT STARTED`.
+
+### M10E final human-approval closeout
+
+Final targeted independent re-review passed, and human approval records M10E
+`COMPLETE` against technical SHA
+`b73d7add25c273b5efac10f86bdd3ebef952d6da`. The preserved sequence is:
+initial candidate `2397244fc594c8a6986bd84b86fd998bf70e3dd9`; the MEDIUM
+Phase 7 PostgreSQL `ConnectionRefusedError` defect fixed by
+`38ad89f9defc3d7f846bbfa20e7f9f34c0c730dc`; M10E-01/02/03 remediated by
+`13e5dbe69962b1cd8b897dccfdf77fa8f59bcc28`; M10E-04 remediated by
+`b73d7add25c273b5efac10f86bdd3ebef952d6da`; final independent re-review
+`PASS`; and human approval.
+
+The final evidence is a provider-free 22-test matrix with 34 typed failure
+rows covering duplicate storms and identity conflicts, corrupt PDF/XLSX and
+size boundaries, prompt injection, Gemini classifications, PostgreSQL fault
+and stale-owner recovery, Gmail/Slack notification claims and bounded
+attempts, Odoo/HubSpot fault and stable-identity replay/partial sync, all
+three durable claim families, repeated n8n-equivalent invocation, unique
+retry owners, observability sentinel checks in events and metrics, and clean
+clone reproducibility. Notification delivery remains at-least-once, and
+recovery can fail visibly while PostgreSQL remains unavailable; neither is an
+unresolved defect or an exactly-once physical-execution claim.
+
+The two exact M10E `.gitleaksignore` fingerprints are retained for synthetic
+historical Idempotency-Key test identities in immutable commit `be8322e`.
+Current source was renamed to remain scan-clean; each suppression is an exact
+commit/file/rule/line entry, and current/full-history scans pass. M10F remains
+`NOT STARTED`; Phase 10 remains `IN PROGRESS`.
 
 ## M10F — Independent Phase 10 Audit & Closeout
 

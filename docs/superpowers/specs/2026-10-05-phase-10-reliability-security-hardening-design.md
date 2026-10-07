@@ -1,6 +1,6 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `COMPLETE` (human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`); M10E `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `COMPLETE` (human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`); M10E `COMPLETE` (human-approved technical SHA `b73d7add25c273b5efac10f86bdd3ebef952d6da`); M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
 **Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B–M10E implementation records below. M10F behavior remains outside this document's implementation scope.
 
@@ -745,6 +745,42 @@ candidate `2397244fc594c8a6986bd84b86fd998bf70e3dd9`, first remediation
 dispositions, and the earlier Phase 7 connection defect/fix remain preserved.
 M10E remains `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains `NOT STARTED`;
 Phase 10 remains `IN PROGRESS`.
+
+### M10E final human-approval closeout
+
+Final targeted independent re-review passed, and human approval records M10E
+`COMPLETE` against technical SHA
+`b73d7add25c273b5efac10f86bdd3ebef952d6da`. The complete history remains
+intact: initial candidate
+`2397244fc594c8a6986bd84b86fd998bf70e3dd9`; the MEDIUM Phase 7
+PostgreSQL `ConnectionRefusedError` defect fixed by
+`38ad89f9defc3d7f846bbfa20e7f9f34c0c730dc`; M10E-01/02/03 remediated by
+`13e5dbe69962b1cd8b897dccfdf77fa8f59bcc28`; and M10E-04 remediated by
+`b73d7add25c273b5efac10f86bdd3ebef952d6da`. The final targeted review was
+`PASS`; M10F remains `NOT STARTED`, and Phase 10 remains `IN PROGRESS`.
+
+The approved evidence is a focused provider-free matrix of 22 tests and 34
+explicit typed failure-contract rows. It covers bounded duplicate storms and
+source/fingerprint conflicts; malformed and corrupt PDF/XLSX inputs and
+document/request limits; prompt injection as untrusted data; Gemini
+timeout/unavailable versus malformed/schema-invalid responses; PostgreSQL
+pre-claim, transactional rollback, stale-owner, and post-provider recovery;
+Gmail/Slack claim, retry, stale-token, lost-outcome, and final-attempt
+behavior; Odoo and HubSpot timeout, unavailable, malformed/configuration,
+stable-identity replay, wrong-portal, and partial-sync recovery; Phase 7,
+Phase 8, and Phase 9 stale-owner fencing; repeated n8n-equivalent invocation;
+the typed single retry-owner vocabulary; structured-event and metric
+sentinel non-leakage; and clean-clone reproducibility. No live provider calls
+are required, and no exactly-once physical-execution claim is made.
+
+Notification delivery remains at-least-once: a lost provider outcome can
+permit duplicate delivery on a later bounded attempt. Recovery can also fail
+visibly while PostgreSQL remains unavailable. These are documented semantics,
+not unresolved M10E defects. The two exact M10E `.gitleaksignore`
+fingerprints correspond to synthetic historical Idempotency-Key test
+identities in immutable commit `be8322e`; current source was renamed to
+remain scan-clean, and the suppressions remain exact commit/file/rule/line
+entries. Current and full-history Gitleaks scans pass.
 
 ## 9. Phase 10 decomposition and gates
 
