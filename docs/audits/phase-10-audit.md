@@ -475,6 +475,38 @@ credential-bearing database URL. This unresolved MEDIUM secret-hygiene finding
 must be remediated and independently re-audited before M10F or Phase 10 can be
 marked complete.
 
+## M10F-001 remediation record
+
+The original audit remains anchored to frozen technical baseline
+`ca2f3ef189806f73b4facce94859cb9f942fb402` and original audit/status commit
+`c0e3708c930672fe445ef613f83f69fae97b34f9`. The original finding was
+`M10F-001 — MEDIUM — Runtime settings representation exposes configured
+secrets`.
+
+The remediation technical commit is `3632dbc`. It applies the smallest
+configuration-boundary repair:
+
+- `Settings.gemini_api_key` is now `SecretStr | None`; `None`, empty, and
+  whitespace-only values normalize to unconfigured, while a nonblank value is
+  retained and unwrapped only when constructing `GeminiConfig`.
+- `Settings.database_url` remains a runtime `str` and is passed unchanged to
+  `create_engine`; Pydantic `Field(..., repr=False)` excludes it from ordinary
+  settings representations without mutating the stored URL.
+- Focused tests cover Gemini and database URL representations, exact runtime
+  access, blank-key fake-provider behavior, the Gemini raw-string construction
+  boundary, configuration-error non-echoing, and existing Odoo/HubSpot/token
+  representation safety.
+
+The focused RED→GREEN evidence is 61 settings/composition tests followed by
+222 relevant settings, composition, Gemini, app/readiness, authentication,
+Odoo, and HubSpot regressions. No database schema, migration, workflow, CI,
+dependency, retry, authentication, or observability architecture changed.
+
+**M10F-001 status:** `REMEDIATED — PENDING TARGETED INDEPENDENT RE-REVIEW`.
+The original audit verdict remains historically **FAIL — remediation
+required** until that targeted independent re-review passes. M10F and Phase 10
+remain in progress; no approval or completion claim is made here.
+
 ### Status at audit commit
 
 - M10A: `COMPLETE`
