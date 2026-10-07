@@ -17,7 +17,7 @@ is `COMPLETE` (M9A–M9F `COMPLETE`; M9F and Phase 9 technical approval at
 M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`,
 M10B `COMPLETE` at human-approved technical SHA
 `765c5030659d6c4d0aebe325b7d35d577766dbfd`, M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`, M10D `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`, M10E `COMPLETE` at human-approved technical SHA `b73d7add25c273b5efac10f86bdd3ebef952d6da`, and M10F `COMPLETE` after final audit disposition on technical remediation SHA `3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; Phase 10 is `COMPLETE`.
-Phases 11–12 remain `NOT STARTED`. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
+Phase 11 is `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `IN PROGRESS — DESIGN PENDING HUMAN REVIEW`, and M11B–M11F are `NOT STARTED`. Phase 12 is `NOT STARTED`. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
 The [Phase 0 audit record](../audits/phase-0-audit.md) through the [Phase 9
 audit record](../audits/phase-9-audit.md) preserve closeout evidence.
 Commands below distinguish historical verified checks from current or
@@ -168,6 +168,10 @@ These commands remain planned until their later milestone introduces the corresp
 # Focused verification — use the project’s eventual documented test selectors
 uv run pytest tests/unit -q
 uv run pytest tests/integration -q
+
+# Phase 11 benchmark commands — planned for M11D
+make evaluate
+make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1
 ```
 
 Do not report any command as passing until its output has been observed in the current repository. If a command is not applicable to a documentation-only milestone, record that fact rather than fabricating a result.
