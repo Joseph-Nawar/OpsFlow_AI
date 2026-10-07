@@ -211,7 +211,7 @@ Each completed implementation unit should end with applicable tests, lint, type 
 | M10B — Cross-Boundary Idempotency, Failure Semantics & Recovery Hardening | COMPLETE |
 | M10C — Security Boundaries, Input Safety & Secret Hygiene | COMPLETE |
 | M10D — Structured Observability, Correlation & Operational Health | COMPLETE |
-| M10E — Adversarial Resilience & Whole-System Failure Drills | IN PROGRESS |
+| M10E — Adversarial Resilience & Whole-System Failure Drills | IMPLEMENTED — PENDING HUMAN REVIEW |
 | M10F — Independent Phase 10 Audit & Closeout | NOT STARTED |
 
 ## 8. Detailed phases
@@ -316,13 +316,14 @@ Protect writes with approval state, durable synchronization intent, stable provi
 
 ### Phase 10 — Reliability, Security & Hardening
 
-**Status:** Phase 10 `IN PROGRESS`; M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`; M10B `COMPLETE` at human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`; M10D `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`; M10E `IN PROGRESS`; M10F `NOT STARTED`.
+**Status:** Phase 10 `IN PROGRESS`; M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`; M10B `COMPLETE` at human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`; M10D `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`; M10E `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F `NOT STARTED`.
 The authoritative M10A [design](../superpowers/specs/2026-10-05-phase-10-reliability-security-hardening-design.md)
 and [implementation plan](../superpowers/plans/2026-10-05-phase-10-reliability-security-hardening.md)
 define the hardening boundary. M10B is complete at the approved technical SHA
-`765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C is `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`; M10D is `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`; M10E is `IN PROGRESS`; M10F remains `NOT STARTED`.
-No M10E–M10F production behavior is included in this milestone; M10D
-observability behavior is recorded in the implementation record.
+`765c5030659d6c4d0aebe325b7d35d577766dbfd`; M10C is `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`; M10D is `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`; M10E is `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains `NOT STARTED`.
+M10E records provider-free whole-system failure drills in
+`tests/integration/test_phase10_failure_drills.py`; M10F remains outside this
+milestone.
 
 **Objective:** Turn a functioning demo into convincing production-style engineering.
 

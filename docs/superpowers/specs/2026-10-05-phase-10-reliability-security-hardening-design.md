@@ -1,8 +1,8 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `COMPLETE` (human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`); M10E `IN PROGRESS`; M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `COMPLETE` (human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`); M10E `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
-**Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B/M10C/M10D implementation records below. M10E–M10F behavior remains outside this document's implementation scope.
+**Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B–M10E implementation records below. M10F behavior remains outside this document's implementation scope.
 
 ## 1. Design decision
 
@@ -625,6 +625,31 @@ notification provider/order fields. The targeted independent re-review returned
 `cf0b331864ca2cc5246aa32c7ce12827b79284d0`. At M10D closeout, M10E–M10F
 were `NOT STARTED`; M10E is now `IN PROGRESS` and M10F remains `NOT STARTED`.
 Phase 10 remains `IN PROGRESS`; Phase 11–12 remain `NOT STARTED`.
+
+### M10E implementation record — candidate closeout
+
+The provider-free M10E matrix contains 12 executable scenario tests and one
+retry-owner matrix assertion, covering 18 explicit rows plus composed Phase
+2–9 claim, receipt, notification, parser, provider, workflow, and
+observability regressions. The drills use isolated PostgreSQL and existing
+fakes/MockTransport seams; normal test execution makes no live calls to
+Gemini, Odoo, HubSpot, Gmail, Slack, or n8n.
+
+The matrix found one concrete Phase 7 boundary defect: a refused PostgreSQL
+connection before initial order creation escaped as `ConnectionRefusedError`
+instead of the existing bounded `503 ORCHESTRATION_UNAVAILABLE` result. The
+minimal repair in `38ad89f` classifies raw socket `OSError` alongside existing
+SQLAlchemy persistence failures at the already-defined orchestration writes.
+The RED regression remains in
+`tests/integration/test_phase10_failure_drills.py`, and the matrix plus full
+prior-phase integration regressions are green. No migration, dependency,
+workflow, or generic fault framework was added; no M9B behavior changed.
+
+The candidate remains bounded: notification duplicates after a lost external
+send remain possible under the existing at-least-once contract, and a future
+recovery attempt can still fail visibly while PostgreSQL is unavailable. This
+does not claim exactly-once physical execution or infinite transport retry.
+M10E is `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains `NOT STARTED`.
 
 ## 9. Phase 10 decomposition and gates
 

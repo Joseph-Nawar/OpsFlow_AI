@@ -497,7 +497,7 @@ while Phase 10 remains `IN PROGRESS`.
 
 ## M10E — Adversarial Resilience & Whole-System Failure Drills
 
-**Status:** M10E `IN PROGRESS`; M10F `NOT STARTED`; Phase 10 `IN PROGRESS`; Phases 11–12 `NOT STARTED`.
+**Status:** M10E `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F `NOT STARTED`; Phase 10 `IN PROGRESS`; Phases 11–12 `NOT STARTED`.
 
 ### Boundary
 
@@ -575,6 +575,33 @@ Commit as:
 - Normal CI remains free of unexpected provider calls/writes and mandatory cost
   remains `$0`.
 - Clean-clone verification is reproducible.
+
+### M10E implementation record — candidate closeout
+
+The candidate adds 12 executable provider-free scenario tests plus one explicit
+retry-owner matrix assertion, covering 18 bounded failure rows across intake
+duplicates and conflicts, document and prompt authority, provider failures,
+PostgreSQL loss and fencing, notification attempts, Odoo/HubSpot replay,
+repeated n8n invocation, and M10D diagnostic non-leakage. Existing Phase 2–9
+helpers provide the real PostgreSQL transactions, durable claims, receipt
+recovery, and state-machine assertions; no generic chaos framework or live
+provider path was added.
+
+One real defect was found and repaired: an unavailable PostgreSQL connection
+before Phase 7 creation could escape as raw `ConnectionRefusedError` instead of
+the existing bounded orchestration `503`. Commit `38ad89f` treats raw socket
+`OSError` connection failures as persistence failures at the existing Phase 7
+boundaries, preserving transaction and retry ownership semantics. The RED
+drill is retained in `test_database_unavailable_before_claim_is_bounded_and_provider_free`;
+the full M10E matrix is green.
+
+Verification used disposable PostgreSQL databases and provider fakes only. The
+candidate passed the integration suite, repository quality gates, dependency
+audit, migration/Compose checks, Markdown-link validation, and pinned
+Gitleaks scans. A future drill can still fail visibly if PostgreSQL remains
+unavailable; M10E does not claim infinite retries or exactly-once physical
+execution. M10E is `IMPLEMENTED — PENDING HUMAN REVIEW`; M10F remains
+`NOT STARTED`, and Phase 10 remains `IN PROGRESS`.
 
 ## M10F — Independent Phase 10 Audit & Closeout
 
