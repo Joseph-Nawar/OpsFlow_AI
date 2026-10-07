@@ -71,7 +71,7 @@ def build_orchestration_runtime(
     timeout_seconds = settings.gemini_timeout_seconds
     if extraction_provider_factory is not None:
         selected_extraction_factory = extraction_provider_factory
-    elif api_key is None or not api_key.strip():
+    elif api_key is None:
         selected_extraction_factory = _build_fake_provider
     else:
         if model is None or timeout_seconds is None:
@@ -80,7 +80,7 @@ def build_orchestration_runtime(
         def selected_extraction_factory() -> LLMProvider:
             return GeminiProvider(
                 GeminiConfig(
-                    api_key=api_key,
+                    api_key=api_key.get_secret_value(),
                     model=model,
                     timeout_seconds=timeout_seconds,
                 )
