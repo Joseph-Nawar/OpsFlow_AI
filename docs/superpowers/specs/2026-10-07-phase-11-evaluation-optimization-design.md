@@ -147,10 +147,14 @@ extraction provider and its evidence label.
 
 ### 3.3 Scorers
 
-Pure deterministic functions calculate extraction, parsing, route, issue,
-safety, duplicate, retry, eligibility, latency, token, and cost metrics from
-case ground truth plus actual summaries. Scorers MUST not call a provider,
-database, clock, filesystem, or external service.
+Pure deterministic functions calculate the defined extraction scorer rules,
+parsing, route, issue, safety, duplicate, retry, eligibility, latency, token,
+and cost metrics from case ground truth plus actual summaries. Scorers MUST
+not call a provider, database, clock, filesystem, or external service. The
+extraction scorer may be unit-tested with scripted expected/predicted fixtures,
+but its business-field comparison is published as extraction quality only when
+the actual summaries came from `live_gemini`; provider-free results expose
+contract evidence instead.
 
 ### 3.4 Measurement collectors
 
@@ -191,32 +195,63 @@ Provider-free evaluation:
 - reports fake provider calls as operational fake calls only; they MUST NOT be
   labeled Gemini calls, Gemini accuracy, Gemini latency, Gemini token usage, or
   Gemini cost.
+- executes the complete 36-case corpus and all represented release-gate cases;
+- MUST NOT publish scripted-provider business-field comparison as an
+  extraction-quality score. In provider-free results, live/model extraction
+  exact match, field TP/FP/FN, field precision, field recall, field F1, and
+  per-field extraction quality are `NOT_APPLICABLE`/`null`;
+- records the limitation/reason exactly as a no-real-model-evaluated
+  limitation, such as `No real model was evaluated; scripted provider output
+  is not an extraction-quality score.`
 
 It is the release-gate mode. It measures corpus/schema validity, parsing,
 deterministic validation/routing, invalid pass-through, duplicate prevention,
 retry/recovery, approval and execution eligibility, durable replay behavior,
 local timing, and deterministic call counts.
 
+Provider-free mode MAY report deterministic extraction-contract evidence,
+including provider-schema acceptance, parser success, evidence grounding,
+source identity, extraction persistence round-trip, scripted-provider call
+count, and scorer self-test evidence. These are contract/operational results;
+none may be labeled `accuracy`, `precision`, `recall`, `F1`, or model quality.
+M11B MAY unit-test the scorer with deterministic expected/predicted fixtures,
+but those tests are scorer evidence and never benchmark quality evidence.
+
 ### 4.2 Explicit live Gemini mode
 
 Live mode is `live_gemini` and is never selected by default. It:
 
 - requires an explicit command and `OPSFLOW_EVALUATION_LIVE_GEMINI=1`;
-- requires nonblank `OPSFLOW_GEMINI_API_KEY` and `OPSFLOW_GEMINI_MODEL`;
-- fails before running if the opt-in flag or required configuration is absent;
-- uses the real `GeminiProvider` and the same corpus, ground truth, prompts,
-  schema, and deterministic downstream flow as provider-free mode;
+- requires nonblank `OPSFLOW_GEMINI_API_KEY`, nonblank
+  `OPSFLOW_GEMINI_MODEL`, and a valid positive
+  `OPSFLOW_GEMINI_TIMEOUT_SECONDS`;
+- validates all four requirements before the first corpus case; an absent,
+  blank, malformed, non-finite, or non-positive value is a preflight error;
+- uses the existing `GeminiConfig`/runtime validation semantics and does not
+  introduce a separate evaluation default or fake fallback;
+- uses the real `GeminiProvider` and the same versioned 36-case corpus, source
+  ground truth, prompts, schema, and deterministic downstream flow as
+  provider-free mode;
 - never silently falls back to `FakeProvider`; a fallback is an error and the
   result MUST be marked unsuccessful rather than labeled live;
-- records real extraction quality, real provider latency, call count, and
-  authoritative SDK usage fields when present;
+- records real extraction quality only for extraction cases that actually
+  reached the real Gemini provider; the result identifies that denominator and
+  the corpus cases that did not reach it;
+- records real provider latency, call count, and authoritative SDK usage
+  fields when present;
 - uses fake trusted business data and fake downstream adapters, so it does not
   benchmark live Odoo, HubSpot, Gmail, Slack, or n8n;
 - includes a dated pricing snapshot only for transparent estimated cost.
 
+Provider-free and live runs share the corpus version and source ground truth,
+but they do not share a quality denominator by implication. A deterministic
+provider fault injection that cannot meaningfully coexist with a real Gemini
+call remains provider-free scenario evidence; it MUST be labeled as such and
+MUST NOT be presented as a fault produced by Gemini in a live report.
+
 A real live Gemini reference run is strongly expected before Phase 11 can
-close because real extraction F1 and estimated cost/order are commercially
-meaningful evidence. If it is unavailable, the Phase 11 reference report
+close because real extraction F1 and estimated model cost per initial order are
+commercially meaningful evidence. If it is unavailable, the Phase 11 reference report
 MUST state that real LLM extraction and cost evidence are unavailable. A
 fake-provider result MUST NOT substitute for those claims.
 
@@ -342,10 +377,32 @@ contract:
   and omitted only for parser-only or failure cases where no extraction is
   expected.
 - `trusted_business_data` is required when deterministic validation runs. The
-  referenced JSON fixture contains only synthetic customers/products and the
-  exact ordered product result for each extracted line. The `facts` object
-  supplies the existing `ValidationFacts` booleans. A fixture is never derived
-  from a provider prediction.
+  referenced JSON fixture is a small synthetic catalog/lookup dataset, not a
+  precomputed answer for the expected extraction. It contains the synthetic
+  customer records and product records needed for exact customer-reference
+  lookup, normalized-exact customer-name lookup when reference is absent,
+  exact SKU lookup, product active state, currency, catalogue price, and
+  available quantity. It does not contain an ordered product answer keyed to
+  expected lines.
+- The evaluation provider MUST implement the existing
+  `BusinessDataProvider.get_validation_data(BusinessDataLookupRequest)`
+  contract. It MUST build `TrustedBusinessData` from the actual lookup request
+  derived from the predicted draft, never from `expected_extraction`.
+- For that request-driven lookup, an incorrect predicted customer reference
+  returns no customer candidate unless that incorrect reference genuinely exists
+  in the fixture. An incorrect predicted customer name returns no candidates or
+  the candidates allowed by the existing normalized-name rule. An incorrect or
+  unknown predicted SKU returns `None` at that predicted line position, and a
+  missing predicted SKU also returns `None`. `products_by_line` always has the
+  same length and order as the actual predicted line list, and every non-`None`
+  returned product SKU equals the requested predicted SKU. Customer candidates
+  use the existing canonical provider ordering.
+- The fixture provider MUST validate the same request/result pairing and line
+  cardinality invariants as the application contract. Expected extraction
+  values MUST NOT select, repair, or rescue trusted lookup results.
+- The `facts` object supplies existing `ValidationFacts` booleans. Duplicate
+  customer+PO and document/source facts remain manifest-directed OpsFlow-local
+  facts where appropriate; they are not reference-data lookup results.
 - `expected_validation.route` is the existing `ValidationRoute` value,
   `approval_level` is the existing `ApprovalLevel` value when the case reaches
   validation, and `issue_codes`/`issue_severities` use existing deterministic
@@ -431,20 +488,34 @@ baseline evidence; it is not an implementation convenience.
 
 ### 6.2 Complete extraction exact match
 
-For the extraction-case set `E`, complete extraction exact match is:
+The canonical scorer rules below are testable with deterministic fixtures, but
+the report may populate extraction-quality values only in `live_gemini` mode.
+For a live run, `E_live` is the set of extraction cases for which the real
+Gemini provider boundary received at least one call. The result MUST report
+`E_live`'s case count and case IDs (or a bounded equivalent), including cases
+where the call failed or produced no prediction. Cases that never reached the
+real provider are outside the live extraction-quality denominator and are
+identified as unavailable evidence. A provider-free run has no extraction-
+quality denominator.
+
+For `live_gemini`, complete extraction exact match over `E_live` is:
 
 ```text
-100 * count(case in E where canonical predicted business projection
-                   == canonical expected business projection) / count(E)
+100 * count(case in E_live where canonical predicted business projection
+                   == canonical expected business projection) / count(E_live)
 ```
 
-The denominator includes every case with `expected_extraction`, including a
-case whose expected value is `null` or whose expected line list is empty. A
-provider failure, schema failure, or missing prediction is not an exact match.
-Evidence/provenance text MUST NOT make a business-field exact match fail. A
-business-field mismatch MUST fail it even if the evidence quote is valid.
-The report includes numerator, denominator, and percentage; it does not
-publish an unqualified metric named only `accuracy`.
+The live denominator includes every reached case with `expected_extraction`,
+including a case whose expected value is `null` or whose expected line list is
+empty. A provider failure, schema failure, or missing prediction is not an
+exact match. Evidence/provenance text MUST NOT make a business-field exact
+match fail. A business-field mismatch MUST fail it even if the evidence quote
+is valid. The report includes numerator, denominator, and percentage; it does
+not publish an unqualified metric named only `accuracy`.
+
+In `provider_free`, `complete_exact_match` is `null` with status
+`NOT_APPLICABLE`, not a scripted-provider percentage. Its limitation/reason
+MUST identify that no real model was evaluated.
 
 ### 6.3 Field-value micro precision, recall, and F1
 
@@ -484,8 +555,8 @@ micro_f1        = 2 * precision * recall / (precision + recall),
                   or null when precision + recall = 0
 ```
 
-The scorer reports integer TP/FP/FN and decimal percentages. The mandatory
-field set includes:
+The scorer reports integer TP/FP/FN and decimal percentages for `live_gemini`.
+The mandatory field set includes:
 
 - `customer_reference`;
 - `po_number`;
@@ -501,6 +572,12 @@ when represented. `lines[].field` is a reporting label; scoring uses the exact
 positioned paths. There is no macro average across fields or cases unless a
 future contract defines a new denominator and names it explicitly.
 
+Only `live_gemini` may populate complete extraction exact match, field TP/FP/FN,
+micro precision, micro recall, micro F1, or per-field extraction quality in an
+evaluation result. In `provider_free`, all of those quality fields are
+`null`, with `status: "NOT_APPLICABLE"`; deterministic scorer self-tests are
+reported separately from the evaluation-quality result.
+
 ### 6.4 Additional extraction contract metrics
 
 The provider-free run reports, without calling them model accuracy:
@@ -512,8 +589,9 @@ The provider-free run reports, without calling them model accuracy:
 - extraction persistence round-trip validity.
 
 Only live Gemini results may be labeled `live Gemini extraction exact match`,
-`live Gemini field precision/recall/F1`, or `live Gemini latency`. A fake
-payload is never `Gemini accuracy`.
+`live Gemini field precision/recall/F1`, per-field extraction quality, or `live
+Gemini latency`. A fake payload is never `Gemini accuracy`, even when its
+scripted prediction exactly equals the expected extraction.
 
 ## 7. Deterministic routing, safety, and reliability metrics
 
@@ -708,7 +786,10 @@ Every result records only contextual, non-personal fields:
 - evaluation mode;
 - database engine/version family (`PostgreSQL 16` when using the repository
   Compose/CI service);
-- sample counts and provider/model identifier where applicable.
+- sample counts and provider/model identifier where applicable;
+- the relevant dependency-lock identity, result-schema version,
+  scorer/evaluation-contract version, and exact evaluation command/flags when
+  a result will participate in an M11E comparison.
 
 It MUST NOT record usernames, hostnames, MAC addresses, home paths, machine
 serials, raw environment variables, or personal machine identifiers.
@@ -724,6 +805,12 @@ reported separately and MUST NOT make a duplicate look cheaper by increasing
 the denominator. The result includes total calls, number of initial orders,
 calls/order, and per-case calls. Notification and sync adapter calls are
 reported by channel/step and are not mislabeled extraction calls.
+
+Every live Gemini call MUST carry the identity of its originating initial
+corpus order/case. This includes calls made by an authorized retry or recovery
+path. A replay attempt is not an additional denominator order; any Gemini
+calls it is allowed to cause remain attributed to the original initial order
+and are included in that order's call accounting.
 
 Provider-free fake calls are operational evidence only. They may prove that a
 duplicate did not call extraction or that a retry resumed at the correct step,
@@ -752,7 +839,7 @@ all three fields exist but `total_tokens != input_tokens + output_tokens`, the
 result records a usage-consistency failure; it does not rewrite or infer any
 field.
 
-### 9.3 Dated pricing snapshot and estimated model cost/order
+### 9.3 Dated pricing snapshot and estimated model cost per initial order
 
 M11D MUST use a committed, immutable pricing snapshot identified by a stable
 `pricing_snapshot_id`. The snapshot contains:
@@ -777,16 +864,60 @@ output_cost = (Decimal(O) / Decimal(U)) * Po
 call_cost   = input_cost + output_cost
 ```
 
-The estimated model cost/order is the sum of eligible call costs divided by
-the count of initial live Gemini orders for which both input and output usage
-and the matching pricing snapshot are present. Monetary values use `Decimal`,
-are rounded only for display using a documented decimal quantization, and are
-never calculated with binary floats.
+For each initial order, the collector defines:
 
-The report MUST call this **estimated model cost/order**, never actual billing.
-If pricing or usage is missing, the cost is `null` with missing counts and a
-limitation. Old committed/reference results retain their original snapshot
-identity even when a later pricing snapshot changes.
+```text
+order_model_cost = sum(all Gemini call costs attributed to that order)
+```
+
+An initial order is usage-complete only when every Gemini call attributed to it
+has authoritative input and output token counts and the matching pricing
+snapshot. A no-Gemini-call initial order has known model cost `0`; it is
+reported separately as a zero-call order and is not treated as missing usage.
+A Gemini-called initial order with any missing required token or pricing value
+is usage-incomplete. Its order cost is not replaced by a partial sum.
+
+For the selected workload, the result MUST publish a named
+`estimated_model_cost_per_initial_order` value. When every Gemini-called
+initial order is usage-complete, it is:
+
+```text
+sum(order_model_cost for all initial orders) / initial_order_count
+```
+
+Zero-call orders contribute zero. Replay attempts are not additional
+denominator orders, while their authorized Gemini calls remain in the
+originating order's numerator. If any Gemini-called initial order is
+usage-incomplete, the workload value is `null`; the evaluator MUST NOT
+silently drop an incomplete call or cost only the available portion of an
+order.
+
+The result MUST report at least:
+
+- `initial_order_count`;
+- `gemini_called_order_count`;
+- `zero_call_order_count`;
+- `complete_usage_order_count` (Gemini-called orders only);
+- `incomplete_usage_order_count` (Gemini-called orders only);
+- `incomplete_usage_call_count`;
+- `missing_call_attribution_count`;
+- `missing_input_token_count`, `missing_output_token_count`, and
+  `missing_total_token_count`;
+- `missing_pricing_snapshot_count`.
+
+The called-order counts partition as
+`gemini_called_order_count = complete_usage_order_count +
+incomplete_usage_order_count`, and initial orders partition as called plus
+zero-call orders. Any nonzero missing-call attribution count is a contract
+error. Monetary values use `Decimal`, are rounded only for display using a
+documented decimal quantization, and are never calculated with binary floats.
+
+The report MUST call this **estimated model cost per initial order**, never
+actual billing. The selected pricing snapshot's exact model identifier MUST
+match the configured live Gemini model before cost is calculated. A mismatch
+makes pricing/cost `ERROR` or unavailable with a limitation; it MUST NOT
+silently use pricing for another model. Old committed/reference results retain
+their original snapshot identity even when a later pricing snapshot changes.
 
 ## 10. Structured result and report contract
 
@@ -806,6 +937,7 @@ shape even if internal modules differ:
     "finished_at_utc": "2026-10-07T00:00:01Z",
     "git_sha": "712aa04312cf1e2ebba85f60f2319765057bc211",
     "corpus_version": "1.0.0",
+    "gemini_model": null,
     "python_version": "3.12.0",
     "platform": "Linux",
     "cpu_architecture": "x86_64",
@@ -823,7 +955,7 @@ shape even if internal modules differ:
       "status": "PASS",
       "actual": {
         "parse": "PASS",
-        "extraction": "PASS",
+        "extraction_contract": "PASS",
         "route": "READY_FOR_APPROVAL",
         "approval_level": "STANDARD",
         "pre_approval_state": "READY_FOR_APPROVAL",
@@ -850,39 +982,98 @@ shape even if internal modules differ:
     }
   ],
   "metrics": {
-    "extraction": {},
+    "extraction_quality": {
+      "status": "NOT_APPLICABLE",
+      "complete_exact_match": null,
+      "field_tp": null,
+      "field_fp": null,
+      "field_fn": null,
+      "field_micro_precision": null,
+      "field_micro_recall": null,
+      "field_micro_f1": null,
+      "per_field": null,
+      "reached_live_gemini_case_count": 0,
+      "reached_live_gemini_case_ids": [],
+      "reason": "No real model was evaluated; scripted provider output is not an extraction-quality score."
+    },
+    "extraction_contract": {},
     "routing": {},
     "safety": {},
     "latency": {},
     "provider_usage": {},
-    "estimated_model_cost_per_order": null
+    "cost": {
+      "status": "NOT_APPLICABLE",
+      "estimated_model_cost_per_initial_order": null,
+      "initial_order_count": 36,
+      "gemini_called_order_count": 0,
+      "zero_call_order_count": 36,
+      "complete_usage_order_count": 0,
+      "incomplete_usage_order_count": 0,
+      "incomplete_usage_call_count": 0,
+      "missing_call_attribution_count": 0,
+      "missing_input_token_count": 0,
+      "missing_output_token_count": 0,
+      "missing_total_token_count": 0,
+      "missing_pricing_snapshot_count": 0
+    }
   },
-  "pricing": {"pricing_snapshot_id": null, "status": "NOT_APPLICABLE"},
+  "pricing": {
+    "pricing_snapshot_id": null,
+    "model": null,
+    "status": "NOT_APPLICABLE"
+  },
   "release_gates": {
-    "all_passed": true,
+    "all_passed": null,
     "results": []
   },
   "limitations": []
 }
 ```
 
-The example's empty objects are intentional extension points in an example;
-the implementation MUST populate the defined metric fields and MUST NOT use
-empty values to hide a missing measurement. Required result rules are:
+The example's other empty objects are intentional extension points in an
+example; the implementation MUST populate the defined metric fields and MUST
+NOT use empty values to hide a missing measurement. In particular:
+
+- `metrics.extraction_quality` is mode-scoped. In `provider_free`, its status
+  is `NOT_APPLICABLE`, every quality value including exact match, TP/FP/FN,
+  precision, recall, F1, and per-field values is `null`, and its reason states
+  that no real model was evaluated. A provider-free result is invalid if it
+  publishes a scripted-provider quality percentage, including a fake 100%.
+- In `live_gemini`, `metrics.extraction_quality` may contain those quality
+  values only for the reported cases that reached the real Gemini provider.
+  The result MUST identify that case denominator and cases not reached.
+- `metrics.extraction_contract` is the separate home for provider-free schema,
+  parser, evidence, source-identity, persistence, call-count, and scorer
+  self-test evidence; it MUST NOT use an accuracy label.
+- `metrics.cost.estimated_model_cost_per_initial_order` is the explicit
+  initial-order denominator metric from Section 9.3 and is `null` when the
+  completeness contract is not satisfied.
+
+All result modes also follow these rules:
 
 - `status` is one of `PASS`, `FAIL`, or `ERROR`; a provider/configuration
   error is not a passing case;
 - every aggregate metric carries `numerator`, `denominator`, and `value` when
   it is a rate, and carries `sample_count` for percentiles;
+- a provider-free per-case `extraction_contract` result means schema,
+  parser, evidence, source-identity, or persistence evidence only; it is never
+  a business-field quality score;
 - per-case actual summaries include route, state, issue codes, replay
   disposition, notification result, sync step/receipt result, and side-effect
   counts when that part of the case ran;
 - raw provider response bodies, source contents, credentials, API keys,
   database URLs, SQL, and unbounded exception text are prohibited;
 - release-gate results include gate ID, represented-case denominator, failing
-  case IDs, numerator, denominator, and pass/fail status;
+  case IDs, numerator, denominator, and pass/fail status; an actual run uses
+  a boolean `all_passed` after all represented gates are populated;
 - limitations explicitly identify missing live evidence, unavailable token
-  fields, synthetic coverage, and local-latency limits.
+  fields, synthetic coverage, and local-latency limits;
+- a live result retains the actual configured model identifier and pricing
+  snapshot identity, and a provider-free result never presents fake-provider
+  output as model quality;
+- a live preflight error identifies the specific missing or invalid opt-in,
+  API key, model, or timeout requirement, rather than reporting only generic
+  API-key validation.
 
 ### 10.2 Generated versus committed artifacts
 
@@ -903,15 +1094,16 @@ deliberately selected sanitized reference run MAY be committed only when it:
 The generated report MUST summarize, from the JSON result only:
 
 - corpus composition and version;
-- complete extraction exact match;
-- field micro precision/recall/F1 and required per-field breakdowns;
+- mode-scoped extraction quality: provider-free `NOT_APPLICABLE`/`null` values
+  plus deterministic extraction-contract evidence, or live exact match and
+  field metrics only over cases that reached Gemini;
 - parser/evidence/schema outcomes;
 - routing accuracy, issue matching, invalid pass-through, duplicate blocking,
   retry recovery, execution eligibility, logical duplication, malformed-input
   safety, and AI-authority status;
 - parse, validation, provider-free intake, and optional live Gemini p50/p95;
-- calls/order, token availability/order summaries, and estimated model
-  cost/order;
+- calls/order, token availability/order summaries, complete/incomplete usage
+  counts, and estimated model cost per initial order;
 - every hard release gate;
 - baseline versus optimized comparison only for M11E;
 - limitations and unavailable evidence.
@@ -935,6 +1127,12 @@ These gates are not weighted against F1, latency, or cost. If the corpus does
 not represent a production behavior, the report states that the gate applies
 only to represented synthetic cases and MUST NOT generalize it.
 
+`make evaluate` runs the complete corpus and is the authoritative provider-free
+release-gate run. A live run uses the same corpus/version and MAY report the
+same deterministic safety outcomes, but it does not replace provider-free
+release evidence. Provider-free injected-fault scenarios remain provider-free
+evidence when the fault cannot meaningfully coexist with a real Gemini call.
+
 ## 12. PostgreSQL isolation and exact commands
 
 M11D will add these repository-level commands without changing the existing
@@ -946,11 +1144,13 @@ make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1
 ```
 
 `make evaluate` is the mandatory provider-free command. It ignores Gemini
-credentials, runs the 36-case corpus through the provider-free harness, and
-fails if any live-provider configuration is required. `make evaluate-live`
-uses the same corpus and requires both `OPSFLOW_EVALUATION_LIVE_GEMINI=1` and
-nonblank `OPSFLOW_GEMINI_API_KEY`; it fails closed before a case runs when
-either requirement is absent. The live command never appears in CI.
+credentials, runs the complete 36-case corpus through the provider-free
+harness, and fails if any live-provider configuration is required.
+`make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1` uses the same corpus and
+must pass the live preflight in Section 4.2 before the first case; it fails
+closed when any live requirement is absent or invalid. The live command never
+appears in CI. Both commands establish the clean evaluation state described
+below themselves.
 
 Both commands use:
 
@@ -960,21 +1160,31 @@ OPSFLOW_EVALUATION_DATABASE_URL
 
 with a default local contract of
 `postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_evaluation`.
-The runner MUST parse this URL, require PostgreSQL, require a non-empty
-database name, and reject it when its database name equals the normal
-`OPSFLOW_DATABASE_URL` database name. It MUST also reject a URL that names the
-repository migration-test database. The evaluation database is a disposable,
-clearly named database; migrations run against it before the run, and the
-runner may create/drop only that named evaluation database when the command
-explicitly requests lifecycle management. It MUST never reset, drop, downgrade,
-or truncate the normal development database.
+The runner MUST apply the existing strict isolation checks: parse this URL,
+require PostgreSQL, require a non-empty database name, and reject it when its
+database name equals the normal `OPSFLOW_DATABASE_URL` database name. It MUST
+also reject a URL that names the configured migration-test database when that
+database is present. Isolation is proven before any cleanup; an unsafe URL,
+ambiguous comparison, or failed connection is an error and MUST fail closed.
 
-The command records database isolation as `true` only after this check. A
-missing database, failed migration, or unsafe URL comparison is an error, not
-a fallback to the developer database. The standard local workflow is to start
-the existing PostgreSQL service, create `opsflow_evaluation`, apply current
-migrations, and run `make evaluate`. The result excludes database creation and
-migration duration from latency metrics.
+Before each full evaluation or selected reference run, and only after the
+guard passes, the command MUST put only this guarded evaluation database into
+a pristine OpsFlow application-data state. It MUST clear application rows in
+a foreign-key-safe manner, preserve the current migration head, and then
+run/confirm migrations at that current head before case 1. The cleanup
+mechanism MUST NOT use destructive Alembic downgrade. It MUST NOT create a
+second lifecycle interface or require an extra lifecycle flag. Database
+creation may remain a one-time documented prerequisite; recurring
+application-data cleanup belongs to `make evaluate` and
+`make evaluate-live`.
+
+The normal developer database and migration-test database MUST never be
+cleared, truncated, reset, dropped, downgraded, or otherwise mutated by an
+evaluation command. The command records database isolation as `true` only
+after the guard, guarded reset, and current-head confirmation succeed. A
+missing database, failed reset, or failed migration is an error, not a
+fallback to the developer database. The result excludes cleanup and migration
+duration from latency metrics.
 
 ## 13. CI boundary
 
@@ -1005,12 +1215,35 @@ change is permitted only when:
 
 1. the baseline identifies a concrete measured bottleneck;
 2. the change names the metric it intends to improve;
-3. the exact same corpus, ground truth, scorer, environment metadata, and
-   command are rerun after the change;
+3. the comparison satisfies the invariants below and reruns the same contract;
 4. all correctness, safety, duplicate, malformed-input, and AI-authority gates
    remain satisfied; and
 5. the report shows before/after numerator, denominator, latency samples,
    calls, tokens, or estimated model cost and states the observed delta.
+
+Baseline and candidate runs MUST have the same comparison invariants:
+
+- corpus version, source ground truth, and case selection;
+- evaluation-result schema version;
+- scorer version and evaluation-contract version;
+- evaluation mode and exact command/flags (including provider-free versus
+  live mode);
+- the same committed pricing snapshot when live cost is compared;
+- the same configured Gemini model when live model results or cost are
+  compared;
+- Python major/minor version and the relevant dependency-lock identity;
+- platform and CPU architecture for latency comparison;
+- database engine and version family;
+- timing and sample methodology, including percentile method and the rules for
+  excluding setup time.
+
+The comparison MUST allow and explicitly record expected differences in
+`run_id`, started/finished timestamps, and Git SHA. The report MUST show both
+the baseline Git SHA and candidate Git SHA; it MUST NOT describe Git identity,
+run identity, or timestamps as comparison invariants. If any
+latency-comparability field differs, correctness and safety results MAY still
+be compared, but latency deltas MUST be marked non-comparable and MUST NOT be
+presented as an optimization win.
 
 Permitted targets include an unnecessary provider call, prompt/input token
 volume, expensive model fallback, local parser bottleneck, avoidable repeated
@@ -1051,7 +1284,7 @@ providers and does not report fake extraction as Gemini accuracy.
 
 Implement p50/p95 collection, stage timing, calls/order, optional live Gemini
 mode, authoritative token capture, dated pricing snapshots, estimated model
-cost/order, structured JSON output, and Markdown rendering. M11D adds the
+cost per initial order, structured JSON output, and Markdown rendering. M11D adds the
 exact `make evaluate` and `make evaluate-live` targets and evaluation database
 isolation checks.
 
@@ -1132,17 +1365,20 @@ The following questions have one defined answer in this document:
 1. A case is one stable synthetic source identity plus human-authored expected
    extraction and deterministic outcome; replay/retry attempts remain a
    manifest-directed sequence inside that case.
-2. Ground truth lives in the versioned JSON manifest and referenced synthetic
-   trusted-data fixtures.
+2. Expected extraction and deterministic outcomes live in the versioned JSON
+   manifest; trusted business data lives in a synthetic catalog/lookup fixture
+   and is not a precomputed answer for expected lines.
 3. Corpus versioning uses semantic `corpus_version`, source SHA-256, and
    result-retained Git/corpus identity.
 4. The required corpus is 36 cases across `normal`, `edge`, `security`,
    `deterministic_violation`, `duplicate`, and `retry_recovery`, with nine each
    of text/EMAIL_BODY, CSV, XLSX, and PDF.
-5. Complete extraction exact match is exact equality of canonical business
-   projections over all extraction cases.
-6. Field micro precision/recall/F1 uses positioned field/value facts and the
-   explicit TP/FP/FN rules in Section 6.3.
+5. Provider-free extraction-quality exact match, TP/FP/FN, precision, recall,
+   F1, and per-field quality are `NOT_APPLICABLE`/`null` with a no-real-model
+   limitation; live quality uses only cases that reached real Gemini.
+6. Live field micro precision/recall/F1 uses positioned field/value facts and
+   the explicit TP/FP/FN rules in Section 6.3; deterministic scorer tests are
+   not benchmark-quality metrics.
 7. Lines are matched by existing order, never by SKU or fuzzy identity.
 8. Routing accuracy requires route, approval level, issue multiset, and
    durable pre-approval state agreement.
@@ -1156,31 +1392,43 @@ The following questions have one defined answer in this document:
     call traces, receipts, and logical external-object counts.
 13. The five hard gates are listed in Section 11 and are non-tradeable.
 14. Provider-free metrics are parsing, schema/evidence, deterministic,
-    safety/reliability, local latency, and fake operational call evidence.
+    safety/reliability, local latency, and fake operational call evidence;
+    none is labeled model accuracy.
 15. Live Gemini is required only for real model quality, live provider latency,
-    authoritative usage, and estimated model cost.
+    authoritative usage, and estimated model cost, after all four preflight
+    requirements pass before case 1.
 16. Fake-provider output may never be called Gemini accuracy.
 17. p50/p95 use one case/call sample as defined and nearest-rank percentiles.
 18. Environment metadata is bounded Python/platform/architecture/time/corpus/
     Git/database context with no personal identifiers.
 19. Provider calls are counted at the provider boundary, including failures,
-    with replay calls separated from initial-order denominator.
+    and every live call is attributed to its originating initial order,
+    including authorized retry/recovery calls; replay calls do not add
+    denominator orders.
 20. Missing token values are `null` with availability/missing counts.
-21. Cost is Decimal input-plus-output price math from a dated snapshot.
-22. Pricing identity is retained in every live result.
+21. Cost uses Decimal input-plus-output price math from a dated snapshot and
+    the complete-usage order contract; incomplete called orders make aggregate
+    cost per initial order `null` rather than partially costed.
+22. Pricing identity is retained in every live result and its model identifier
+    must match the configured live model before cost is calculated.
 23. Structured JSON is the sole source of truth for the report and release
     gates.
 24. Local results are ignored; selected sanitized reference JSON/Markdown may
     be committed under the documented location.
 25. Exact commands are `make evaluate` and
-    `make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1`.
-26. Evaluation uses a distinct PostgreSQL database URL and rejects the normal
-    and migration-test databases.
+    `make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1`, and provider-free
+    mode executes the complete 36-case corpus.
+26. Each full evaluation/reference command proves strict PostgreSQL isolation,
+    resets only guarded evaluation application data in FK-safe fashion, and
+    confirms the current migration head without destructive downgrade;
+    normal and migration-test databases are never mutated.
 27. CI validates schemas, scorers, contracts, and provider-free behavior.
 28. Live Gemini and the noisy full benchmark are never normal CI requirements.
-29. Optimization begins only after a passing reproducible baseline.
+29. Optimization begins only after a passing reproducible baseline and uses the
+    explicit M11E comparison invariants.
 30. A successful optimization improves its named metric while preserving every
-    safety gate on the same contract.
+    safety gate; Git SHA, run ID, and timestamps may differ, and non-comparable
+    latency is never presented as a win.
 31. No optimization justified by the measured baseline is valid.
 32. M11B–M11F responsibilities are explicitly divided in Section 15.
 33. Phase 12 remains release/demo/marketing/publication scope outside M11.
