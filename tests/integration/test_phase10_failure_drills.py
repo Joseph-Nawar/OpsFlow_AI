@@ -1071,7 +1071,7 @@ async def _assert_application_failure_observability(
 
     monkeypatch.setattr(main_module, "build_orchestration_runtime", build_runtime)
     auth = "M10E_AUTH_SECRET_SENTINEL"
-    key = "m10e-observability-intake"
+    request_identity = "m10e-observability-intake"
     source = b"M10E_DOCUMENT_PAYLOAD_SENTINEL"
     app = create_app(Settings(_env_file=None, orchestration_token=auth))
     order_id: UUID | None = None
@@ -1089,13 +1089,13 @@ async def _assert_application_failure_observability(
                     files={"document": ("source.txt", source, "text/plain")},
                     headers={
                         "Authorization": f"Bearer {auth}",
-                        "Idempotency-Key": key,
+                        "Idempotency-Key": request_identity,
                     },
                 )
             metrics = json.dumps(app.state.observability.metrics.snapshot(), sort_keys=True)
         assert response.status_code == 201
         assert response.json()["state"] == OrderState.FAILED_FINAL.value
-        order_id, _, _ = await _read_order_evidence(key)
+        order_id, _, _ = await _read_order_evidence(request_identity)
     finally:
         main_module.build_orchestration_runtime = original_builder
         if order_id is not None:
@@ -1249,7 +1249,7 @@ def test_repeated_n8n_equivalent_invocation_preserves_python_boundaries(
 async def _assert_repeated_n8n_equivalent_invocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    key = "m10e-repeated-n8n-intake"
+    request_identity = "m10e-repeated-n8n-intake"
     factory = CountingProviderFactory()
     app = _build_test_app(
         monkeypatch,
@@ -1266,13 +1266,13 @@ async def _assert_repeated_n8n_equivalent_invocation(
         ):
             first = await _post_intake_with_correlation(
                 client,
-                key,
+                request_identity,
                 request_id="m10e-request-first",
                 workflow_id="m10e-workflow-first",
             )
             second = await _post_intake_with_correlation(
                 client,
-                key,
+                request_identity,
                 request_id="m10e-request-second",
                 workflow_id="m10e-workflow-second",
             )
@@ -1281,7 +1281,7 @@ async def _assert_repeated_n8n_equivalent_invocation(
         assert first.json()["order_id"] == second.json()["order_id"]
         assert second.json()["idempotent_replay"] is True
         assert factory.calls == 1
-        order_id, counts, _ = await _read_order_evidence(key)
+        order_id, counts, _ = await _read_order_evidence(request_identity)
         assert counts == {"orders": 1, "sources": 1, "idempotency": 1, "snapshots": 1}
     finally:
         if order_id is not None:
