@@ -167,9 +167,7 @@ async def _assert_duplicate_storm(monkeypatch: pytest.MonkeyPatch) -> None:
         ):
             owner_task = asyncio.create_task(_post_intake(client, key))
             await blocking.started.wait()
-            duplicates = await asyncio.gather(
-                *(_post_intake(client, key) for _ in range(11))
-            )
+            duplicates = await asyncio.gather(*(_post_intake(client, key) for _ in range(11)))
             blocking.release.set()
             owner = await owner_task
 
