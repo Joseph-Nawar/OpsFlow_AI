@@ -67,6 +67,8 @@ _UNAVAILABLE_MESSAGE = "Orchestration intake is currently unavailable."
 _EXTRACTION_COMPLETED_DESCRIPTION = (
     "Document processing and structured extraction completed; validation is pending."
 )
+_PERSISTENCE_ERRORS = (SQLAlchemyError, OSError)
+_OWNERSHIP_PERSISTENCE_ERRORS = (*_PERSISTENCE_ERRORS, StaleIntakeOwnershipError)
 
 
 class OrchestrationUnavailableError(Exception):
@@ -158,7 +160,7 @@ async def _persist_failure_result(
             review_base_url=review_base_url,
             ownership_token=ownership_token,
         )
-    except (SQLAlchemyError, StaleIntakeOwnershipError):
+    except _OWNERSHIP_PERSISTENCE_ERRORS:
         raise OrchestrationUnavailableError() from None
     return _completed_result(persisted, idempotent_replay=idempotent_replay)
 
@@ -258,7 +260,7 @@ async def _execute_orchestration_intake(
             command.idempotency_key,
             now=recorded_at,
         )
-    except SQLAlchemyError:
+    except _PERSISTENCE_ERRORS:
         raise OrchestrationUnavailableError() from None
 
     idempotent_replay = creation.disposition is CreateOrderDisposition.REPLAYED_EXISTING
@@ -272,7 +274,7 @@ async def _execute_orchestration_intake(
             actor=actor,
             recorded_at=recorded_at + timedelta(microseconds=1),
         )
-    except SQLAlchemyError:
+    except _PERSISTENCE_ERRORS:
         raise OrchestrationUnavailableError() from None
 
     if claim.kind is IntakeClaimKind.STAND_DOWN:
@@ -347,7 +349,7 @@ async def _execute_orchestration_intake(
                 recorded_at=failure_at,
                 ownership_token=claim.ownership_token,
             )
-        except (SQLAlchemyError, StaleIntakeOwnershipError):
+        except _OWNERSHIP_PERSISTENCE_ERRORS:
             raise OrchestrationUnavailableError() from None
 
     try:
@@ -379,7 +381,7 @@ async def _execute_orchestration_intake(
             idempotent_replay=idempotent_replay,
             ownership_token=claim.ownership_token,
         )
-    except (SQLAlchemyError, StaleIntakeOwnershipError):
+    except _OWNERSHIP_PERSISTENCE_ERRORS:
         raise OrchestrationUnavailableError() from None
 
     _require_execution_budget(deadline)
