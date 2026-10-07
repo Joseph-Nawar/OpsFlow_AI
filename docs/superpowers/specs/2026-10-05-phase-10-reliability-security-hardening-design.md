@@ -1,6 +1,6 @@
 # Phase 10 — Reliability, Security & Hardening Design
 
-**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `COMPLETE` (human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`); M10E–M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
+**Status:** M10A `COMPLETE` (approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`); M10B `COMPLETE` (human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`); M10C `COMPLETE` (human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`); M10D `COMPLETE` (human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`); M10E `IN PROGRESS`; M10F `NOT STARTED`; Phase 10 `IN PROGRESS`
 **Baseline:** `07710b5b896ae97cd9b9d295906e923a805773a6` (`main` after the Phase 9 closeout and roadmap correction)
 **Scope:** repository intelligence, threat/failure modeling, implementation design, and concise M10B/M10C/M10D implementation records below. M10E–M10F behavior remains outside this document's implementation scope.
 
@@ -622,7 +622,8 @@ instrumentation seam, provider metric reuse for Phase 9 steps, and safe
 notification provider/order fields. The targeted independent re-review returned
 `PASS` with no unresolved High or Medium findings. Human approval records M10D
 `COMPLETE` against technical SHA
-`cf0b331864ca2cc5246aa32c7ce12827b79284d0`. M10E–M10F remain `NOT STARTED`;
+`cf0b331864ca2cc5246aa32c7ce12827b79284d0`. At M10D closeout, M10E–M10F
+were `NOT STARTED`; M10E is now `IN PROGRESS` and M10F remains `NOT STARTED`.
 Phase 10 remains `IN PROGRESS`; Phase 11–12 remain `NOT STARTED`.
 
 ## 9. Phase 10 decomposition and gates

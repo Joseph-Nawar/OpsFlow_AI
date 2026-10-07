@@ -491,10 +491,13 @@ later HTTP completion accounting. No migration, dependency, lockfile,
 workflow, or M10E/M10F change was introduced. The targeted independent
 re-review returned `PASS` with no unresolved High or Medium findings. Human
 approval records M10D `COMPLETE` against technical SHA
-`cf0b331864ca2cc5246aa32c7ce12827b79284d0`; M10E–M10F remain `NOT STARTED`,
-and Phase 10 remains `IN PROGRESS`.
+`cf0b331864ca2cc5246aa32c7ce12827b79284d0`. At M10D closeout, M10E–M10F
+were `NOT STARTED`; M10E is now `IN PROGRESS` and M10F remains `NOT STARTED`,
+while Phase 10 remains `IN PROGRESS`.
 
 ## M10E — Adversarial Resilience & Whole-System Failure Drills
+
+**Status:** M10E `IN PROGRESS`; M10F `NOT STARTED`; Phase 10 `IN PROGRESS`; Phases 11–12 `NOT STARTED`.
 
 ### Boundary
 
