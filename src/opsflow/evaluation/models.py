@@ -447,6 +447,34 @@ class CorpusCase(ContractModel):
                 raise ValueError("retry_recovery cases require a recovery scenario")
         elif self.recovery is not None:
             raise ValueError("recovery is allowed only for retry_recovery cases")
+
+        if self.recovery is not None:
+            if (
+                self.recovery.injected_stage
+                in {
+                    OrderState.PROCESSING,
+                    OrderState.EXTRACTED,
+                }
+                and self.approval is None
+            ):
+                if self.expected_validation is None:
+                    raise ValueError(
+                        "intake recovery without approval requires expected validation truth"
+                    )
+                if self.expected_validation.external_execution_eligible:
+                    raise ValueError(
+                        "intake recovery without approval cannot be externally executable"
+                    )
+                if (
+                    self.recovery.expected_final_state
+                    is not self.expected_validation.pre_approval_state
+                ):
+                    raise ValueError(
+                        "intake recovery without approval must end at "
+                        "the expected pre-approval state"
+                    )
+            if self.recovery.injected_stage is OrderState.SYNCING and self.approval is None:
+                raise ValueError("SYNCING recovery requires an explicit approval scenario")
         return self
 
 

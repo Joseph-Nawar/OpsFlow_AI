@@ -1,6 +1,6 @@
 {
   "schema_version": "opsflow-evaluation-corpus/v1",
-  "corpus_version": "1.0.0",
+  "corpus_version": "2.0.0",
   "benchmark_context": {
     "evaluation_date": "2026-10-10",
     "supported_currencies": [
@@ -350,7 +350,7 @@
         "failure_code": "PROVIDER_UNAVAILABLE",
         "expected_resume_origin": "PROCESSING",
         "expected_durable_outcome": "FAILED_RETRYABLE",
-        "expected_final_state": "COMPLETED",
+        "expected_final_state": "READY_FOR_APPROVAL",
         "preserve_prior_receipts": true
       }
     },
@@ -666,7 +666,7 @@
         "failure_code": "BUSINESS_DATA_PROVIDER_ERROR",
         "expected_resume_origin": "EXTRACTED",
         "expected_durable_outcome": "FAILED_RETRYABLE",
-        "expected_final_state": "COMPLETED",
+        "expected_final_state": "READY_FOR_APPROVAL",
         "preserve_prior_receipts": true
       }
     },

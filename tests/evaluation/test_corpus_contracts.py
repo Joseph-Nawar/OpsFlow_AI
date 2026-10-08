@@ -319,10 +319,10 @@ def test_repeated_source_sha_is_allowed_for_intentional_replay_cases(tmp_path: P
     assert manifest.cases[0].source.sha256 == manifest.cases[1].source.sha256
 
 
-def test_v1_corpus_has_exact_approved_distribution() -> None:
+def test_v2_corpus_has_exact_approved_distribution() -> None:
     manifest = load_manifest(Path("evals/corpus/v1"))
 
-    assert manifest.corpus_version == "1.0.0"
+    assert manifest.corpus_version == "2.0.0"
     assert len(manifest.cases) == 36
     assert {case.primary_category for case in manifest.cases} == set(CaseCategory)
     assert {
@@ -571,6 +571,53 @@ def test_syncing_worker_lease_exhaustion_is_the_v1_retryable_sync_fault() -> Non
     )
 
     assert scenario.failure_code == "WORKER_LEASE_EXHAUSTED"
+
+
+@pytest.mark.parametrize("case_id", ["retry-email-001", "retry-csv-001"])
+def test_intake_recovery_cannot_claim_completion_without_approval(case_id: str) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == case_id)
+    payload = case.model_dump(mode="json")
+    payload["recovery"]["expected_final_state"] = "COMPLETED"  # type: ignore[index]
+
+    with pytest.raises(ValidationError, match="pre-approval state"):
+        CorpusCase.model_validate(payload)
+
+
+@pytest.mark.parametrize("case_id", ["retry-email-001", "retry-csv-001"])
+def test_intake_recovery_ending_at_pre_approval_state_is_accepted(case_id: str) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == case_id)
+
+    validated = CorpusCase.model_validate(case.model_dump(mode="json"))
+
+    assert validated.recovery is not None
+    assert validated.expected_validation is not None
+    pre_approval_state = validated.expected_validation.pre_approval_state
+    assert validated.recovery.expected_final_state is pre_approval_state
+
+
+def test_syncing_recovery_with_explicit_approval_can_complete() -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "retry-csv-002")
+    validated = CorpusCase.model_validate(case.model_dump(mode="json"))
+
+    assert validated.approval is not None
+    assert validated.recovery is not None
+    assert validated.recovery.expected_final_state is OrderState.COMPLETED
+
+
+def test_corrected_retry_recovery_truth_and_corpus_version() -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    by_id = {case.case_id: case for case in manifest.cases}
+
+    assert manifest.corpus_version == "2.0.0"
+    assert by_id["retry-email-001"].recovery is not None
+    assert by_id["retry-email-001"].recovery.expected_final_state is OrderState.READY_FOR_APPROVAL
+    assert by_id["retry-csv-001"].recovery is not None
+    assert by_id["retry-csv-001"].recovery.expected_final_state is OrderState.READY_FOR_APPROVAL
+    assert by_id["retry-csv-002"].recovery is not None
+    assert by_id["retry-csv-002"].recovery.expected_final_state is OrderState.COMPLETED
 
 
 def test_approval_eligibility_has_manifest_grounded_human_action() -> None:
