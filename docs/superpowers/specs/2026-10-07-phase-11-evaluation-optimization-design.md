@@ -4,10 +4,15 @@
 
 This document is the authoritative M11A design for Phase 11 — Evaluation &
 Optimization. M11A design is `APPROVED` at
-`bde63c54a66486aea8c1e7292887d004bf9e91f4`; M11A overall remains `IN PROGRESS —
-IMPLEMENTATION PLAN PENDING HUMAN REVIEW`. It defines
-the evaluation contract and implementation boundary; it does not implement the
-evaluator.
+`bde63c54a66486aea8c1e7292887d004bf9e91f4`; the implementation plan is
+`APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11A overall is
+`COMPLETE`. M11A completed the design and implementation-planning gate only; no
+evaluator has been implemented. M11B is next and remains `NOT STARTED`; its
+approved execution plan begins with Tasks 1–4 only, then independent review,
+remediation/re-review if needed, human approval, and durable M11B closeout
+before M11C. M11C–M11F are `NOT STARTED`; Phase 11 remains `IN PROGRESS` and
+Phase 12 remains `NOT STARTED`. It defines the evaluation contract and
+implementation boundary; it does not implement the evaluator.
 
 The design is grounded in the repository at starting SHA
 `712aa04312cf1e2ebba85f60f2319765057bc211`, the exact `main` and
@@ -1260,7 +1265,7 @@ the reason no change meets the threshold, and the preserved safety gates.
 
 ## 15. Milestone decomposition and implementation boundary
 
-### M11A — Evaluation Contract & Benchmark Design — current
+### M11A — Evaluation Contract & Benchmark Design — complete
 
 Deliver this design, repository gap analysis, exact metrics, modes, artifacts,
 commands, release gates, optimization boundary, and M11B–M11F ownership. No
