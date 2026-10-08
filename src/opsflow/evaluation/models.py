@@ -336,8 +336,6 @@ class RateMetric(ContractModel):
     def _undefined_rate_is_null(self) -> RateMetric:
         if self.denominator == 0 and self.value is not None:
             raise ValueError("undefined rates must have a null value")
-        if self.denominator > 0 and self.value is None:
-            raise ValueError("defined rates must have a numeric value")
         if self.value is not None and (self.value < 0 or self.value > 1):
             raise ValueError("rate values must be between zero and one")
         return self
@@ -418,6 +416,7 @@ class CaseResult(ContractModel):
     replay_disposition: ReplayDisposition | None = None
     external_execution_eligible: StrictBool | None = None
     contract_evidence: ContractEvidence | None = None
+    expected_extraction: ExpectedExtraction | None = Field(default=None, exclude=True)
     predicted_extraction: ExtractionDraft | None = Field(default=None, exclude=True)
 
     _failure_nonblank = field_validator("failure_code")(_nonblank)
