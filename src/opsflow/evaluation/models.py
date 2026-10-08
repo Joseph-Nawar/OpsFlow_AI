@@ -408,6 +408,8 @@ class CaseResult(ContractModel):
     case_id: StrictStr
     status: CaseResultStatus
     provider_reached: StrictBool
+    provider_name: Literal["fake", "gemini"] | None = None
+    provider_call_count: NonNegativeInt = 0
     failure_code: StrictStr | None = None
     validation_route: ValidationRoute | None = None
     approval_level: ApprovalLevel | None = None
@@ -423,6 +425,12 @@ class CaseResult(ContractModel):
 
     @model_validator(mode="after")
     def _status_failure_pair(self) -> CaseResult:
+        if self.provider_reached and self.provider_call_count < 1:
+            raise ValueError("a reached provider case requires at least one provider call")
+        if not self.provider_reached and self.provider_call_count != 0:
+            raise ValueError("an unreached provider case cannot report provider calls")
+        if self.provider_call_count == 0 and self.provider_name is not None:
+            raise ValueError("provider_name requires a provider call")
         if self.status is CaseResultStatus.FAILED and self.failure_code is None:
             raise ValueError("failed cases require a bounded failure_code")
         if self.status is not CaseResultStatus.FAILED and self.failure_code is not None:

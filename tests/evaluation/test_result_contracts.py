@@ -7,6 +7,8 @@ from pydantic import ValidationError
 from opsflow.evaluation.models import (
     CaseResult,
     CaseResultStatus,
+    ContractEvidence,
+    EnvironmentMetadata,
     EvaluationMode,
     EvaluationRunResult,
     ExtractionQuality,
@@ -54,10 +56,28 @@ def valid_run() -> EvaluationRunResult:
 
 
 def test_provider_free_result_is_explicitly_not_applicable_for_model_quality() -> None:
-    result = valid_run()
+    result = valid_run().model_copy(
+        update={
+            "cases": (
+                CaseResult(
+                    case_id="normal-001",
+                    status=CaseResultStatus.SUCCEEDED,
+                    provider_reached=False,
+                    failure_code=None,
+                    contract_evidence=ContractEvidence(
+                        parser_succeeded=True,
+                        evidence_grounded=True,
+                        scripted_provider_call_count=1,
+                    ),
+                ),
+            )
+        }
+    )
     payload = result.model_dump(mode="json")
 
     assert payload["mode"] == "provider_free"
+    assert payload["cases"][0]["contract_evidence"]["parser_succeeded"] is True
+    assert "accuracy" not in payload["cases"][0]["contract_evidence"]
     assert payload["extraction_quality"]["status"] == "NOT_APPLICABLE"
     assert payload["extraction_quality"]["reason"]
     assert payload["extraction_quality"]["precision"] is None
@@ -130,3 +150,46 @@ def test_failed_case_requires_a_bounded_failure_code() -> None:
             provider_reached=False,
             failure_code=None,
         )
+
+
+def test_live_result_serializes_real_provider_reachability_and_attempt_count() -> None:
+    live_quality = ExtractionQuality(
+        status=ExtractionQualityStatus.AVAILABLE,
+        reason="Real Gemini provider evidence is available for reached cases.",
+    )
+    result = EvaluationRunResult(
+        run_id="run-live-001",
+        started_at=datetime(2026, 10, 8, tzinfo=UTC),
+        finished_at=datetime(2026, 10, 8, 0, 1, tzinfo=UTC),
+        git_sha="b" * 40,
+        corpus_version="1.0.0",
+        result_schema_version="1.0",
+        mode=EvaluationMode.LIVE_GEMINI,
+        command="make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1",
+        environment=EnvironmentMetadata(gemini_model="gemini-test"),
+        extraction_quality=live_quality,
+        cases=(
+            CaseResult(
+                case_id="normal-001",
+                status=CaseResultStatus.SUCCEEDED,
+                provider_reached=True,
+                provider_name="gemini",
+                provider_call_count=1,
+            ),
+            CaseResult(
+                case_id="security-001",
+                status=CaseResultStatus.SKIPPED,
+                provider_reached=False,
+                provider_name=None,
+                provider_call_count=0,
+            ),
+        ),
+    )
+
+    payload = result.model_dump(mode="json")
+
+    assert payload["cases"][0]["provider_name"] == "gemini"
+    assert payload["cases"][0]["provider_reached"] is True
+    assert payload["cases"][0]["provider_call_count"] == 1
+    assert payload["cases"][1]["provider_reached"] is False
+    assert payload["cases"][1]["provider_call_count"] == 0

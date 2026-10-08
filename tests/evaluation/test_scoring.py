@@ -92,6 +92,8 @@ def case(
         case_id="normal-001",
         status=status,
         provider_reached=reached,
+        provider_name="gemini" if reached else None,
+        provider_call_count=1 if reached else 0,
         failure_code="PROVIDER_FAILED" if status is CaseResultStatus.FAILED else None,
         expected_extraction=expected_value,
         predicted_extraction=predicted,
