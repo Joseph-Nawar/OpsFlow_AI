@@ -31,10 +31,12 @@ The design is grounded in the repository at starting SHA
 M11B was originally approved with corpus `1.0.0`. M11C Task 5 exposed an
 authority contradiction in the `retry-email-001` and `retry-csv-001` recovery
 expectations: retry and deterministic validation stop at `READY_FOR_APPROVAL`
-until an explicit human approval action. The executable correction is corpus
-`2.0.0`; only those two expected final states changed, and no source bytes or
-SHA-256 values changed. This amendment is pending independent review. M11C
-remains blocked before Tasks 6–7; M11D–M11F remain `NOT STARTED`.
+until an explicit human approval action. The approved executable correction is
+corpus `2.0.0` at amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`; only those two expected final
+states changed, and no source bytes or SHA-256 values changed. M11C is
+`IN PROGRESS`, all further Phase 11 evaluation execution uses corpus `2.0.0`,
+and M11D–M11F remain `NOT STARTED`.
 
 The current status is intentionally separate from historical Phase 10 audit
 records. The Phase 10 audit remains an immutable record of its own closeout and

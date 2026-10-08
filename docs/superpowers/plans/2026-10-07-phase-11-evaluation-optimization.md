@@ -29,10 +29,10 @@
 
 M11B is `COMPLETE` at its independently reviewed technical baseline, while its
 historical approved corpus remains `1.0.0`. M11C Task 5 exposed an authority
-contradiction in two intake-recovery final-state expectations; the corrective
-executable corpus is `2.0.0` and is pending independent review. M11C remains
-`IN PROGRESS — BLOCKED ON CORPUS-V2 CORRECTION`; Tasks 6–7 must not begin until
-the amendment is independently reviewed and approved. M11D–M11F remain
+contradiction in two intake-recovery final-state expectations; the approved
+active executable corpus is `2.0.0` at amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C is `IN PROGRESS`, and all
+further Phase 11 evaluation execution uses corpus `2.0.0`. M11D–M11F remain
 `NOT STARTED`.
 
 ## Milestone Execution Gates

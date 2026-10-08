@@ -410,9 +410,10 @@ OpsFlow is not intended to become a startup. Its purpose is to be a high-quality
 M11B remains `COMPLETE` at its independently reviewed technical baseline, with
 the original approved corpus `1.0.0` preserved as historical evidence. M11C
 Task 5 exposed an authority contradiction in two intake-recovery expectations;
-the corrected executable corpus is `2.0.0`, changing only the expected final
-state of `retry-email-001` and `retry-csv-001` to `READY_FOR_APPROVAL`. No
-source bytes changed. The amendment is `PENDING INDEPENDENT REVIEW`; M11C is
-`IN PROGRESS — BLOCKED ON CORPUS-V2 CORRECTION`, and Tasks 6–7 remain stopped.
+the corrected active executable corpus is `2.0.0`, approved at amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`; only the expected final state of
+`retry-email-001` and `retry-csv-001` changed to `READY_FOR_APPROVAL`. No
+source bytes changed. M11C is `IN PROGRESS`, and all further Phase 11
+evaluation execution uses corpus `2.0.0`.
 M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12
 remains `NOT STARTED`.
