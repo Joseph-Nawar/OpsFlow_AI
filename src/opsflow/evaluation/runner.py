@@ -46,6 +46,7 @@ from opsflow.order_sync.contracts import (
     HubSpotDealReceipt,
     OdooOrderReceipt,
     OrderSyncStep,
+    OrderSyncStepResult,
 )
 from opsflow.persistence.models import (
     NotificationDeliveryModel,
@@ -90,13 +91,12 @@ from .models import (
     MetricsBundle,
     PricingStatus,
     ProviderSummary,
-    ReleaseGateSummary,
     ReplayDisposition,
     RunMetadata,
     SideEffectDetail,
     SideEffectSummary,
 )
-from .scoring import score_extraction_quality, score_validation_outcome
+from .scoring import evaluate_release_gates, score_extraction_quality, score_validation_outcome
 
 CORPUS_ROOT = Path("evals/corpus/v1")
 _KNOWN_EXECUTION_ERRORS = (
@@ -146,7 +146,7 @@ class EvaluationOrderSyncExecutor:
     def logical_external_object_count(self) -> int:
         return len(self._objects)
 
-    async def execute(self, order_id: UUID, step: OrderSyncStep):
+    async def execute(self, order_id: UUID, step: OrderSyncStep) -> OrderSyncStepResult:
         self.calls.append(step)
         if step is OrderSyncStep.ODOO_LOOKUP:
             return None
@@ -803,7 +803,7 @@ async def run_corpus(
             ),
         ),
         pricing=PricingStatus(status="NOT_APPLICABLE"),
-        release_gates=ReleaseGateSummary(),
+        release_gates=evaluate_release_gates(corpus, result_tuple),
         limitations=(
             "M11C does not collect aggregate timing, pricing, token-cost, or live-model evidence.",
         ),

@@ -14,6 +14,8 @@ from opsflow.extraction.provider import (
     StructuredGenerationRequest,
     StructuredGenerationResult,
 )
+from opsflow.validation.business_data import BusinessDataProvider
+from opsflow.validation.models import BusinessDataLookupRequest, TrustedBusinessData
 
 from .models import CorpusCase, ExpectedExtraction
 
@@ -81,6 +83,7 @@ class RecordingScriptedProvider:
         first_outcome: ProviderError | None = None
         if first_failure == "PROVIDER_UNAVAILABLE":
             first_outcome = ProviderUnavailableError("scripted provider unavailable")
+        outcomes: tuple[StructuredGenerationResult | ProviderError, ...]
         if first_outcome is not None:
             outcomes = (first_outcome, outcome)
         else:
@@ -124,14 +127,14 @@ class RecoveryScriptedProviderFactory(ScriptedProviderFactory):
 class FailOnceBusinessDataProvider:
     """Inject one real retryable business-data failure, then delegate normally."""
 
-    def __init__(self, delegate: object) -> None:
+    def __init__(self, delegate: BusinessDataProvider) -> None:
         self._delegate = delegate
         self._failed = False
 
-    async def get_validation_data(self, request: object) -> object:
+    async def get_validation_data(self, request: BusinessDataLookupRequest) -> TrustedBusinessData:
         if not self._failed:
             self._failed = True
-            raise BusinessDataProviderError("scripted business data provider unavailable")
+            raise BusinessDataProviderError()
         return await self._delegate.get_validation_data(request)
 
 

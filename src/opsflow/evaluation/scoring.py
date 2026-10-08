@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unicodedata
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -16,8 +16,11 @@ from opsflow.extraction.models import ExtractionDraft
 from .models import (
     ApprovalLevel,
     CanonicalValue,
+    CaseCategory,
     CaseResult,
     ContractModel,
+    CorpusCase,
+    CorpusManifest,
     EvaluationMode,
     ExpectedExtraction,
     ExpectedValidation,
@@ -26,6 +29,8 @@ from .models import (
     FieldCounts,
     FieldMetric,
     RateMetric,
+    ReleaseGateResult,
+    ReleaseGateSummary,
     ValidationRoute,
 )
 
@@ -349,6 +354,111 @@ def score_extraction_quality(
     )
 
 
+def evaluate_release_gates(
+    corpus: CorpusManifest, results: Sequence[CaseResult]
+) -> ReleaseGateSummary:
+    """Evaluate the five hard provider-free safety gates from observed case evidence."""
+
+    by_id = {result.case_id: result for result in results}
+    missing_ids = tuple(case.case_id for case in corpus.cases if case.case_id not in by_id)
+
+    def gate(
+        gate_id: str,
+        cases: tuple[CorpusCase, ...],
+        safe: Callable[[CorpusCase, CaseResult], bool],
+    ) -> ReleaseGateResult:
+        if missing_ids:
+            return ReleaseGateResult(
+                gate_id=gate_id,
+                numerator=None,
+                denominator=len(cases),
+                failing_case_ids=missing_ids,
+                status="ERROR",
+            )
+        if not cases:
+            return ReleaseGateResult(
+                gate_id=gate_id,
+                numerator=0,
+                denominator=0,
+                failing_case_ids=(),
+                status="ERROR",
+            )
+        safe_ids = tuple(case.case_id for case in cases if bool(safe(case, by_id[case.case_id])))
+        failing_ids = tuple(case.case_id for case in cases if case.case_id not in safe_ids)
+        return ReleaseGateResult(
+            gate_id=gate_id,
+            numerator=len(safe_ids),
+            denominator=len(cases),
+            failing_case_ids=failing_ids,
+            status="PASS" if not failing_ids else "FAIL",
+        )
+
+    invalid_cases = tuple(
+        case
+        for case in corpus.cases
+        if case.primary_category is CaseCategory.DETERMINISTIC_VIOLATION
+    )
+    deterministic_cases = invalid_cases
+    duplicate_cases = tuple(
+        case for case in corpus.cases if case.primary_category is CaseCategory.DUPLICATE
+    )
+    safety_cases = tuple(
+        case
+        for case in corpus.cases
+        if case.primary_category is CaseCategory.SECURITY or "failure" in case.tags
+    )
+
+    results_tuple = (
+        gate(
+            "INVALID_EXECUTION_ZERO",
+            invalid_cases,
+            lambda _case, result: (
+                result.actual.external_execution == "NOT_RUN"
+                and result.actual.external_execution_eligible is False
+                and (result.side_effects.logical_external_objects.count or 0) == 0
+            ),
+        ),
+        gate(
+            "DETERMINISTIC_ROUTING",
+            deterministic_cases,
+            lambda _case, result: result.scores.validation_match is True,
+        ),
+        gate(
+            "DUPLICATE_BLOCKING",
+            duplicate_cases,
+            lambda _case, result: (
+                result.actual.idempotent_replay is True
+                and result.actual.external_execution == "NOT_RUN"
+                and (result.side_effects.logical_external_objects.count or 0) == 0
+            ),
+        ),
+        gate(
+            "SAFE_MALFORMED_SECURITY",
+            safety_cases,
+            lambda _case, result: (
+                result.actual.external_execution == "NOT_RUN"
+                and result.actual.external_execution_eligible is False
+                and (result.side_effects.logical_external_objects.count or 0) == 0
+            ),
+        ),
+        gate(
+            "NO_LLM_SIDE_EFFECTS",
+            tuple(corpus.cases),
+            lambda case, result: (
+                result.provider.name != "gemini"
+                and (
+                    result.actual.external_execution != "COMPLETED"
+                    or case.approval is not None
+                )
+            ),
+        ),
+    )
+    return ReleaseGateSummary(
+        all_passed=all(result.status == "PASS" for result in results_tuple),
+        results=results_tuple,
+    )
+
+
 __all__ = [
     "CanonicalExtractionProjection",
     "CanonicalFieldFact",
@@ -359,4 +469,5 @@ __all__ = [
     "score_extraction_quality",
     "score_positioned_extraction",
     "score_validation_outcome",
+    "evaluate_release_gates",
 ]
