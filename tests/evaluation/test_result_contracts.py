@@ -5,15 +5,23 @@ import pytest
 from pydantic import ValidationError
 
 from opsflow.evaluation.models import (
+    CaseActual,
     CaseResult,
     CaseResultStatus,
+    CaseScores,
     ContractEvidence,
-    EnvironmentMetadata,
+    CorpusComposition,
+    DatabaseMetadata,
     EvaluationMode,
     EvaluationRunResult,
     ExtractionQuality,
     ExtractionQualityStatus,
+    MetricsBundle,
+    PricingStatus,
+    ProviderSummary,
     RateMetric,
+    ReleaseGateSummary,
+    RunMetadata,
 )
 
 
@@ -24,82 +32,120 @@ def valid_quality() -> ExtractionQuality:
         field_tp=None,
         field_fp=None,
         field_fn=None,
-        precision=None,
-        recall=None,
-        f1=None,
+        field_micro_precision=None,
+        field_micro_recall=None,
+        field_micro_f1=None,
         per_field=None,
         reached_live_gemini_case_count=0,
         reason="No real model was evaluated in provider-free mode.",
     )
 
 
-def valid_run() -> EvaluationRunResult:
-    return EvaluationRunResult(
-        run_id="run-001",
-        started_at=datetime(2026, 10, 8, tzinfo=UTC),
-        finished_at=datetime(2026, 10, 8, 0, 1, tzinfo=UTC),
-        git_sha="a" * 40,
-        corpus_version="1.0.0",
-        result_schema_version="1.0",
-        mode=EvaluationMode.PROVIDER_FREE,
-        command="make evaluate",
-        extraction_quality=valid_quality(),
-        cases=(
-            CaseResult(
-                case_id="normal-001",
-                status=CaseResultStatus.SUCCEEDED,
-                provider_reached=False,
-                failure_code=None,
-            ),
+def valid_case(*, reached: bool = False, provider_name: str | None = None) -> CaseResult:
+    return CaseResult(
+        case_id="normal-001",
+        status=CaseResultStatus.PASS,
+        actual=CaseActual(
+            parse=CaseResultStatus.PASS,
+            extraction_contract=CaseResultStatus.PASS,
+        ),
+        scores=CaseScores(),
+        provider=ProviderSummary(
+            name=provider_name,
+            calls=1 if reached else 0,
         ),
     )
 
 
+def valid_run(
+    *,
+    mode: EvaluationMode = EvaluationMode.PROVIDER_FREE,
+    cases: tuple[CaseResult, ...] | None = None,
+    metrics: MetricsBundle | None = None,
+) -> EvaluationRunResult:
+    return EvaluationRunResult(
+        run=RunMetadata(
+            run_id="run-001",
+            mode=mode,
+            started_at_utc=datetime(2026, 10, 8, tzinfo=UTC),
+            finished_at_utc=datetime(2026, 10, 8, 0, 1, tzinfo=UTC),
+            git_sha="a" * 40,
+            corpus_version="1.0.0",
+            database=DatabaseMetadata(engine="postgresql", isolated=True),
+        ),
+        corpus=CorpusComposition(
+            case_count=1,
+            primary_category_counts={},
+            format_counts={},
+            tag_counts={},
+        ),
+        cases=cases or (valid_case(),),
+        metrics=metrics or MetricsBundle(extraction_quality=valid_quality()),
+        pricing=PricingStatus(status="NOT_APPLICABLE"),
+        release_gates=ReleaseGateSummary(),
+    )
+
+
+def test_result_has_exact_stable_top_level_keys() -> None:
+    assert set(valid_run().model_dump(mode="json")) == {
+        "schema_version",
+        "evaluation_version",
+        "run",
+        "corpus",
+        "cases",
+        "metrics",
+        "pricing",
+        "release_gates",
+        "limitations",
+    }
+
+
+def test_case_has_exact_nested_stable_keys() -> None:
+    case = valid_run().model_dump(mode="json")["cases"][0]
+    assert set(case) == {
+        "case_id",
+        "status",
+        "actual",
+        "scores",
+        "durations_ms",
+        "provider",
+        "side_effects",
+    }
+    assert case["actual"]["extraction_contract"] == "PASS"
+    assert case["provider"]["calls"] == 0
+
+
 def test_provider_free_result_is_explicitly_not_applicable_for_model_quality() -> None:
-    result = valid_run().model_copy(
-        update={
-            "cases": (
-                CaseResult(
-                    case_id="normal-001",
-                    status=CaseResultStatus.SUCCEEDED,
-                    provider_reached=False,
-                    failure_code=None,
-                    contract_evidence=ContractEvidence(
-                        parser_succeeded=True,
-                        evidence_grounded=True,
-                        scripted_provider_call_count=1,
-                    ),
-                ),
-            )
-        }
+    result = valid_run(
+        metrics=MetricsBundle(
+            extraction_quality=valid_quality(),
+            extraction_contract=ContractEvidence(
+                parser_succeeded=True,
+                evidence_grounded=True,
+                scripted_provider_call_count=1,
+            ),
+        )
     )
     payload = result.model_dump(mode="json")
 
-    assert payload["mode"] == "provider_free"
-    assert payload["cases"][0]["contract_evidence"]["parser_succeeded"] is True
-    assert "accuracy" not in payload["cases"][0]["contract_evidence"]
-    assert payload["extraction_quality"]["status"] == "NOT_APPLICABLE"
-    assert payload["extraction_quality"]["reason"]
-    assert payload["extraction_quality"]["precision"] is None
+    assert payload["run"]["mode"] == "provider_free"
+    assert payload["metrics"]["extraction_contract"]["parser_succeeded"] is True
+    assert "accuracy" not in payload["metrics"]["extraction_contract"]
+    assert payload["metrics"]["extraction_quality"]["status"] == "NOT_APPLICABLE"
+    assert payload["metrics"]["extraction_quality"]["reason"]
+    assert payload["metrics"]["extraction_quality"]["field_micro_precision"] is None
 
 
 def test_provider_free_result_cannot_publish_a_scripted_extraction_score() -> None:
     with pytest.raises(ValidationError, match="NOT_APPLICABLE"):
-        EvaluationRunResult(
-            run_id="run-001",
-            started_at=datetime(2026, 10, 8, tzinfo=UTC),
-            finished_at=datetime(2026, 10, 8, 0, 1, tzinfo=UTC),
-            git_sha="a" * 40,
-            corpus_version="1.0.0",
-            result_schema_version="1.0",
-            mode=EvaluationMode.PROVIDER_FREE,
-            command="make evaluate",
-            extraction_quality=ExtractionQuality(
-                status=ExtractionQualityStatus.AVAILABLE,
-                complete_exact_match=RateMetric(numerator=1, denominator=1, value=Decimal("1")),
-                reason="scripted provider matched",
-            ),
-            cases=(),
+        valid_run(
+            metrics=MetricsBundle(
+                extraction_quality=ExtractionQuality(
+                    status=ExtractionQualityStatus.AVAILABLE,
+                    complete_exact_match=RateMetric(numerator=1, denominator=1, value=Decimal("1")),
+                    reason="scripted provider matched",
+                )
+            )
         )
 
 
@@ -110,6 +156,89 @@ def test_not_applicable_quality_cannot_contain_a_rate() -> None:
             complete_exact_match=RateMetric(numerator=1, denominator=1, value=Decimal("1")),
             reason="No real model was evaluated.",
         )
+
+
+def test_error_is_valid_and_skipped_is_rejected() -> None:
+    error = CaseResult(
+        case_id="broken-001",
+        status=CaseResultStatus.ERROR,
+        actual=CaseActual(
+            parse=CaseResultStatus.ERROR,
+            failure_code="PROVIDER_UNAVAILABLE",
+        ),
+        provider=ProviderSummary(),
+    )
+    assert error.status is CaseResultStatus.ERROR
+
+    with pytest.raises(ValidationError):
+        CaseResult.model_validate(
+            {
+                **valid_case().model_dump(),
+                "status": "SKIPPED",
+            }
+        )
+
+
+def test_live_mode_rejects_fake_provider_calls() -> None:
+    with pytest.raises(ValidationError, match="fake"):
+        valid_run(
+            mode=EvaluationMode.LIVE_GEMINI,
+            cases=(valid_case(reached=True, provider_name="fake"),),
+            metrics=MetricsBundle(
+                extraction_quality=ExtractionQuality(
+                    status=ExtractionQualityStatus.AVAILABLE,
+                    reason="Real Gemini provider evidence is available.",
+                )
+            ),
+        )
+
+
+def test_live_mode_can_record_an_unreached_non_provider_scenario() -> None:
+    result = valid_run(
+        mode=EvaluationMode.LIVE_GEMINI,
+        cases=(valid_case(reached=False, provider_name=None),),
+        metrics=MetricsBundle(
+            extraction_quality=ExtractionQuality(
+                status=ExtractionQualityStatus.AVAILABLE,
+                reason="Real Gemini provider evidence is available for reached cases.",
+            )
+        ),
+    )
+    assert result.cases[0].provider.calls == 0
+    assert result.cases[0].provider.name is None
+
+
+@pytest.mark.parametrize(
+    "failure_code",
+    [
+        "PROVIDER_UNAVAILABLE",
+        "bad provider response",
+        "raw\nexception",
+        "Bearer secret",
+        "x" * 65,
+    ],
+)
+def test_failure_code_is_a_bounded_sanitized_identifier(failure_code: str) -> None:
+    if failure_code == "PROVIDER_UNAVAILABLE":
+        actual = CaseActual(parse=CaseResultStatus.ERROR, failure_code=failure_code)
+        assert (
+            CaseResult(
+                case_id="broken-001",
+                status=CaseResultStatus.ERROR,
+                actual=actual,
+                provider=ProviderSummary(),
+            ).actual.failure_code
+            == failure_code
+        )
+    else:
+        with pytest.raises(ValidationError):
+            actual = CaseActual(parse=CaseResultStatus.ERROR, failure_code=failure_code)
+            CaseResult(
+                case_id="broken-001",
+                status=CaseResultStatus.ERROR,
+                actual=actual,
+                provider=ProviderSummary(),
+            )
 
 
 @pytest.mark.parametrize(
@@ -133,8 +262,7 @@ def test_result_contract_rejects_raw_documents_and_secret_metadata(
 
 
 def test_result_serialization_is_json_safe_and_does_not_emit_internal_payloads() -> None:
-    result = valid_run()
-    encoded = result.model_dump_json()
+    encoded = valid_run().model_dump_json()
 
     assert "raw_document" not in encoded
     assert "api_key" not in encoded
@@ -142,54 +270,11 @@ def test_result_serialization_is_json_safe_and_does_not_emit_internal_payloads()
     assert '"git_sha"' in encoded
 
 
-def test_failed_case_requires_a_bounded_failure_code() -> None:
-    with pytest.raises(ValidationError, match="failure_code"):
-        CaseResult(
-            case_id="broken-001",
-            status=CaseResultStatus.FAILED,
-            provider_reached=False,
-            failure_code=None,
+def test_human_readable_limitations_are_bounded_and_sanitized() -> None:
+    with pytest.raises(ValidationError):
+        EvaluationRunResult.model_validate(
+            {**valid_run().model_dump(), "limitations": ["Traceback: secret body"]}
         )
 
-
-def test_live_result_serializes_real_provider_reachability_and_attempt_count() -> None:
-    live_quality = ExtractionQuality(
-        status=ExtractionQualityStatus.AVAILABLE,
-        reason="Real Gemini provider evidence is available for reached cases.",
-    )
-    result = EvaluationRunResult(
-        run_id="run-live-001",
-        started_at=datetime(2026, 10, 8, tzinfo=UTC),
-        finished_at=datetime(2026, 10, 8, 0, 1, tzinfo=UTC),
-        git_sha="b" * 40,
-        corpus_version="1.0.0",
-        result_schema_version="1.0",
-        mode=EvaluationMode.LIVE_GEMINI,
-        command="make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1",
-        environment=EnvironmentMetadata(gemini_model="gemini-test"),
-        extraction_quality=live_quality,
-        cases=(
-            CaseResult(
-                case_id="normal-001",
-                status=CaseResultStatus.SUCCEEDED,
-                provider_reached=True,
-                provider_name="gemini",
-                provider_call_count=1,
-            ),
-            CaseResult(
-                case_id="security-001",
-                status=CaseResultStatus.SKIPPED,
-                provider_reached=False,
-                provider_name=None,
-                provider_call_count=0,
-            ),
-        ),
-    )
-
-    payload = result.model_dump(mode="json")
-
-    assert payload["cases"][0]["provider_name"] == "gemini"
-    assert payload["cases"][0]["provider_reached"] is True
-    assert payload["cases"][0]["provider_call_count"] == 1
-    assert payload["cases"][1]["provider_reached"] is False
-    assert payload["cases"][1]["provider_call_count"] == 0
+    with pytest.raises(ValidationError):
+        PricingStatus(status="ERROR", reason="Bearer secret")

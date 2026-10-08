@@ -335,9 +335,9 @@ def score_extraction_quality(
         field_tp=total.tp,
         field_fp=total.fp,
         field_fn=total.fn,
-        precision=_rate(total.tp, total.tp + total.fp),
-        recall=_rate(total.tp, total.tp + total.fn),
-        f1=_rate(
+        field_micro_precision=_rate(total.tp, total.tp + total.fp),
+        field_micro_recall=_rate(total.tp, total.tp + total.fn),
+        field_micro_f1=_rate(
             2 * total.tp,
             2 * total.tp + total.fp + total.fn,
             undefined=total.tp == 0,

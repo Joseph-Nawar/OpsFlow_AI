@@ -15,6 +15,7 @@ from pydantic import (
     NonNegativeInt,
     StrictBool,
     StrictStr,
+    StringConstraints,
     field_validator,
     model_validator,
 )
@@ -22,6 +23,8 @@ from pydantic import (
 from opsflow.domain.order import OrderState
 from opsflow.domain.records import SourceDocumentType, ValidationSeverity
 from opsflow.extraction.models import ExtractionDraft
+from opsflow.order_sync.contracts import OrderSyncFailureCode
+from opsflow.review.contracts import OperatorRole
 from opsflow.validation.models import (
     ApprovalLevel,
     BusinessDataLookupRequest,
@@ -33,6 +36,23 @@ from opsflow.validation.models import (
 )
 
 type CanonicalValue = str | Decimal | date | None
+type SafeFailureCode = Annotated[
+    str,
+    StringConstraints(
+        strict=True,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Z][A-Z0-9_]*$",
+    ),
+]
+type SafeIdentifier = Annotated[
+    str,
+    StringConstraints(strict=True, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$"),
+]
+type BoundedReason = Annotated[
+    str,
+    StringConstraints(strict=True, min_length=1, max_length=512),
+]
 
 _SHA256 = re.compile(r"[0-9a-f]{64}", re.ASCII)
 _CASE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*", re.ASCII)
@@ -60,9 +80,9 @@ class CaseCategory(StrEnum):
 
 
 class CaseResultStatus(StrEnum):
-    SUCCEEDED = "PASS"
-    FAILED = "FAIL"
-    SKIPPED = "SKIPPED"
+    PASS = "PASS"
+    FAIL = "FAIL"
+    ERROR = "ERROR"
 
 
 class ExtractionQualityStatus(StrEnum):
@@ -84,6 +104,25 @@ def _nonblank(value: str | None) -> str | None:
 def _required_nonblank(value: str) -> str:
     if not value.strip():
         raise ValueError("value must be a non-blank string")
+    return value
+
+
+def _safe_reason(value: str | None) -> str | None:
+    if value is None:
+        return None
+    lowered = value.lower()
+    forbidden_markers = (
+        "\n",
+        "\r",
+        "bearer ",
+        "api_key",
+        "authorization",
+        "traceback",
+        "database_url",
+        "postgresql://",
+    )
+    if any(marker in lowered for marker in forbidden_markers):
+        raise ValueError("result reasons must be sanitized human-readable summaries")
     return value
 
 
@@ -174,6 +213,79 @@ class TrustedBusinessDataExpectation(ContractModel):
 
     _fixture_nonblank = field_validator("fixture_path")(_required_nonblank)
 
+    @field_validator("fixture_path")
+    @classmethod
+    def _fixture_path_is_relative(cls, value: str) -> str:
+        from pathlib import PurePosixPath
+
+        if "\\" in value or "\x00" in value:
+            raise ValueError("trusted fixture path must use safe relative POSIX syntax")
+        path = PurePosixPath(value)
+        if path.is_absolute() or not path.parts or ".." in path.parts:
+            raise ValueError("trusted fixture path must be relative and must not traverse parents")
+        return value
+
+
+class BenchmarkValidationContext(ContractModel):
+    """Pinned deterministic policy inputs carried by corpus v1."""
+
+    evaluation_date: date
+    supported_currencies: tuple[StrictStr, ...]
+    price_tolerance_fraction: Decimal
+    high_value_threshold: Decimal
+
+    @field_validator("supported_currencies")
+    @classmethod
+    def _supported_currencies_are_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value or any(
+            re.fullmatch(r"[A-Z]{3}", item, flags=re.ASCII) is None for item in value
+        ):
+            raise ValueError("supported_currencies must contain uppercase ISO currency codes")
+        if len(value) != len(set(value)):
+            raise ValueError("supported_currencies must be unique")
+        return value
+
+    @field_validator("price_tolerance_fraction", "high_value_threshold")
+    @classmethod
+    def _finite_nonnegative_decimal(cls, value: Decimal) -> Decimal:
+        if not value.is_finite() or value < 0:
+            raise ValueError("benchmark decimal policy values must be finite and non-negative")
+        return value
+
+
+_VALIDATION_ISSUE_CODES = frozenset(
+    {
+        "AMBIGUOUS_CUSTOMER",
+        "CATALOGUE_PRICE_UNAVAILABLE",
+        "CURRENCY_REQUIRED",
+        "CUSTOMER_REQUIRED",
+        "DELIVERY_BEFORE_ORDER_DATE",
+        "DELIVERY_DATE_IN_PAST",
+        "DELIVERY_DATE_REQUIRED",
+        "DOCUMENT_ALREADY_PROCESSED",
+        "DUPLICATE_CUSTOMER_PO",
+        "HIGH_VALUE_APPROVAL_REQUIRED",
+        "INACTIVE_CUSTOMER",
+        "INACTIVE_SKU",
+        "INSUFFICIENT_INVENTORY",
+        "INVENTORY_UNAVAILABLE",
+        "ORDER_DATE_IN_FUTURE",
+        "ORDER_DATE_REQUIRED",
+        "ORDER_LINES_REQUIRED",
+        "PO_NUMBER_REQUIRED",
+        "PRICE_OUTSIDE_TOLERANCE",
+        "PRODUCT_CURRENCY_MISMATCH",
+        "QUANTITY_NOT_POSITIVE",
+        "QUANTITY_REQUIRED",
+        "SKU_REQUIRED",
+        "SUBMITTED_PRICE_NEGATIVE",
+        "SUBMITTED_PRICE_REQUIRED",
+        "UNKNOWN_CUSTOMER",
+        "UNKNOWN_SKU",
+        "UNSUPPORTED_CURRENCY",
+    }
+)
+
 
 class ExpectedValidation(ContractModel):
     """Expected deterministic validation result for cases that run validation."""
@@ -189,19 +301,24 @@ class ExpectedValidation(ContractModel):
     def _issue_severity_keys_match(self) -> ExpectedValidation:
         if set(self.issue_codes) != set(self.issue_severities):
             raise ValueError("issue_codes and issue_severities must describe the same facts")
-        if len(self.issue_codes) != len(set(self.issue_codes)):
-            raise ValueError("issue_codes must not contain duplicate rule codes")
+        unknown_codes = set(self.issue_codes) - _VALIDATION_ISSUE_CODES
+        if unknown_codes:
+            raise ValueError("issue_codes contains an unsupported deterministic rule code")
         return self
 
 
 class ApprovalScenario(ContractModel):
     """Manifest-directed human approval expectation."""
 
-    role: StrictStr
-    action: StrictStr
-    expected_state: Literal[OrderState.APPROVED] = OrderState.APPROVED
+    role: OperatorRole
+    action: Literal["APPROVE"]
+    expected_state: OrderState = OrderState.APPROVED
 
-    _nonblank_role_action = field_validator("role", "action")(_required_nonblank)
+    @model_validator(mode="after")
+    def _bounded_approval_action(self) -> ApprovalScenario:
+        if self.expected_state is not OrderState.APPROVED:
+            raise ValueError("approval scenarios must end in APPROVED state")
+        return self
 
 
 class ReplayScenario(ContractModel):
@@ -218,16 +335,34 @@ class ReplayScenario(ContractModel):
 class RecoveryScenario(ContractModel):
     """Bounded retry/recovery expectation, present only on retry cases."""
 
-    injected_stage: StrictStr
-    failure_code: StrictStr
+    injected_stage: OrderState
+    failure_code: SafeFailureCode
     expected_resume_origin: OrderState
-    expected_durable_outcome: StrictStr
+    expected_durable_outcome: OrderState
     expected_final_state: OrderState
     preserve_prior_receipts: StrictBool
 
-    _nonblank_values = field_validator(
-        "injected_stage", "failure_code", "expected_durable_outcome"
-    )(_required_nonblank)
+    @model_validator(mode="after")
+    def _real_retryable_failure(self) -> RecoveryScenario:
+        valid_origins = {
+            OrderState.PROCESSING,
+            OrderState.EXTRACTED,
+            OrderState.SYNCING,
+        }
+        if self.injected_stage not in valid_origins:
+            raise ValueError("recovery injected stage must be a durable retry origin")
+        if self.injected_stage is not self.expected_resume_origin:
+            raise ValueError("recovery resume origin must match the injected durable stage")
+        if self.expected_durable_outcome is not OrderState.FAILED_RETRYABLE:
+            raise ValueError("recovery outcome must be FAILED_RETRYABLE")
+        allowed_by_stage = {
+            OrderState.PROCESSING: frozenset({"PROVIDER_UNAVAILABLE"}),
+            OrderState.EXTRACTED: frozenset({"BUSINESS_DATA_PROVIDER_ERROR"}),
+            OrderState.SYNCING: frozenset(item.value for item in OrderSyncFailureCode),
+        }
+        if self.failure_code not in allowed_by_stage[self.injected_stage]:
+            raise ValueError("recovery failure code is not valid for the injected stage")
+        return self
 
 
 class CorpusCase(ContractModel):
@@ -276,6 +411,17 @@ class CorpusCase(ContractModel):
             raise ValueError("approval is allowed only for approval-tagged cases")
         if "approval" in self.tags and self.approval is None:
             raise ValueError("approval-tagged cases require an approval scenario")
+        if self.expected_validation is not None:
+            if self.expected_validation.external_execution_eligible and self.approval is None:
+                raise ValueError("external execution eligibility requires an approval scenario")
+            if self.approval is not None and (
+                self.expected_validation.route is not ValidationRoute.READY_FOR_APPROVAL
+                or self.expected_validation.pre_approval_state is not OrderState.READY_FOR_APPROVAL
+                or self.expected_validation.external_execution_eligible is not True
+            ):
+                raise ValueError("approval scenarios require READY_FOR_APPROVAL validation truth")
+        elif self.approval is not None:
+            raise ValueError("approval scenarios require expected validation truth")
 
         if self.primary_category is CaseCategory.DUPLICATE:
             if self.replay is None:
@@ -296,6 +442,7 @@ class CorpusManifest(ContractModel):
 
     schema_version: Literal["opsflow-evaluation-corpus/v1"]
     corpus_version: StrictStr
+    benchmark_context: BenchmarkValidationContext
     cases: tuple[CorpusCase, ...]
     trusted_catalog_path: StrictStr = "trusted-data/catalog.json"
 
@@ -306,11 +453,36 @@ class CorpusManifest(ContractModel):
             raise ValueError("corpus_version must be a semantic version")
         return value
 
+    @field_validator("trusted_catalog_path")
+    @classmethod
+    def _trusted_catalog_path_is_relative(cls, value: str) -> str:
+        from pathlib import PurePosixPath
+
+        if "\\" in value or "\x00" in value:
+            raise ValueError("trusted catalog path must use safe relative POSIX syntax")
+        path = PurePosixPath(value)
+        if path.is_absolute() or not path.parts or ".." in path.parts:
+            raise ValueError("trusted catalog path must be relative and must not traverse parents")
+        return value
+
     @model_validator(mode="after")
     def _unique_case_ids(self) -> CorpusManifest:
         ids = [case.case_id for case in self.cases]
         if len(ids) != len(set(ids)):
             raise ValueError("case_id values must be unique within a manifest")
+        case_by_id = {case.case_id: case for case in self.cases}
+        replay_groups: set[str] = set()
+        for case in self.cases:
+            if case.replay is None:
+                continue
+            if case.replay.duplicate_group_id in replay_groups:
+                raise ValueError("duplicate_group_id values must be unique within a manifest")
+            replay_groups.add(case.replay.duplicate_group_id)
+            seed = case_by_id.get(case.replay.seed_case_id)
+            if seed is None or seed.primary_category is not CaseCategory.DUPLICATE:
+                raise ValueError("replay seed_case_id must reference a duplicate manifest case")
+            if seed.source.sha256 != case.source.sha256:
+                raise ValueError("replay seed and case must share the same source identity")
         return self
 
 
@@ -319,6 +491,16 @@ class TrustedCatalog(ContractModel):
 
     customers: tuple[TrustedCustomer, ...]
     products: tuple[TrustedProduct, ...]
+
+    @model_validator(mode="after")
+    def _unique_reference_records(self) -> TrustedCatalog:
+        customer_refs = [customer.reference for customer in self.customers]
+        if len(customer_refs) != len(set(customer_refs)):
+            raise ValueError("trusted customer references must be unique")
+        product_skus = [product.sku for product in self.products]
+        if len(product_skus) != len(set(product_skus)):
+            raise ValueError("trusted product SKUs must be unique")
+        return self
 
 
 class FieldCounts(ContractModel):
@@ -357,18 +539,27 @@ class ExtractionQuality(ContractModel):
     field_tp: NonNegativeInt | None = None
     field_fp: NonNegativeInt | None = None
     field_fn: NonNegativeInt | None = None
-    precision: RateMetric | None = None
-    recall: RateMetric | None = None
-    f1: RateMetric | None = None
+    field_micro_precision: RateMetric | None = None
+    field_micro_recall: RateMetric | None = None
+    field_micro_f1: RateMetric | None = None
     per_field: tuple[FieldMetric, ...] | None = None
     reached_live_gemini_case_count: NonNegativeInt = 0
     reached_live_gemini_case_ids: tuple[StrictStr, ...] = ()
-    reason: StrictStr
+    reason: BoundedReason
 
-    @field_validator("reason")
-    @classmethod
-    def _reason_nonblank(cls, value: str) -> str:
-        return _required_nonblank(value)
+    _safe_reason_text = field_validator("reason")(_safe_reason)
+
+    @property
+    def precision(self) -> RateMetric | None:
+        return self.field_micro_precision
+
+    @property
+    def recall(self) -> RateMetric | None:
+        return self.field_micro_recall
+
+    @property
+    def f1(self) -> RateMetric | None:
+        return self.field_micro_f1
 
     @model_validator(mode="after")
     def _mode_scoped_quality(self) -> ExtractionQuality:
@@ -377,9 +568,9 @@ class ExtractionQuality(ContractModel):
             self.field_tp,
             self.field_fp,
             self.field_fn,
-            self.precision,
-            self.recall,
-            self.f1,
+            self.field_micro_precision,
+            self.field_micro_recall,
+            self.field_micro_f1,
             self.per_field,
         )
         if self.status is ExtractionQualityStatus.NOT_APPLICABLE:
@@ -402,52 +593,188 @@ class ContractEvidence(ContractModel):
     scorer_self_test: StrictBool | None = None
 
 
-class CaseResult(ContractModel):
-    """Sanitized actuals for one case; raw source material is not a result field."""
+class CaseActual(ContractModel):
+    """Sanitized per-case actuals; source and provider payloads are excluded."""
 
-    case_id: StrictStr
-    status: CaseResultStatus
-    provider_reached: StrictBool
-    provider_name: Literal["fake", "gemini"] | None = None
-    provider_call_count: NonNegativeInt = 0
-    failure_code: StrictStr | None = None
-    validation_route: ValidationRoute | None = None
+    parse: CaseResultStatus | None = None
+    extraction_contract: CaseResultStatus | None = None
+    route: ValidationRoute | None = None
     approval_level: ApprovalLevel | None = None
     pre_approval_state: OrderState | None = None
-    issue_facts: tuple[tuple[StrictStr, ValidationSeverity], ...] = ()
+    issue_facts: tuple[tuple[SafeFailureCode, ValidationSeverity], ...] = ()
+    idempotent_replay: StrictBool | None = None
     replay_disposition: ReplayDisposition | None = None
+    intake_execution: SafeFailureCode | None = None
+    external_execution: SafeFailureCode | None = None
     external_execution_eligible: StrictBool | None = None
-    contract_evidence: ContractEvidence | None = None
+    failure_code: SafeFailureCode | None = None
+
+
+class CaseScores(ContractModel):
+    """Stable home for per-case scores added by later milestones."""
+
+    extraction_exact_match: StrictBool | None = None
+    validation_match: StrictBool | None = None
+
+
+class DurationSummary(ContractModel):
+    """Named duration extension points; absent measurements remain null."""
+
+    parse_ms: NonNegativeInt | None = None
+    validation_ms: NonNegativeInt | None = None
+    provider_ms: NonNegativeInt | None = None
+    intake_ms: NonNegativeInt | None = None
+
+
+class ProviderSummary(ContractModel):
+    """Sanitized provider reachability and authoritative usage placeholders."""
+
+    name: Literal["fake", "gemini"] | None = None
+    calls: NonNegativeInt = 0
+    input_tokens: NonNegativeInt | None = None
+    output_tokens: NonNegativeInt | None = None
+    total_tokens: NonNegativeInt | None = None
+
+
+class SideEffectDetail(ContractModel):
+    """Bounded side-effect summary without response bodies or credentials."""
+
+    status: SafeFailureCode | None = None
+    count: NonNegativeInt | None = None
+
+
+class SideEffectSummary(ContractModel):
+    notification: SideEffectDetail = Field(default_factory=SideEffectDetail)
+    order_sync: SideEffectDetail = Field(default_factory=SideEffectDetail)
+    logical_external_objects: SideEffectDetail = Field(default_factory=SideEffectDetail)
+
+
+class CaseResult(ContractModel):
+    """Stable nested per-case result shape with internal scoring inputs excluded."""
+
+    case_id: SafeIdentifier
+    status: CaseResultStatus
+    actual: CaseActual = Field(default_factory=CaseActual)
+    scores: CaseScores = Field(default_factory=CaseScores)
+    durations_ms: DurationSummary = Field(default_factory=DurationSummary)
+    provider: ProviderSummary = Field(default_factory=ProviderSummary)
+    side_effects: SideEffectSummary = Field(default_factory=SideEffectSummary)
     expected_extraction: ExpectedExtraction | None = Field(default=None, exclude=True)
     predicted_extraction: ExtractionDraft | None = Field(default=None, exclude=True)
 
-    _failure_nonblank = field_validator("failure_code")(_nonblank)
-
     @model_validator(mode="after")
-    def _status_failure_pair(self) -> CaseResult:
-        if self.provider_reached and self.provider_call_count < 1:
-            raise ValueError("a reached provider case requires at least one provider call")
-        if not self.provider_reached and self.provider_call_count != 0:
-            raise ValueError("an unreached provider case cannot report provider calls")
-        if self.provider_call_count == 0 and self.provider_name is not None:
-            raise ValueError("provider_name requires a provider call")
-        if self.status is CaseResultStatus.FAILED and self.failure_code is None:
-            raise ValueError("failed cases require a bounded failure_code")
-        if self.status is not CaseResultStatus.FAILED and self.failure_code is not None:
-            raise ValueError("failure_code is only valid for failed cases")
+    def _error_has_sanitized_failure_code(self) -> CaseResult:
+        if self.status is CaseResultStatus.ERROR and self.actual.failure_code is None:
+            raise ValueError("ERROR cases require a bounded failure_code")
+        if self.status is not CaseResultStatus.ERROR and self.actual.failure_code is not None:
+            raise ValueError("failure_code is only valid for ERROR cases")
+        if self.provider.calls == 0 and self.provider.name is not None:
+            raise ValueError("provider name requires at least one provider call")
         return self
 
+    @property
+    def provider_reached(self) -> bool:
+        return self.provider.calls > 0
 
-class EnvironmentMetadata(ContractModel):
-    """Allowlisted run metadata; arbitrary or secret-bearing metadata is forbidden."""
+    @property
+    def provider_name(self) -> str | None:
+        return self.provider.name
 
+    @property
+    def provider_call_count(self) -> int:
+        return self.provider.calls
+
+    @property
+    def failure_code(self) -> str | None:
+        return self.actual.failure_code
+
+    @property
+    def validation_route(self) -> ValidationRoute | None:
+        return self.actual.route
+
+    @property
+    def approval_level(self) -> ApprovalLevel | None:
+        return self.actual.approval_level
+
+    @property
+    def pre_approval_state(self) -> OrderState | None:
+        return self.actual.pre_approval_state
+
+    @property
+    def issue_facts(self) -> tuple[tuple[str, ValidationSeverity], ...]:
+        return self.actual.issue_facts
+
+
+class DatabaseMetadata(ContractModel):
+    engine: StrictStr
+    isolated: StrictBool
+
+
+class RunMetadata(ContractModel):
+    """Stable run identity and allowlisted environment metadata."""
+
+    run_id: StrictStr
+    mode: EvaluationMode
+    started_at_utc: datetime
+    finished_at_utc: datetime
+    git_sha: StrictStr
+    corpus_version: StrictStr
     gemini_model: StrictStr | None = None
     python_version: StrictStr | None = None
     platform: StrictStr | None = None
     cpu_architecture: StrictStr | None = None
-    database_engine: StrictStr | None = None
-    database_version: StrictStr | None = None
-    database_isolated: StrictBool | None = None
+    database: DatabaseMetadata
+
+    @field_validator("git_sha")
+    @classmethod
+    def _git_sha_format(cls, value: str) -> str:
+        if re.fullmatch(r"[0-9a-f]{40}", value, flags=re.ASCII) is None:
+            raise ValueError("git_sha must be a lowercase 40-character commit SHA")
+        return value
+
+
+class MetricExtension(ContractModel):
+    """Closed extension point for later aggregate measurements."""
+
+    sample_count: NonNegativeInt | None = None
+    numerator: NonNegativeInt | None = None
+    denominator: NonNegativeInt | None = None
+    value: Decimal | None = None
+
+
+class CostMetrics(ContractModel):
+    status: Literal["NOT_APPLICABLE", "AVAILABLE", "ERROR"] = "NOT_APPLICABLE"
+    estimated_model_cost_per_initial_order: Decimal | None = None
+    initial_order_count: NonNegativeInt = 0
+    gemini_called_order_count: NonNegativeInt = 0
+    zero_call_order_count: NonNegativeInt = 0
+    complete_usage_order_count: NonNegativeInt = 0
+    incomplete_usage_order_count: NonNegativeInt = 0
+    incomplete_usage_call_count: NonNegativeInt = 0
+    missing_call_attribution_count: NonNegativeInt = 0
+    missing_input_token_count: NonNegativeInt = 0
+    missing_output_token_count: NonNegativeInt = 0
+    missing_total_token_count: NonNegativeInt = 0
+    missing_pricing_snapshot_count: NonNegativeInt = 0
+
+
+class MetricsBundle(ContractModel):
+    extraction_quality: ExtractionQuality
+    extraction_contract: ContractEvidence = Field(default_factory=ContractEvidence)
+    routing: MetricExtension = Field(default_factory=MetricExtension)
+    safety: MetricExtension = Field(default_factory=MetricExtension)
+    latency: MetricExtension = Field(default_factory=MetricExtension)
+    provider_usage: MetricExtension = Field(default_factory=MetricExtension)
+    cost: CostMetrics = Field(default_factory=CostMetrics)
+
+
+class PricingStatus(ContractModel):
+    pricing_snapshot_id: StrictStr | None = None
+    model: StrictStr | None = None
+    status: Literal["NOT_APPLICABLE", "AVAILABLE", "ERROR"]
+    reason: BoundedReason | None = None
+
+    _safe_reason_text = field_validator("reason")(_safe_reason)
 
 
 class CorpusComposition(ContractModel):
@@ -458,61 +785,70 @@ class CorpusComposition(ContractModel):
 
 
 class ReleaseGateResult(ContractModel):
-    name: StrictStr
-    passed: StrictBool
-    reason: StrictStr | None = None
+    gate_id: SafeFailureCode
+    numerator: NonNegativeInt | None = None
+    denominator: NonNegativeInt | None = None
+    failing_case_ids: tuple[StrictStr, ...] = ()
+    status: Literal["PASS", "FAIL", "ERROR"]
+
+
+class ReleaseGateSummary(ContractModel):
+    all_passed: StrictBool | None = None
+    results: tuple[ReleaseGateResult, ...] = ()
 
 
 class EvaluationRunResult(ContractModel):
-    """Initial versioned result contract, before later artifact/report tasks."""
+    """Stable Section 10.1 result contract for M11B–M11D."""
 
     schema_version: Literal["opsflow-evaluation-result/v1"] = "opsflow-evaluation-result/v1"
     evaluation_version: Literal["phase11-v1"] = "phase11-v1"
-    run_id: StrictStr
-    started_at: datetime
-    finished_at: datetime
-    git_sha: StrictStr
-    corpus_version: StrictStr
-    result_schema_version: StrictStr
-    mode: EvaluationMode
-    command: StrictStr
-    environment: EnvironmentMetadata = EnvironmentMetadata()
-    corpus: CorpusComposition | None = None
+    run: RunMetadata
+    corpus: CorpusComposition
     cases: tuple[CaseResult, ...]
-    extraction_quality: ExtractionQuality
-    release_gates: tuple[ReleaseGateResult, ...] = ()
-    limitations: tuple[StrictStr, ...] = ()
+    metrics: MetricsBundle
+    pricing: PricingStatus
+    release_gates: ReleaseGateSummary
+    limitations: tuple[BoundedReason, ...] = ()
 
-    @field_validator("git_sha")
+    @field_validator("limitations")
     @classmethod
-    def _git_sha_format(cls, value: str) -> str:
-        if re.fullmatch(r"[0-9a-f]{40}", value, flags=re.ASCII) is None:
-            raise ValueError("git_sha must be a lowercase 40-character commit SHA")
-        return value
+    def _safe_limitation_text(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        for value in values:
+            _safe_reason(value)
+        return values
 
     @model_validator(mode="after")
     def _provider_free_quality(self) -> EvaluationRunResult:
         if (
-            self.mode is EvaluationMode.PROVIDER_FREE
-            and self.extraction_quality.status is not ExtractionQualityStatus.NOT_APPLICABLE
+            self.run.mode is EvaluationMode.PROVIDER_FREE
+            and self.metrics.extraction_quality.status is not ExtractionQualityStatus.NOT_APPLICABLE
         ):
             raise ValueError("provider-free results require NOT_APPLICABLE extraction quality")
+        if self.run.mode is EvaluationMode.LIVE_GEMINI:
+            for case in self.cases:
+                if case.provider.name == "fake" and case.provider.calls > 0:
+                    raise ValueError("live_gemini results cannot contain fake provider calls")
         return self
 
 
 __all__ = [
     "ApprovalLevel",
     "ApprovalScenario",
+    "BenchmarkValidationContext",
     "BusinessDataLookupRequest",
     "CanonicalValue",
+    "CaseActual",
     "CaseCategory",
     "CaseResult",
     "CaseResultStatus",
+    "CaseScores",
     "ContractEvidence",
     "CorpusCase",
     "CorpusComposition",
     "CorpusManifest",
-    "EnvironmentMetadata",
+    "CostMetrics",
+    "DatabaseMetadata",
+    "DurationSummary",
     "EvaluationMode",
     "EvaluationRunResult",
     "ExpectedExtraction",
@@ -522,12 +858,19 @@ __all__ = [
     "ExtractionQualityStatus",
     "FieldCounts",
     "FieldMetric",
+    "MetricsBundle",
     "OrderState",
+    "PricingStatus",
+    "ProviderSummary",
     "RateMetric",
     "RecoveryScenario",
     "ReplayDisposition",
     "ReplayScenario",
     "ReleaseGateResult",
+    "ReleaseGateSummary",
+    "RunMetadata",
+    "SafeFailureCode",
+    "SideEffectSummary",
     "SourceDocumentType",
     "SourceSpec",
     "TrustedBusinessData",

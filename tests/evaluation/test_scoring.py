@@ -7,6 +7,7 @@ from opsflow.domain.order import OrderState
 from opsflow.domain.records import SourceDocumentType, ValidationSeverity
 from opsflow.evaluation.models import (
     ApprovalLevel,
+    CaseActual,
     CaseResult,
     CaseResultStatus,
     EvaluationMode,
@@ -14,6 +15,7 @@ from opsflow.evaluation.models import (
     ExpectedLine,
     ExpectedValidation,
     ExtractionQualityStatus,
+    ProviderSummary,
     RateMetric,
     ValidationRoute,
 )
@@ -86,15 +88,18 @@ def case(
     expected_value: ExpectedExtraction | None = None,
     predicted: ExtractionDraft | None = None,
     reached: bool = False,
-    status: CaseResultStatus = CaseResultStatus.SUCCEEDED,
+    status: CaseResultStatus = CaseResultStatus.PASS,
 ) -> CaseResult:
     return CaseResult(
         case_id="normal-001",
         status=status,
-        provider_reached=reached,
-        provider_name="gemini" if reached else None,
-        provider_call_count=1 if reached else 0,
-        failure_code="PROVIDER_FAILED" if status is CaseResultStatus.FAILED else None,
+        actual=CaseActual(
+            failure_code="PROVIDER_FAILED" if status is CaseResultStatus.ERROR else None,
+        ),
+        provider=ProviderSummary(
+            name="gemini" if reached else None,
+            calls=1 if reached else 0,
+        ),
         expected_extraction=expected_value,
         predicted_extraction=predicted,
     )
@@ -237,14 +242,15 @@ def test_validation_score_compares_route_approval_state_and_code_severity_multis
     )
     actual = CaseResult(
         case_id="violation-001",
-        status=CaseResultStatus.SUCCEEDED,
-        provider_reached=False,
-        validation_route=ValidationRoute.NEEDS_REVIEW,
-        approval_level=ApprovalLevel.ELEVATED,
-        pre_approval_state=OrderState.NEEDS_REVIEW,
-        issue_facts=(
-            ("INACTIVE_SKU", ValidationSeverity.WARNING),
-            ("PRICE_OUTSIDE_TOLERANCE", ValidationSeverity.ERROR),
+        status=CaseResultStatus.PASS,
+        actual=CaseActual(
+            route=ValidationRoute.NEEDS_REVIEW,
+            approval_level=ApprovalLevel.ELEVATED,
+            pre_approval_state=OrderState.NEEDS_REVIEW,
+            issue_facts=(
+                ("INACTIVE_SKU", ValidationSeverity.WARNING),
+                ("PRICE_OUTSIDE_TOLERANCE", ValidationSeverity.ERROR),
+            ),
         ),
     )
 
@@ -269,12 +275,13 @@ def test_validation_mismatch_exposes_each_component_and_parser_only_bypasses() -
     )
     actual = CaseResult(
         case_id="violation-002",
-        status=CaseResultStatus.SUCCEEDED,
-        provider_reached=False,
-        validation_route=ValidationRoute.NEEDS_REVIEW,
-        approval_level=ApprovalLevel.ELEVATED,
-        pre_approval_state=OrderState.NEEDS_REVIEW,
-        issue_facts=(("UNKNOWN_SKU", ValidationSeverity.ERROR),),
+        status=CaseResultStatus.PASS,
+        actual=CaseActual(
+            route=ValidationRoute.NEEDS_REVIEW,
+            approval_level=ApprovalLevel.ELEVATED,
+            pre_approval_state=OrderState.NEEDS_REVIEW,
+            issue_facts=(("UNKNOWN_SKU", ValidationSeverity.ERROR),),
+        ),
     )
     score = score_validation_outcome(expected_validation, actual)
 
@@ -312,14 +319,12 @@ def test_live_quality_denominator_contains_only_cases_that_reached_gemini() -> N
         expected_value=expected(), predicted=draft(po_number="PO-WRONG"), reached=False
     )
     failed_after_call = case(
-        expected_value=expected(), predicted=None, reached=True, status=CaseResultStatus.FAILED
+        expected_value=expected(), predicted=None, reached=True, status=CaseResultStatus.ERROR
     )
     fake_reached = CaseResult(
         case_id="scripted-001",
-        status=CaseResultStatus.SUCCEEDED,
-        provider_reached=True,
-        provider_name="fake",
-        provider_call_count=1,
+        status=CaseResultStatus.PASS,
+        provider=ProviderSummary(name="fake", calls=1),
         expected_extraction=expected(),
         predicted_extraction=draft(),
     )
