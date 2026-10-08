@@ -1,0 +1,9 @@
+SYNTHETIC PURCHASE ORDER
+Customer: Iris Research Lab
+Customer reference: CUST-009
+PO number: PO-E-009
+Order date: 2026-10-09
+Requested delivery: 2026-10-21
+Currency: USD
+Notes: Recovery case preserves prior intake identity.
+Line 1: SKU=SKU-011; description=Lab gloves; quantity=8; price=5.50

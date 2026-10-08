@@ -1,0 +1,386 @@
+{
+  "customers": [
+    {
+      "reference": "CUST-001",
+      "name": "Acme Manufacturing",
+      "active": true
+    },
+    {
+      "reference": "CUST-002",
+      "name": "Brightline Retail",
+      "active": true
+    },
+    {
+      "reference": "CUST-003",
+      "name": "Cedar Health Supplies",
+      "active": true
+    },
+    {
+      "reference": "CUST-004",
+      "name": "Delta Facilities",
+      "active": true
+    },
+    {
+      "reference": "CUST-005",
+      "name": "Eastport Foods",
+      "active": true
+    },
+    {
+      "reference": "CUST-006",
+      "name": "Fjord Engineering",
+      "active": true
+    },
+    {
+      "reference": "CUST-007",
+      "name": "Granite Office Systems",
+      "active": true
+    },
+    {
+      "reference": "CUST-008",
+      "name": "Harbor Hospitality",
+      "active": true
+    },
+    {
+      "reference": "CUST-009",
+      "name": "Iris Research Lab",
+      "active": true
+    },
+    {
+      "reference": "CUST-010",
+      "name": "Juniper Schools",
+      "active": true
+    },
+    {
+      "reference": "CUST-011",
+      "name": "Kite Logistics",
+      "active": true
+    },
+    {
+      "reference": "CUST-012",
+      "name": "Lumen Energy",
+      "active": true
+    }
+  ],
+  "products": [
+    {
+      "sku": "SKU-001",
+      "description": "Steel bracket",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "12.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-002",
+      "description": "Packing tape",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "4.50",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-003",
+      "description": "Shipping labels",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "8.25",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-004",
+      "description": "Calibration cable",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "27.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-005",
+      "description": null,
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "3.75",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-006",
+      "description": "Blue marker",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "1.20",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-007",
+      "description": "Archive folder",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "6.40",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-008",
+      "description": "Label sleeves",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "9.10",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-009",
+      "description": "Desk lamp",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "10.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-010",
+      "description": "Guest badge holder",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "2.10",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-011",
+      "description": "Lab gloves",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "5.50",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-012",
+      "description": "Notebook",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "2.25",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-013",
+      "description": "Pallet wrap",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "18.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-014",
+      "description": "Corner guards",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "7.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-015",
+      "description": "Cable tie",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "0.08",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-016",
+      "description": "Audit labels",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "0.55",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-017",
+      "description": "Cleaning concentrate",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "22.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-018",
+      "description": "Thermal paper",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "3.30",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-019",
+      "description": "Safety glasses",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "11.50",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-020",
+      "description": "Whiteboard eraser",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "2.75",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-021",
+      "description": "Conference pad",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "14.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-022",
+      "description": "Marker refill",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "5.25",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-023",
+      "description": "Storage bin",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "16.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-024",
+      "description": "Blue folder",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "3.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-025",
+      "description": "Red folder",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "3.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-026",
+      "description": "Restricted label",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "31.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-027",
+      "description": "Retired adapter",
+      "active": false,
+      "currency": "USD",
+      "catalogue_price": "19.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-028",
+      "description": "Bulk fastener",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "1.00",
+      "available_quantity": "5"
+    },
+    {
+      "sku": "SKU-029",
+      "description": "Visitor lanyard",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "1.50",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-030",
+      "description": "Packing slip envelope",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "1.10",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-031",
+      "description": "Hand sanitizer",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "4.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-032",
+      "description": "Wipe dispenser",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "18.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-033",
+      "description": "Carton seal",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "0.75",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-034",
+      "description": "Thermal sleeve",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "6.80",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-035",
+      "description": "Pallet marker",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "9.50",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-036",
+      "description": "Dock tag",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "1.25",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-037",
+      "description": "Compliance sticker",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "0.40",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-038",
+      "description": "Import component",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "13.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-039",
+      "description": "Replacement filter",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "21.00",
+      "available_quantity": "100"
+    },
+    {
+      "sku": "SKU-040",
+      "description": "Service label",
+      "active": true,
+      "currency": "USD",
+      "catalogue_price": "2.50",
+      "available_quantity": "100"
+    }
+  ]
+}

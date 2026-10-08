@@ -1,0 +1,2 @@
+customer_name,customer_reference,po_number,order_date,requested_delivery_date,currency,notes,sku,description,quantity,submitted_price
+"Eastport Foods","CUST-005","PO-C-008","2026-10-08","2026-10-20","USD","Rate-limit recovery.","SKU-018","Thermal paper","15","3.30"

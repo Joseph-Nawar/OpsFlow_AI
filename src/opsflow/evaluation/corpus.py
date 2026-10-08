@@ -8,7 +8,14 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import ValidationError
 
-from .models import CorpusManifest
+from opsflow.validation.business_data import normalize_customer_name
+from opsflow.validation.models import (
+    BusinessDataLookupRequest,
+    TrustedBusinessData,
+    TrustedProduct,
+)
+
+from .models import CorpusManifest, TrustedCatalog
 
 
 def resolve_manifest_source(corpus_root: Path, source_path: str) -> Path:
@@ -60,4 +67,62 @@ def load_manifest(corpus_root: Path) -> CorpusManifest:
     return manifest
 
 
-__all__ = ["load_manifest", "resolve_manifest_source", "verify_source_sha256"]
+def load_catalog(catalog_path: Path) -> TrustedCatalog:
+    """Load the synthetic catalog without any expected-answer mapping."""
+
+    try:
+        payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+        return TrustedCatalog.model_validate(payload)
+    except (OSError, json.JSONDecodeError, ValidationError) as error:
+        raise ValueError("invalid evaluation trusted catalog") from error
+
+
+class EvaluationBusinessDataProvider:
+    """Request-driven trusted-data double for the evaluation corpus."""
+
+    def __init__(self, catalog: TrustedCatalog) -> None:
+        self._catalog = catalog
+
+    async def get_validation_data(self, request: BusinessDataLookupRequest) -> TrustedBusinessData:
+        """Resolve only the identity and SKUs present in the predicted request."""
+
+        if request.customer_reference is not None:
+            customers = tuple(
+                customer
+                for customer in self._catalog.customers
+                if customer.reference == request.customer_reference
+            )
+        elif request.customer_name is not None:
+            normalized_name = normalize_customer_name(request.customer_name)
+            customers = tuple(
+                sorted(
+                    (
+                        customer
+                        for customer in self._catalog.customers
+                        if normalize_customer_name(customer.name) == normalized_name
+                    ),
+                    key=lambda customer: customer.reference,
+                )
+            )
+        else:
+            customers = ()
+
+        products_by_line = tuple(self._product_for_sku(sku) for sku in request.skus)
+        return TrustedBusinessData(
+            customer_candidates=customers,
+            products_by_line=products_by_line,
+        )
+
+    def _product_for_sku(self, sku: str | None) -> TrustedProduct | None:
+        if sku is None:
+            return None
+        return next((product for product in self._catalog.products if product.sku == sku), None)
+
+
+__all__ = [
+    "EvaluationBusinessDataProvider",
+    "load_catalog",
+    "load_manifest",
+    "resolve_manifest_source",
+    "verify_source_sha256",
+]

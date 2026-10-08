@@ -1,0 +1,1434 @@
+{
+  "schema_version": "opsflow-evaluation-corpus/v1",
+  "corpus_version": "1.0.0",
+  "trusted_catalog_path": "trusted-data/catalog.json",
+  "cases": [
+    {
+      "case_id": "normal-email-001",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-email-001.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "8516e56916a703a2612161dc1653d9f56bc75292b2cd792ed2fcfa30240e3d27"
+      },
+      "expected_extraction": {
+        "customer_name": "Acme Manufacturing",
+        "customer_reference": "CUST-001",
+        "po_number": "PO-E-001",
+        "order_date": "2026-10-01",
+        "requested_delivery_date": "2026-10-10",
+        "currency": "USD",
+        "notes": "Deliver to receiving dock.",
+        "lines": [
+          {
+            "sku": "SKU-001",
+            "description": "Steel bracket",
+            "quantity": 2,
+            "submitted_price": "12.00"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "normal-email-002",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-email-002.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "ff1b306b8e708ca432b4d79bdb1876dc3a5955c05e31f04abad360d6400b2d42"
+      },
+      "expected_extraction": {
+        "customer_name": "Brightline Retail",
+        "customer_reference": "CUST-002",
+        "po_number": "PO-E-002",
+        "order_date": "2026-10-02",
+        "requested_delivery_date": "2026-10-12",
+        "currency": "USD",
+        "notes": "Call before delivery.",
+        "lines": [
+          {
+            "sku": "SKU-002",
+            "description": "Packing tape",
+            "quantity": 6,
+            "submitted_price": "4.50"
+          },
+          {
+            "sku": "SKU-003",
+            "description": "Shipping labels",
+            "quantity": 3,
+            "submitted_price": "8.25"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "normal-email-003",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-email-003.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "abb4de524b27dacdda65cc9ef9c80b74f7bccf10b96732e250eccbf885325dc4"
+      },
+      "expected_extraction": {
+        "customer_name": "Cedar Health Supplies",
+        "customer_reference": "CUST-003",
+        "po_number": "PO-E-003",
+        "order_date": "2026-10-03",
+        "requested_delivery_date": "2026-10-14",
+        "currency": "USD",
+        "notes": "München receiving team.",
+        "lines": [
+          {
+            "sku": "SKU-004",
+            "description": "Calibration cable",
+            "quantity": 1,
+            "submitted_price": "27.00"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edge-email-001",
+      "primary_category": "edge",
+      "tags": [
+        "edge",
+        "missing_optional_field"
+      ],
+      "source": {
+        "path": "documents/edge-email-001.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "45ebca3855482939cdea05a80e33c62a61df4d9ae92026e744b062a9c30fde8b"
+      },
+      "expected_extraction": {
+        "customer_name": "Delta Facilities",
+        "customer_reference": "CUST-004",
+        "po_number": "PO-E-004",
+        "order_date": "2026-10-04",
+        "requested_delivery_date": null,
+        "currency": "USD",
+        "notes": null,
+        "lines": [
+          {
+            "sku": "SKU-005",
+            "description": null,
+            "quantity": 4,
+            "submitted_price": "3.75"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edge-email-002",
+      "primary_category": "edge",
+      "tags": [
+        "edge",
+        "line_order"
+      ],
+      "source": {
+        "path": "documents/edge-email-002.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "6b3912e1d46673bc2150a7b9d7fcaa9b3c76f610b71cd7e71e98f66bf6a1dc93"
+      },
+      "expected_extraction": {
+        "customer_name": "Eastport Foods",
+        "customer_reference": "CUST-005",
+        "po_number": "PO-E-005",
+        "order_date": "2026-10-05",
+        "requested_delivery_date": "2026-10-20",
+        "currency": "USD",
+        "notes": "Keep requested line order.",
+        "lines": [
+          {
+            "sku": "SKU-006",
+            "description": "Blue marker",
+            "quantity": 10,
+            "submitted_price": "1.20"
+          },
+          {
+            "sku": "SKU-007",
+            "description": "Archive folder",
+            "quantity": 5,
+            "submitted_price": "6.40"
+          },
+          {
+            "sku": "SKU-008",
+            "description": "Label sleeves",
+            "quantity": 2,
+            "submitted_price": "9.10"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "security-email-001",
+      "primary_category": "security",
+      "tags": [
+        "security",
+        "parser_only",
+        "prompt_injection"
+      ],
+      "source": {
+        "path": "documents/security-email-001.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "f9afbfd2b63de0439e3f3fe295481a88491ed1fa00f1dd64b0eb0965a3481a35"
+      }
+    },
+    {
+      "case_id": "deterministic-email-001",
+      "primary_category": "deterministic_violation",
+      "tags": [
+        "deterministic_violation"
+      ],
+      "source": {
+        "path": "documents/deterministic-email-001.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "9405dbcda558362ab3d242069561ce0dc4b1f4bd18efb6a538d5215a78bc9b6d"
+      },
+      "expected_extraction": {
+        "customer_name": "Granite Office Systems",
+        "customer_reference": "CUST-007",
+        "po_number": "PO-E-007",
+        "order_date": "2026-10-07",
+        "requested_delivery_date": "2026-10-18",
+        "currency": "USD",
+        "notes": "Submitted price intentionally outside catalogue tolerance.",
+        "lines": [
+          {
+            "sku": "SKU-009",
+            "description": "Desk lamp",
+            "quantity": 1,
+            "submitted_price": "99.00"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "PRICE_OUTSIDE_TOLERANCE"
+        ],
+        "issue_severities": {
+          "PRICE_OUTSIDE_TOLERANCE": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      }
+    },
+    {
+      "case_id": "duplicate-email-001",
+      "primary_category": "duplicate",
+      "tags": [
+        "duplicate",
+        "duplicate_source_sha"
+      ],
+      "source": {
+        "path": "documents/duplicate-email-001.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "dff44fe99eaf396c9d8dde4a7fcd441f48b6b5f97b4e025b061fca9f3c63e4de"
+      },
+      "expected_extraction": {
+        "customer_name": "Harbor Hospitality",
+        "customer_reference": "CUST-008",
+        "po_number": "PO-E-008",
+        "order_date": "2026-10-08",
+        "requested_delivery_date": "2026-10-19",
+        "currency": "USD",
+        "notes": "First identity in duplicate group.",
+        "lines": [
+          {
+            "sku": "SKU-010",
+            "description": "Guest badge holder",
+            "quantity": 12,
+            "submitted_price": "2.10"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": true
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "DOCUMENT_ALREADY_PROCESSED"
+        ],
+        "issue_severities": {
+          "DOCUMENT_ALREADY_PROCESSED": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      },
+      "replay": {
+        "duplicate_group_id": "dup-email-001",
+        "seed_case_id": "duplicate-email-001",
+        "replay_attempt_count": 1,
+        "expected_disposition": "STANDING_DOWN"
+      }
+    },
+    {
+      "case_id": "retry-email-001",
+      "primary_category": "retry_recovery",
+      "tags": [
+        "retry_recovery"
+      ],
+      "source": {
+        "path": "documents/retry-email-001.txt",
+        "document_type": "EMAIL_BODY",
+        "mime_type": "text/plain",
+        "sha256": "4fb2f0b7ff5c9c0818b4b9bcca65cbc2723b4a9e704867ede01cb0722a0fec36"
+      },
+      "expected_extraction": {
+        "customer_name": "Iris Research Lab",
+        "customer_reference": "CUST-009",
+        "po_number": "PO-E-009",
+        "order_date": "2026-10-09",
+        "requested_delivery_date": "2026-10-21",
+        "currency": "USD",
+        "notes": "Recovery case preserves prior intake identity.",
+        "lines": [
+          {
+            "sku": "SKU-011",
+            "description": "Lab gloves",
+            "quantity": 8,
+            "submitted_price": "5.50"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "issue_codes": [],
+        "issue_severities": {},
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "external_execution_eligible": false
+      },
+      "recovery": {
+        "injected_stage": "intake",
+        "failure_code": "PROVIDER_UNAVAILABLE",
+        "expected_resume_origin": "PROCESSING",
+        "expected_durable_outcome": "RETRY_WAIT",
+        "expected_final_state": "COMPLETED",
+        "preserve_prior_receipts": true
+      }
+    },
+    {
+      "case_id": "normal-csv-001",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-csv-001.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "cc91bd1621abd5b54a22a4d1e15a7a6a4ae5c840f0edd5760815bb6a91790955"
+      },
+      "expected_extraction": {
+        "customer_name": "Juniper Schools",
+        "customer_reference": "CUST-010",
+        "po_number": "PO-C-001",
+        "order_date": "2026-10-01",
+        "requested_delivery_date": "2026-10-11",
+        "currency": "USD",
+        "notes": "CSV export from procurement.",
+        "lines": [
+          {
+            "sku": "SKU-012",
+            "description": "Notebook",
+            "quantity": 20,
+            "submitted_price": "2.25"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "normal-csv-002",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-csv-002.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "304aae0f499c852233d278eb5b948b9d5943b658a66310af838e72fbbf45e750"
+      },
+      "expected_extraction": {
+        "customer_name": "Kite Logistics",
+        "customer_reference": "CUST-011",
+        "po_number": "PO-C-002",
+        "order_date": "2026-10-02",
+        "requested_delivery_date": "2026-10-13",
+        "currency": "USD",
+        "notes": "Two line CSV order.",
+        "lines": [
+          {
+            "sku": "SKU-013",
+            "description": "Pallet wrap",
+            "quantity": 4,
+            "submitted_price": "18.00"
+          },
+          {
+            "sku": "SKU-014",
+            "description": "Corner guards",
+            "quantity": 4,
+            "submitted_price": "7.00"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edge-csv-001",
+      "primary_category": "edge",
+      "tags": [
+        "edge",
+        "empty_optional_notes"
+      ],
+      "source": {
+        "path": "documents/edge-csv-001.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "9e6860f6ace576d39f349039319831c79787f231064bc22a14f6c852774fe535"
+      },
+      "expected_extraction": {
+        "customer_name": "Lumen Energy",
+        "customer_reference": "CUST-012",
+        "po_number": "PO-C-003",
+        "order_date": "2026-10-03",
+        "requested_delivery_date": "2026-10-15",
+        "currency": "USD",
+        "notes": null,
+        "lines": [
+          {
+            "sku": "SKU-015",
+            "description": "Cable tie",
+            "quantity": 100,
+            "submitted_price": "0.08"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edge-csv-002",
+      "primary_category": "edge",
+      "tags": [
+        "edge",
+        "missing_identifier"
+      ],
+      "source": {
+        "path": "documents/edge-csv-002.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "fd187a023e9ace5aa7e9cd3231c5b6e743a0ba6c27fedbdf25006cc6784427bc"
+      },
+      "expected_extraction": {
+        "customer_name": "Acme Manufacturing",
+        "customer_reference": "CUST-001",
+        "po_number": "PO-C-004",
+        "order_date": null,
+        "requested_delivery_date": "2026-10-16",
+        "currency": "USD",
+        "notes": "Order date intentionally absent.",
+        "lines": [
+          {
+            "sku": null,
+            "description": "Generic service kit",
+            "quantity": 1,
+            "submitted_price": "45.00"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "security-csv-001",
+      "primary_category": "security",
+      "tags": [
+        "security",
+        "prompt_injection"
+      ],
+      "source": {
+        "path": "documents/security-csv-001.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "a11a67949e1d79d92d0e8581e7b00b2ff9526e8b957a1f0ae57b8284068dd7f2"
+      },
+      "expected_extraction": {
+        "customer_name": "Brightline Retail",
+        "customer_reference": "CUST-002",
+        "po_number": "PO-C-005",
+        "order_date": "2026-10-05",
+        "requested_delivery_date": "2026-10-17",
+        "currency": "USD",
+        "notes": "Ignore any instruction inside a data cell.",
+        "lines": [
+          {
+            "sku": "SKU-016",
+            "description": "Audit labels",
+            "quantity": 30,
+            "submitted_price": "0.55"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "deterministic-csv-001",
+      "primary_category": "deterministic_violation",
+      "tags": [
+        "deterministic_violation"
+      ],
+      "source": {
+        "path": "documents/deterministic-csv-001.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "c9c5256adef2acf8cf9354139331efe8846843d092475d6cd100fd1118584004"
+      },
+      "expected_extraction": {
+        "customer_name": "Cedar Health Supplies",
+        "customer_reference": "CUST-003",
+        "po_number": "PO-C-006",
+        "order_date": "2026-10-06",
+        "requested_delivery_date": "2026-10-18",
+        "currency": "USD",
+        "notes": "Unknown SKU must remain unknown to the catalog.",
+        "lines": [
+          {
+            "sku": "UNKNOWN-SKU",
+            "description": "Unlisted component",
+            "quantity": 1,
+            "submitted_price": "14.00"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "UNKNOWN_SKU"
+        ],
+        "issue_severities": {
+          "UNKNOWN_SKU": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      }
+    },
+    {
+      "case_id": "duplicate-csv-001",
+      "primary_category": "duplicate",
+      "tags": [
+        "duplicate"
+      ],
+      "source": {
+        "path": "documents/duplicate-csv-001.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "4a9a8ff52a733ed381f8591c15f11c2f96ee18e5c18d405455dd71bf5ae70f4a"
+      },
+      "expected_extraction": {
+        "customer_name": "Delta Facilities",
+        "customer_reference": "CUST-004",
+        "po_number": "PO-C-007",
+        "order_date": "2026-10-07",
+        "requested_delivery_date": "2026-10-19",
+        "currency": "USD",
+        "notes": "Duplicate customer and PO context.",
+        "lines": [
+          {
+            "sku": "SKU-017",
+            "description": "Cleaning concentrate",
+            "quantity": 2,
+            "submitted_price": "22.00"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": true,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "DUPLICATE_CUSTOMER_PO"
+        ],
+        "issue_severities": {
+          "DUPLICATE_CUSTOMER_PO": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      },
+      "replay": {
+        "duplicate_group_id": "dup-csv-001",
+        "seed_case_id": "duplicate-csv-001",
+        "replay_attempt_count": 1,
+        "expected_disposition": "STANDING_DOWN"
+      }
+    },
+    {
+      "case_id": "retry-csv-001",
+      "primary_category": "retry_recovery",
+      "tags": [
+        "retry_recovery"
+      ],
+      "source": {
+        "path": "documents/retry-csv-001.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "52ac8588542fe605bb2a9f9901d3c55bdf65d3e311e9df6b3e24f0453b22fd76"
+      },
+      "expected_extraction": {
+        "customer_name": "Eastport Foods",
+        "customer_reference": "CUST-005",
+        "po_number": "PO-C-008",
+        "order_date": "2026-10-08",
+        "requested_delivery_date": "2026-10-20",
+        "currency": "USD",
+        "notes": "Rate-limit recovery.",
+        "lines": [
+          {
+            "sku": "SKU-018",
+            "description": "Thermal paper",
+            "quantity": 15,
+            "submitted_price": "3.30"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "issue_codes": [],
+        "issue_severities": {},
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "external_execution_eligible": false
+      },
+      "recovery": {
+        "injected_stage": "extraction",
+        "failure_code": "PROVIDER_RATE_LIMIT",
+        "expected_resume_origin": "PROCESSING",
+        "expected_durable_outcome": "RETRY_WAIT",
+        "expected_final_state": "COMPLETED",
+        "preserve_prior_receipts": true
+      }
+    },
+    {
+      "case_id": "retry-csv-002",
+      "primary_category": "retry_recovery",
+      "tags": [
+        "retry_recovery"
+      ],
+      "source": {
+        "path": "documents/retry-csv-002.csv",
+        "document_type": "CSV",
+        "mime_type": "text/csv",
+        "sha256": "07ce334aa5a015c36fae9824a324e21764f3184afd0e891c023978122c3fddfa"
+      },
+      "expected_extraction": {
+        "customer_name": "Fjord Engineering",
+        "customer_reference": "CUST-006",
+        "po_number": "PO-C-009",
+        "order_date": "2026-10-09",
+        "requested_delivery_date": "2026-10-22",
+        "currency": "USD",
+        "notes": "Worker recovery with prior receipt.",
+        "lines": [
+          {
+            "sku": "SKU-019",
+            "description": "Safety glasses",
+            "quantity": 6,
+            "submitted_price": "11.50"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "issue_codes": [],
+        "issue_severities": {},
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "external_execution_eligible": false
+      },
+      "recovery": {
+        "injected_stage": "order_sync",
+        "failure_code": "WORKER_LEASE_EXHAUSTED",
+        "expected_resume_origin": "SYNCING",
+        "expected_durable_outcome": "RETRY_WAIT",
+        "expected_final_state": "COMPLETED",
+        "preserve_prior_receipts": true
+      }
+    },
+    {
+      "case_id": "normal-xlsx-001",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-xlsx-001.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "5f8a1506d9a57c880309e917df562b0eb6c4baa9e831ad1c2061382cfe44296b"
+      },
+      "expected_extraction": {
+        "customer_name": "Granite Office Systems",
+        "customer_reference": "CUST-007",
+        "po_number": "PO-X-001",
+        "order_date": "2026-10-01",
+        "requested_delivery_date": "2026-10-12",
+        "currency": "USD",
+        "notes": "Workbook with one line.",
+        "lines": [
+          {
+            "sku": "SKU-020",
+            "description": "Whiteboard eraser",
+            "quantity": 8,
+            "submitted_price": "2.75"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "normal-xlsx-002",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-xlsx-002.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "e3050a6789f7cb66426340ec844555182df0874301b6e125c0a6f35dcf5e36d2"
+      },
+      "expected_extraction": {
+        "customer_name": "Harbor Hospitality",
+        "customer_reference": "CUST-008",
+        "po_number": "PO-X-002",
+        "order_date": "2026-10-02",
+        "requested_delivery_date": "2026-10-14",
+        "currency": "USD",
+        "notes": "Workbook with repeated quantities.",
+        "lines": [
+          {
+            "sku": "SKU-021",
+            "description": "Conference pad",
+            "quantity": 3,
+            "submitted_price": "14.00"
+          },
+          {
+            "sku": "SKU-022",
+            "description": "Marker refill",
+            "quantity": 3,
+            "submitted_price": "5.25"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edge-xlsx-001",
+      "primary_category": "edge",
+      "tags": [
+        "edge",
+        "awkward_layout"
+      ],
+      "source": {
+        "path": "documents/edge-xlsx-001.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "a31b10d567d3d6a9e54a1981f5523d80a9a1344a0bb6bd61308933884713cf44"
+      },
+      "expected_extraction": {
+        "customer_name": "Iris Research Lab",
+        "customer_reference": "CUST-009",
+        "po_number": "PO-X-003",
+        "order_date": "2026-10-03",
+        "requested_delivery_date": "2026-10-15",
+        "currency": "USD",
+        "notes": "Cells contain surrounding whitespace.",
+        "lines": [
+          {
+            "sku": "SKU-023",
+            "description": "Storage bin",
+            "quantity": 7,
+            "submitted_price": "16.00"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edge-xlsx-002",
+      "primary_category": "edge",
+      "tags": [
+        "edge",
+        "line_order"
+      ],
+      "source": {
+        "path": "documents/edge-xlsx-002.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "c24333bc578582d7015f8677ac1b56a133811cc410ee49494a5505641eafe09e"
+      },
+      "expected_extraction": {
+        "customer_name": "Juniper Schools",
+        "customer_reference": "CUST-010",
+        "po_number": "PO-X-004",
+        "order_date": "2026-10-04",
+        "requested_delivery_date": "2026-10-16",
+        "currency": "USD",
+        "notes": "Ordered lines must remain positional.",
+        "lines": [
+          {
+            "sku": "SKU-024",
+            "description": "Blue folder",
+            "quantity": 2,
+            "submitted_price": "3.00"
+          },
+          {
+            "sku": "SKU-025",
+            "description": "Red folder",
+            "quantity": 2,
+            "submitted_price": "3.00"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "security-xlsx-001",
+      "primary_category": "security",
+      "tags": [
+        "security",
+        "prompt_injection"
+      ],
+      "source": {
+        "path": "documents/security-xlsx-001.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "073de3129aedab67862140de495e604863fa27501709b59892feefb56dcdd1c5"
+      },
+      "expected_extraction": {
+        "customer_name": "Kite Logistics",
+        "customer_reference": "CUST-011",
+        "po_number": "PO-X-005",
+        "order_date": "2026-10-05",
+        "requested_delivery_date": "2026-10-17",
+        "currency": "USD",
+        "notes": "A cell contains an untrusted instruction.",
+        "lines": [
+          {
+            "sku": "SKU-026",
+            "description": "Restricted label",
+            "quantity": 1,
+            "submitted_price": "31.00"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "deterministic-xlsx-001",
+      "primary_category": "deterministic_violation",
+      "tags": [
+        "deterministic_violation"
+      ],
+      "source": {
+        "path": "documents/deterministic-xlsx-001.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "1434017ddeaf08b8abb177b6d01c56f1bbb7bb00cd340e69314df86a7ed295af"
+      },
+      "expected_extraction": {
+        "customer_name": "Lumen Energy",
+        "customer_reference": "CUST-012",
+        "po_number": "PO-X-006",
+        "order_date": "2026-10-06",
+        "requested_delivery_date": "2026-10-18",
+        "currency": "USD",
+        "notes": "Inactive product must block execution.",
+        "lines": [
+          {
+            "sku": "SKU-027",
+            "description": "Retired adapter",
+            "quantity": 1,
+            "submitted_price": "19.00"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "INACTIVE_SKU"
+        ],
+        "issue_severities": {
+          "INACTIVE_SKU": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      }
+    },
+    {
+      "case_id": "deterministic-xlsx-002",
+      "primary_category": "deterministic_violation",
+      "tags": [
+        "deterministic_violation"
+      ],
+      "source": {
+        "path": "documents/deterministic-xlsx-002.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "4990b979da03986466b095944acd4cb02f9f70b301e429f57791919b8525dca6"
+      },
+      "expected_extraction": {
+        "customer_name": "Acme Manufacturing",
+        "customer_reference": "CUST-001",
+        "po_number": "PO-X-007",
+        "order_date": "2026-10-07",
+        "requested_delivery_date": "2026-10-19",
+        "currency": "USD",
+        "notes": "Requested quantity exceeds available inventory.",
+        "lines": [
+          {
+            "sku": "SKU-028",
+            "description": "Bulk fastener",
+            "quantity": 99,
+            "submitted_price": "1.00"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "INSUFFICIENT_INVENTORY"
+        ],
+        "issue_severities": {
+          "INSUFFICIENT_INVENTORY": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      }
+    },
+    {
+      "case_id": "duplicate-xlsx-001",
+      "primary_category": "duplicate",
+      "tags": [
+        "duplicate"
+      ],
+      "source": {
+        "path": "documents/duplicate-xlsx-001.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "2590da0c839d5b518fe1d22340c4a3c7271350d9fffcf985bdc03d2c076320d0"
+      },
+      "expected_extraction": {
+        "customer_name": "Brightline Retail",
+        "customer_reference": "CUST-002",
+        "po_number": "PO-X-008",
+        "order_date": "2026-10-08",
+        "requested_delivery_date": "2026-10-20",
+        "currency": "USD",
+        "notes": "Shared source bytes with the replay attempt.",
+        "lines": [
+          {
+            "sku": "SKU-029",
+            "description": "Visitor lanyard",
+            "quantity": 20,
+            "submitted_price": "1.50"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": true
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "DOCUMENT_ALREADY_PROCESSED"
+        ],
+        "issue_severities": {
+          "DOCUMENT_ALREADY_PROCESSED": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      },
+      "replay": {
+        "duplicate_group_id": "dup-xlsx-001",
+        "seed_case_id": "duplicate-xlsx-001",
+        "replay_attempt_count": 1,
+        "expected_disposition": "REPLAYED_EXISTING"
+      }
+    },
+    {
+      "case_id": "duplicate-xlsx-002",
+      "primary_category": "duplicate",
+      "tags": [
+        "duplicate"
+      ],
+      "source": {
+        "path": "documents/duplicate-xlsx-002.xlsx",
+        "document_type": "XLSX",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sha256": "2590da0c839d5b518fe1d22340c4a3c7271350d9fffcf985bdc03d2c076320d0"
+      },
+      "expected_extraction": {
+        "customer_name": "Brightline Retail",
+        "customer_reference": "CUST-002",
+        "po_number": "PO-X-008",
+        "order_date": "2026-10-08",
+        "requested_delivery_date": "2026-10-20",
+        "currency": "USD",
+        "notes": "Shared source bytes with the seed attempt.",
+        "lines": [
+          {
+            "sku": "SKU-029",
+            "description": "Visitor lanyard",
+            "quantity": 20,
+            "submitted_price": "1.50"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": true
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "DOCUMENT_ALREADY_PROCESSED"
+        ],
+        "issue_severities": {
+          "DOCUMENT_ALREADY_PROCESSED": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      },
+      "replay": {
+        "duplicate_group_id": "dup-xlsx-001",
+        "seed_case_id": "duplicate-xlsx-001",
+        "replay_attempt_count": 1,
+        "expected_disposition": "REPLAYED_EXISTING"
+      }
+    },
+    {
+      "case_id": "normal-pdf-001",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-pdf-001.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "2e5e44d25ba6be5b422b54f47a8dae6cbbab7484ccae1a3300779d525bb5171c"
+      },
+      "expected_extraction": {
+        "customer_name": "Cedar Health Supplies",
+        "customer_reference": "CUST-003",
+        "po_number": "PO-P-001",
+        "order_date": "2026-10-01",
+        "requested_delivery_date": "2026-10-13",
+        "currency": "USD",
+        "notes": "Signed synthetic purchase order.",
+        "lines": [
+          {
+            "sku": "SKU-030",
+            "description": "Packing slip envelope",
+            "quantity": 10,
+            "submitted_price": "1.10"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "normal-pdf-002",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-pdf-002.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "a020b5e5e7bd4ff1e08ac78756420ed076af33dbdd69c275580821080fe7d553"
+      },
+      "expected_extraction": {
+        "customer_name": "Delta Facilities",
+        "customer_reference": "CUST-004",
+        "po_number": "PO-P-002",
+        "order_date": "2026-10-02",
+        "requested_delivery_date": "2026-10-14",
+        "currency": "USD",
+        "notes": "PDF with a compact table.",
+        "lines": [
+          {
+            "sku": "SKU-031",
+            "description": "Hand sanitizer",
+            "quantity": 12,
+            "submitted_price": "4.00"
+          },
+          {
+            "sku": "SKU-032",
+            "description": "Wipe dispenser",
+            "quantity": 2,
+            "submitted_price": "18.00"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "normal-pdf-003",
+      "primary_category": "normal",
+      "tags": [
+        "normal"
+      ],
+      "source": {
+        "path": "documents/normal-pdf-003.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "84335e3359f636f6dd621327ea34a59feaa0e57f2f6c0c1b116deb29f63a98c4"
+      },
+      "expected_extraction": {
+        "customer_name": "Eastport Foods",
+        "customer_reference": "CUST-005",
+        "po_number": "PO-P-003",
+        "order_date": "2026-10-03",
+        "requested_delivery_date": "2026-10-15",
+        "currency": "USD",
+        "notes": "PDF with footer metadata.",
+        "lines": [
+          {
+            "sku": "SKU-033",
+            "description": "Carton seal",
+            "quantity": 40,
+            "submitted_price": "0.75"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edge-pdf-001",
+      "primary_category": "edge",
+      "tags": [
+        "edge",
+        "missing_optional_field"
+      ],
+      "source": {
+        "path": "documents/edge-pdf-001.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "5507566e35d0f0e953a38a0176f146bcabb51e553c40afe5c5674b6defc0d646"
+      },
+      "expected_extraction": {
+        "customer_name": "Fjord Engineering",
+        "customer_reference": "CUST-006",
+        "po_number": "PO-P-004",
+        "order_date": "2026-10-04",
+        "requested_delivery_date": "2026-10-16",
+        "currency": "USD",
+        "notes": null,
+        "lines": [
+          {
+            "sku": "SKU-034",
+            "description": "Thermal sleeve",
+            "quantity": 5,
+            "submitted_price": "6.80"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "edge-pdf-002",
+      "primary_category": "edge",
+      "tags": [
+        "edge",
+        "awkward_layout"
+      ],
+      "source": {
+        "path": "documents/edge-pdf-002.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "cff1c16e476d6896519035c21abcb58cc396b75f228c0322a6a53baf55d17f4c"
+      },
+      "expected_extraction": {
+        "customer_name": "Granite Office Systems",
+        "customer_reference": "CUST-007",
+        "po_number": "PO-P-005",
+        "order_date": "2026-10-05",
+        "requested_delivery_date": "2026-10-17",
+        "currency": "USD",
+        "notes": "Two visually adjacent rows.",
+        "lines": [
+          {
+            "sku": "SKU-035",
+            "description": "Pallet marker",
+            "quantity": 2,
+            "submitted_price": "9.50"
+          },
+          {
+            "sku": "SKU-036",
+            "description": "Dock tag",
+            "quantity": 8,
+            "submitted_price": "1.25"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "security-pdf-001",
+      "primary_category": "security",
+      "tags": [
+        "security",
+        "prompt_injection"
+      ],
+      "source": {
+        "path": "documents/security-pdf-001.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "ff1b6ac1a14a9e1f2870d3796466a7a31f090a9c34302c32cc95d447849dc3e7"
+      },
+      "expected_extraction": {
+        "customer_name": "Harbor Hospitality",
+        "customer_reference": "CUST-008",
+        "po_number": "PO-P-006",
+        "order_date": "2026-10-06",
+        "requested_delivery_date": "2026-10-18",
+        "currency": "USD",
+        "notes": "Footer text is untrusted content.",
+        "lines": [
+          {
+            "sku": "SKU-037",
+            "description": "Compliance sticker",
+            "quantity": 25,
+            "submitted_price": "0.40"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "deterministic-pdf-001",
+      "primary_category": "deterministic_violation",
+      "tags": [
+        "deterministic_violation"
+      ],
+      "source": {
+        "path": "documents/deterministic-pdf-001.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "2cfdd486f7490ec1c6fc3a226fdba6469dc4f50eb5ea72bf7af066f172091c38"
+      },
+      "expected_extraction": {
+        "customer_name": "Iris Research Lab",
+        "customer_reference": "CUST-009",
+        "po_number": "PO-P-007",
+        "order_date": "2026-10-07",
+        "requested_delivery_date": "2026-10-19",
+        "currency": "EUR",
+        "notes": "Submitted currency remains part of deterministic validation.",
+        "lines": [
+          {
+            "sku": "SKU-038",
+            "description": "Import component",
+            "quantity": 3,
+            "submitted_price": "13.00"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "PRODUCT_CURRENCY_MISMATCH"
+        ],
+        "issue_severities": {
+          "PRODUCT_CURRENCY_MISMATCH": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      }
+    },
+    {
+      "case_id": "deterministic-pdf-002",
+      "primary_category": "deterministic_violation",
+      "tags": [
+        "deterministic_violation"
+      ],
+      "source": {
+        "path": "documents/deterministic-pdf-002.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "cac0d2b2f2992567df9f66b914d8b05eeedd1212502a03d8307b701c527dc08d"
+      },
+      "expected_extraction": {
+        "customer_name": "Juniper Schools",
+        "customer_reference": "CUST-010",
+        "po_number": "PO-P-008",
+        "order_date": "2026-10-08",
+        "requested_delivery_date": "2026-10-20",
+        "currency": "USD",
+        "notes": "Missing quantity is a deterministic violation.",
+        "lines": [
+          {
+            "sku": "SKU-039",
+            "description": "Replacement filter",
+            "quantity": null,
+            "submitted_price": "21.00"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "QUANTITY_REQUIRED"
+        ],
+        "issue_severities": {
+          "QUANTITY_REQUIRED": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      }
+    },
+    {
+      "case_id": "deterministic-pdf-003",
+      "primary_category": "deterministic_violation",
+      "tags": [
+        "deterministic_violation"
+      ],
+      "source": {
+        "path": "documents/deterministic-pdf-003.pdf",
+        "document_type": "PDF",
+        "mime_type": "application/pdf",
+        "sha256": "94396b3955164a147e24ae2ac846dc4ede73c5e5d13c9f948470eb42aaf2d4d5"
+      },
+      "expected_extraction": {
+        "customer_name": "Kite Logistics",
+        "customer_reference": null,
+        "po_number": "PO-P-009",
+        "order_date": "2026-10-09",
+        "requested_delivery_date": "2026-10-21",
+        "currency": "USD",
+        "notes": "Missing customer reference is represented in the source.",
+        "lines": [
+          {
+            "sku": "SKU-040",
+            "description": "Service label",
+            "quantity": 4,
+            "submitted_price": "2.50"
+          }
+        ]
+      },
+      "trusted_business_data": {
+        "fixture_path": "trusted-data/catalog.json",
+        "facts": {
+          "duplicate_customer_po": false,
+          "document_already_processed": false
+        }
+      },
+      "expected_validation": {
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "issue_codes": [
+          "MISSING_CUSTOMER_REFERENCE"
+        ],
+        "issue_severities": {
+          "MISSING_CUSTOMER_REFERENCE": "ERROR"
+        },
+        "pre_approval_state": "NEEDS_REVIEW",
+        "external_execution_eligible": false
+      }
+    }
+  ]
+}
