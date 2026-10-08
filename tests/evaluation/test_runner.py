@@ -23,7 +23,7 @@ from opsflow.evaluation.models import (
     EvaluationMode,
     ExtractionQualityStatus,
 )
-from opsflow.evaluation.runner import run_case, run_corpus
+from opsflow.evaluation.runner import ReliabilityEvidence, run_case, run_corpus
 from opsflow.extraction.provider import StructuredGenerationRequest
 from opsflow.orchestration.composition import OrchestrationRuntime
 from opsflow.orchestration.contracts import IntakeExecution, OrchestrationIntakeResult
@@ -320,6 +320,19 @@ def test_run_corpus_is_provider_free_and_accounts_for_all_manifest_cases(monkeyp
 
     monkeypatch.setattr(runner, "execute_orchestration_intake", fake_intake)
 
+    async def fake_reliability(session_factory, case, runtime, mode):
+        return ReliabilityEvidence(
+            case_result=await run_case(session_factory, case, runtime, mode),
+            order_id=uuid4(),
+            failure_state=None,
+            failure_origin=None,
+            final_state=OrderState.NEEDS_REVIEW,
+        )
+
+    monkeypatch.setattr(runner, "run_recovery_scenario", fake_reliability)
+    monkeypatch.setattr(runner, "run_duplicate_scenario", fake_reliability)
+    monkeypatch.setattr(runner, "run_approval_sync_scenario", fake_reliability)
+
     result = asyncio.run(
         run_corpus(_FakeSessionFactory(), manifest, _runtime(), EvaluationMode.PROVIDER_FREE)
     )
@@ -356,6 +369,19 @@ def test_provider_free_runner_does_not_construct_a_live_gemini_provider(monkeypa
         )
 
     monkeypatch.setattr(runner, "execute_orchestration_intake", fake_intake)
+
+    async def fake_reliability(session_factory, case, runtime, mode):
+        return ReliabilityEvidence(
+            case_result=await run_case(session_factory, case, runtime, mode),
+            order_id=uuid4(),
+            failure_state=None,
+            failure_origin=None,
+            final_state=OrderState.NEEDS_REVIEW,
+        )
+
+    monkeypatch.setattr(runner, "run_recovery_scenario", fake_reliability)
+    monkeypatch.setattr(runner, "run_duplicate_scenario", fake_reliability)
+    monkeypatch.setattr(runner, "run_approval_sync_scenario", fake_reliability)
     asyncio.run(
         run_corpus(_FakeSessionFactory(), manifest, _runtime(), EvaluationMode.PROVIDER_FREE)
     )

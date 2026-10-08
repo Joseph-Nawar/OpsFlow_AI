@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from opsflow.application.errors import BusinessDataProviderError
@@ -17,26 +18,61 @@ from opsflow.application.orchestration import (
     OrchestrationUnavailableError,
     execute_orchestration_intake,
 )
+from opsflow.application.order_sync import (
+    begin_order_sync_step,
+    claim_next_order_sync,
+    execute_next_order_sync,
+    persist_order_sync_receipt,
+    yield_order_sync_claim,
+)
+from opsflow.application.review_commands import approve_order, retry_order
 from opsflow.documents.errors import DocumentProcessingError
 from opsflow.domain import OrderState, ValidationSeverity
 from opsflow.extraction.errors import ExtractionResponseError, ProviderError
 from opsflow.extraction.models import ExtractionDraft
+from opsflow.notifications.contracts import (
+    NotificationOutcome,
+    NotificationOutcomeKind,
+)
+from opsflow.notifications.service import claim_next_notification, record_notification_outcome
 from opsflow.orchestration.composition import OrchestrationRuntime
 from opsflow.orchestration.contracts import (
     OrchestrationIntakeCommand,
     OrchestrationIntakeResult,
 )
+from opsflow.order_sync.contracts import (
+    HubSpotAssociationReceipt,
+    HubSpotCompanyReceipt,
+    HubSpotDealReceipt,
+    OdooOrderReceipt,
+    OrderSyncStep,
+)
+from opsflow.persistence.models import (
+    NotificationDeliveryModel,
+    OrderModel,
+    OrderSyncModel,
+    SourceDocumentModel,
+)
 from opsflow.persistence.repositories import (
     PersistedOrder,
     get_extraction_snapshots_for_order,
+    get_latest_audit_event_id,
+    get_latest_review_revision,
     get_order,
 )
+from opsflow.review import OperatorContext, OperatorRole
 from opsflow.review.composition import ReviewDateProvider
+from opsflow.review.concurrency import compute_review_etag
 from opsflow.validation.models import ApprovalLevel, ValidationRoute
 from opsflow.validation.policy import ValidationPolicy
 
 from .corpus import EvaluationBusinessDataProvider, load_catalog, resolve_manifest_source
-from .doubles import ProviderObservation, ScriptedProviderFactory
+from .doubles import (
+    FailOnceBusinessDataProvider,
+    ProviderObservation,
+    RecoveryScriptedProviderFactory,
+    ScriptedProviderFactory,
+)
 from .models import (
     BenchmarkValidationContext,
     CaseActual,
@@ -55,7 +91,10 @@ from .models import (
     PricingStatus,
     ProviderSummary,
     ReleaseGateSummary,
+    ReplayDisposition,
     RunMetadata,
+    SideEffectDetail,
+    SideEffectSummary,
 )
 from .scoring import score_extraction_quality, score_validation_outcome
 
@@ -75,6 +114,53 @@ class _FixedBenchmarkDateProvider(ReviewDateProvider):
 
     def current_date(self) -> date:
         return self.evaluation_date
+
+
+@dataclass(frozen=True, slots=True)
+class ReliabilityEvidence:
+    """Internal durable observations used to populate M11C result homes."""
+
+    case_result: CaseResult
+    order_id: UUID
+    failure_state: OrderState | None
+    failure_origin: OrderState | None
+    final_state: OrderState | None
+    retry_used: bool = False
+    authoritative_order_count: int = 0
+    idempotent_replay: bool = False
+    logical_external_object_count: int = 0
+    approved_state: OrderState | None = None
+    retry_generation: int = 0
+    prior_receipt_preserved: bool = False
+    resumed_steps: tuple[str, ...] = ()
+
+
+class EvaluationOrderSyncExecutor:
+    """Provider-free Phase 9 executor returning bounded synthetic receipts."""
+
+    def __init__(self) -> None:
+        self.calls: list[OrderSyncStep] = []
+        self._objects: dict[tuple[UUID, str], str] = {}
+
+    @property
+    def logical_external_object_count(self) -> int:
+        return len(self._objects)
+
+    async def execute(self, order_id: UUID, step: OrderSyncStep):
+        self.calls.append(step)
+        if step is OrderSyncStep.ODOO_LOOKUP:
+            return None
+        if step is OrderSyncStep.ODOO_BRIDGE:
+            self._objects.setdefault((order_id, "odoo"), f"m11c-odoo-{order_id}")
+            return OdooOrderReceipt(1001, f"M11C-{order_id}")
+        if step is OrderSyncStep.HUBSPOT_COMPANY:
+            self._objects.setdefault((order_id, "company"), f"m11c-company-{order_id}")
+            return HubSpotCompanyReceipt(self._objects[(order_id, "company")])
+        if step is OrderSyncStep.HUBSPOT_DEAL:
+            self._objects.setdefault((order_id, "deal"), f"m11c-deal-{order_id}")
+            return HubSpotDealReceipt(self._objects[(order_id, "deal")])
+        self._objects.setdefault((order_id, "association"), f"m11c-association-{order_id}")
+        return HubSpotAssociationReceipt(datetime(2026, 10, 10, tzinfo=UTC))
 
 
 def _policy(context: BenchmarkValidationContext) -> ValidationPolicy:
@@ -115,6 +201,23 @@ def _provider_summary(observation: ProviderObservation | None) -> ProviderSummar
         output_tokens=observation.output_tokens,
         total_tokens=observation.total_tokens,
     )
+
+
+def _execution_session_factory(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> async_sessionmaker[AsyncSession]:
+    """Use an evaluation-local session policy that refreshes ORM state after commits.
+
+    The application session factory intentionally uses ``expire_on_commit=False``.
+    The existing intake service performs transaction rollbacks between read and
+    write phases, so the evaluator uses a fresh factory with expiration enabled
+    for this supplied bind. This changes no production session policy.
+    """
+
+    bind = getattr(session_factory, "kw", {}).get("bind")
+    if bind is None:
+        return session_factory
+    return async_sessionmaker(bind, class_=AsyncSession, expire_on_commit=True)
 
 
 def _failure_code(error: BaseException) -> str:
@@ -196,6 +299,9 @@ def _result_from_intake(
         pre_approval_state=state,
         issue_facts=issues,
         idempotent_replay=intake.idempotent_replay,
+        replay_disposition=(
+            ReplayDisposition.STAND_DOWN if intake.execution.value == "STANDING_DOWN" else None
+        ),
         intake_execution=intake.execution.value,
         external_execution="NOT_RUN",
         external_execution_eligible=state
@@ -232,11 +338,12 @@ def _error_result(
     )
 
 
-async def run_case(
+async def _run_case_at(
     session_factory: async_sessionmaker[AsyncSession],
     case: CorpusCase,
     runtime: OrchestrationRuntime,
     mode: EvaluationMode,
+    recorded_at: datetime,
 ) -> CaseResult:
     """Execute one corpus case through the existing provider-free intake seam."""
 
@@ -253,19 +360,345 @@ async def run_case(
         source_system="EVALUATION",
     )
     observation = _provider_observation(runtime)
-    async with session_factory() as session:
+    execution_factory = _execution_session_factory(session_factory)
+    async with execution_factory() as session:
         try:
             intake = await execute_orchestration_intake(
                 session,
                 command,
                 runtime,
                 "m11c-evaluator",
-                datetime(2026, 10, 10, tzinfo=UTC),
+                recorded_at,
             )
             persisted, predicted = await _load_persisted_observation(session, intake.order_id)
         except _KNOWN_EXECUTION_ERRORS as error:
             return _error_result(case, error, observation)
     return _result_from_intake(case, intake, persisted, predicted, observation)
+
+
+async def run_case(
+    session_factory: async_sessionmaker[AsyncSession],
+    case: CorpusCase,
+    runtime: OrchestrationRuntime,
+    mode: EvaluationMode,
+) -> CaseResult:
+    """Execute one corpus case with the deterministic benchmark event time."""
+
+    return await _run_case_at(
+        session_factory,
+        case,
+        runtime,
+        mode,
+        datetime(2026, 10, 10, tzinfo=UTC),
+    )
+
+
+async def _order_id_for_case(
+    session_factory: async_sessionmaker[AsyncSession], case: CorpusCase
+) -> UUID:
+    async with session_factory() as session:
+        if not hasattr(session, "scalar"):
+            raise RuntimeError("durable order lookup requires an application session")
+        order_id = await session.scalar(
+            select(SourceDocumentModel.order_id)
+            .where(SourceDocumentModel.sha256 == case.source.sha256)
+            .order_by(SourceDocumentModel.order_id)
+            .limit(1)
+        )
+    if not isinstance(order_id, UUID):
+        raise RuntimeError(f"no durable order exists for evaluation case {case.case_id}")
+    return order_id
+
+
+async def _review_etag(session: AsyncSession, order_id: UUID) -> str:
+    persisted = await get_order(session, order_id)
+    if persisted is None:
+        raise RuntimeError("cannot compute a review ETag for a missing evaluation order")
+    revision = await get_latest_review_revision(session, order_id)
+    audit_id = await get_latest_audit_event_id(session, order_id)
+    return compute_review_etag(
+        order_id,
+        persisted.order.state,
+        persisted.order.failure_origin,
+        revision.revision_number if revision is not None else None,
+        revision.id if revision is not None else None,
+        audit_id,
+    )
+
+
+async def _drain_notifications(
+    session_factory: async_sessionmaker[AsyncSession],
+    target_order_id: UUID,
+) -> int:
+    """Deliver pending intents through the real claim/outcome persistence seam."""
+
+    delivered_for_target = 0
+    while True:
+        async with session_factory() as session:
+            claim = await claim_next_notification(session)
+        if claim is None:
+            return delivered_for_target
+        async with session_factory() as session:
+            claimed_order_id = await session.scalar(
+                select(NotificationDeliveryModel.order_id).where(
+                    NotificationDeliveryModel.id == claim.notification_id
+                )
+            )
+        async with session_factory() as session:
+            await record_notification_outcome(
+                session,
+                claim.notification_id,
+                NotificationOutcome(
+                    claim_token=claim.claim_token,
+                    kind=NotificationOutcomeKind.DELIVERED,
+                    provider_reference="m11c-provider-free-notification",
+                ),
+            )
+        if claimed_order_id == target_order_id:
+            delivered_for_target += 1
+
+
+def _with_notification_evidence(result: CaseResult, delivered_count: int) -> CaseResult:
+    return result.model_copy(
+        update={
+            "side_effects": SideEffectSummary(
+                notification=SideEffectDetail(status="DELIVERED", count=delivered_count),
+                order_sync=result.side_effects.order_sync,
+                logical_external_objects=result.side_effects.logical_external_objects,
+            )
+        }
+    )
+
+
+async def run_recovery_scenario(
+    session_factory: async_sessionmaker[AsyncSession],
+    case: CorpusCase,
+    runtime: OrchestrationRuntime,
+    mode: EvaluationMode,
+) -> ReliabilityEvidence:
+    """Drive one bounded human-retry scenario through the production commands."""
+
+    if case.recovery is None:
+        raise ValueError("recovery scenario is required")
+    failure = case.recovery.failure_code
+    first_failure = "PROVIDER_UNAVAILABLE" if failure == "PROVIDER_UNAVAILABLE" else ""
+    recovery_runtime = replace(
+        runtime,
+        extraction_provider_factory=RecoveryScriptedProviderFactory(case, first_failure)
+        if failure in {"PROVIDER_UNAVAILABLE", "BUSINESS_DATA_PROVIDER_ERROR"}
+        else runtime.extraction_provider_factory,
+        business_data_provider=(
+            FailOnceBusinessDataProvider(runtime.business_data_provider)
+            if failure == "BUSINESS_DATA_PROVIDER_ERROR"
+            else runtime.business_data_provider
+        ),
+    )
+    await run_case(session_factory, case, recovery_runtime, mode)
+    order_id = await _order_id_for_case(session_factory, case)
+    async with session_factory() as session:
+        failed = await get_order(session, order_id)
+        if failed is None or failed.order.state is not OrderState.FAILED_RETRYABLE:
+            raise RuntimeError("recovery scenario did not reach FAILED_RETRYABLE")
+        failure_origin = failed.order.failure_origin
+        etag = await _review_etag(session, order_id)
+    if failure_origin is not case.recovery.expected_resume_origin:
+        raise RuntimeError("recovery failure origin did not match the manifest contract")
+    async with session_factory() as session:
+        retry = await retry_order(
+            session,
+            order_id,
+            etag,
+            OperatorContext("m11c-retry-reviewer", OperatorRole.REVIEWER),
+            datetime(2026, 10, 10, 12, 0, tzinfo=UTC),
+        )
+    if retry.state is not case.recovery.expected_resume_origin:
+        raise RuntimeError("human retry did not restore the recorded failure origin")
+    final = await _run_case_at(
+        session_factory,
+        case,
+        recovery_runtime,
+        mode,
+        datetime(2026, 10, 10, 12, 0, 1, tzinfo=UTC),
+    )
+    notifications = await _drain_notifications(session_factory, order_id)
+    async with session_factory() as session:
+        persisted = await get_order(session, order_id)
+    if persisted is None:
+        raise RuntimeError("recovery order disappeared after retry")
+    if persisted.order.state is not case.recovery.expected_final_state:
+        raise RuntimeError("recovery final state did not match the manifest contract")
+    final = _with_notification_evidence(final, notifications)
+    return ReliabilityEvidence(
+        case_result=final,
+        order_id=order_id,
+        failure_state=OrderState.FAILED_RETRYABLE,
+        failure_origin=failure_origin,
+        final_state=persisted.order.state,
+        retry_used=True,
+    )
+
+
+async def run_duplicate_scenario(
+    session_factory: async_sessionmaker[AsyncSession],
+    case: CorpusCase,
+    runtime: OrchestrationRuntime,
+    mode: EvaluationMode,
+) -> ReliabilityEvidence:
+    """Replay one manifest identity and observe the durable idempotency boundary."""
+
+    if case.replay is None:
+        raise ValueError("replay scenario is required")
+    before = await _count_orders(session_factory)
+    await run_case(session_factory, case, runtime, mode)
+    order_id = await _order_id_for_case(session_factory, case)
+    await _drain_notifications(session_factory, order_id)
+    replay = await run_case(session_factory, case, runtime, mode)
+    await _drain_notifications(session_factory, order_id)
+    after = await _count_orders(session_factory)
+    if after - before != 1 or not replay.actual.idempotent_replay:
+        raise RuntimeError("duplicate replay created an unexpected authoritative graph")
+    replay = replay.model_copy(
+        update={
+            "side_effects": SideEffectSummary(
+                notification=replay.side_effects.notification,
+                order_sync=replay.side_effects.order_sync,
+                logical_external_objects=SideEffectDetail(status="NOT_RUN", count=0),
+            )
+        }
+    )
+    return ReliabilityEvidence(
+        case_result=replay,
+        order_id=order_id,
+        failure_state=None,
+        failure_origin=None,
+        final_state=replay.actual.pre_approval_state,
+        authoritative_order_count=after - before,
+        idempotent_replay=True,
+    )
+
+
+async def run_approval_sync_scenario(
+    session_factory: async_sessionmaker[AsyncSession],
+    case: CorpusCase,
+    runtime: OrchestrationRuntime,
+    mode: EvaluationMode,
+) -> ReliabilityEvidence:
+    """Exercise explicit human approval and fenced Phase 9 recovery."""
+
+    if case.approval is None or case.recovery is None:
+        raise ValueError("approval and recovery scenarios are required")
+    initial = await run_case(session_factory, case, runtime, mode)
+    order_id = await _order_id_for_case(session_factory, case)
+    async with session_factory() as session:
+        database_now = await session.scalar(select(func.clock_timestamp()))
+        if not isinstance(database_now, datetime):
+            raise RuntimeError("database clock did not return a timestamp")
+        etag = await _review_etag(session, order_id)
+        approved = await approve_order(
+            session,
+            order_id,
+            etag,
+            OperatorContext("m11c-approver", case.approval.role),
+            database_now,
+            runtime.review_base_url,
+        )
+    executor = EvaluationOrderSyncExecutor()
+    async with session_factory() as session:
+        claim = await claim_next_order_sync(session)
+    if claim is None:
+        raise RuntimeError("approved evaluation order did not create sync work")
+    async with session_factory() as session:
+        await begin_order_sync_step(session, order_id, claim.claim_token, OrderSyncStep.ODOO_LOOKUP)
+        if await executor.execute(order_id, OrderSyncStep.ODOO_LOOKUP) is not None:
+            raise RuntimeError("evaluation Odoo lookup must not return a receipt")
+        await begin_order_sync_step(session, order_id, claim.claim_token, OrderSyncStep.ODOO_BRIDGE)
+        receipt = await executor.execute(order_id, OrderSyncStep.ODOO_BRIDGE)
+        assert isinstance(receipt, OdooOrderReceipt)
+        await persist_order_sync_receipt(session, order_id, claim.claim_token, receipt)
+        await yield_order_sync_claim(session, order_id, claim.claim_token)
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            update(OrderSyncModel)
+            .where(OrderSyncModel.order_id == order_id)
+            .values(
+                attempt_count=2,
+                claim_token=uuid4(),
+                claim_expires_at=func.clock_timestamp() - text("interval '1 second'"),
+                next_attempt_at=func.clock_timestamp(),
+            )
+        )
+    async with session_factory() as session:
+        exhausted = await claim_next_order_sync(session, include_exhaustion_result=True)
+    if getattr(exhausted, "state", None) is not OrderState.FAILED_RETRYABLE:
+        raise RuntimeError("worker lease exhaustion did not become FAILED_RETRYABLE")
+    async with session_factory() as session:
+        failed = await get_order(session, order_id)
+        if failed is None:
+            raise RuntimeError("sync order disappeared after worker lease exhaustion")
+        failure_etag = await _review_etag(session, order_id)
+    async with session_factory() as session:
+        database_now = await session.scalar(select(func.clock_timestamp()))
+        if not isinstance(database_now, datetime):
+            raise RuntimeError("database clock did not return a timestamp")
+        retry = await retry_order(
+            session,
+            order_id,
+            failure_etag,
+            OperatorContext("m11c-retry-reviewer", OperatorRole.REVIEWER),
+            database_now,
+        )
+    if retry.state is not OrderState.SYNCING:
+        raise RuntimeError("sync retry did not restore SYNCING")
+    prior_call_count = len(executor.calls)
+    async with session_factory() as session:
+        completed = await execute_next_order_sync(session, executor)
+    if completed.state is not OrderState.COMPLETED:
+        raise RuntimeError("sync recovery did not complete the approved order")
+    resumed_steps = tuple(step.value for step in executor.calls[prior_call_count:])
+    notifications = await _drain_notifications(session_factory, order_id)
+    async with session_factory() as session:
+        persisted = await get_order(session, order_id)
+        sync_row = await session.get(OrderSyncModel, order_id)
+    if persisted is None or sync_row is None:
+        raise RuntimeError("completed sync evidence is missing")
+    final = _with_notification_evidence(initial, notifications).model_copy(
+        update={
+            "actual": initial.actual.model_copy(
+                update={
+                    "pre_approval_state": persisted.order.state,
+                    "external_execution": "COMPLETED",
+                    "external_execution_eligible": True,
+                }
+            ),
+            "side_effects": SideEffectSummary(
+                notification=_with_notification_evidence(
+                    initial, notifications
+                ).side_effects.notification,
+                order_sync=SideEffectDetail(status="COMPLETED", count=len(executor.calls)),
+                logical_external_objects=SideEffectDetail(
+                    status="COMPLETED", count=executor.logical_external_object_count
+                ),
+            ),
+        }
+    )
+    return ReliabilityEvidence(
+        case_result=final,
+        order_id=order_id,
+        failure_state=OrderState.FAILED_RETRYABLE,
+        failure_origin=OrderState.SYNCING,
+        final_state=persisted.order.state,
+        retry_used=True,
+        approved_state=approved.state,
+        retry_generation=sync_row.retry_generation,
+        prior_receipt_preserved=sync_row.odoo_sale_order_id is not None,
+        resumed_steps=resumed_steps,
+        logical_external_object_count=executor.logical_external_object_count,
+    )
+
+
+async def _count_orders(session_factory: async_sessionmaker[AsyncSession]) -> int:
+    async with session_factory() as session:
+        return int((await session.scalar(select(func.count()).select_from(OrderModel))) or 0)
 
 
 def _composition(corpus: CorpusManifest) -> CorpusComposition:
@@ -323,7 +756,32 @@ async def run_corpus(
             policy=policy,
             date_provider=fixed_date,
         )
-        results.append(await run_case(session_factory, case, case_runtime, mode))
+        if case.recovery is not None:
+            evidence = (
+                await run_approval_sync_scenario(session_factory, case, case_runtime, mode)
+                if case.approval is not None
+                else await run_recovery_scenario(session_factory, case, case_runtime, mode)
+            )
+            results.append(evidence.case_result)
+        elif case.replay is not None:
+            results.append(
+                (
+                    await run_duplicate_scenario(session_factory, case, case_runtime, mode)
+                ).case_result
+            )
+        else:
+            result = await run_case(session_factory, case, case_runtime, mode)
+            try:
+                order_id = await _order_id_for_case(session_factory, case)
+            except RuntimeError:
+                results.append(result)
+            else:
+                results.append(
+                    _with_notification_evidence(
+                        result,
+                        await _drain_notifications(session_factory, order_id),
+                    )
+                )
 
     result_tuple = tuple(results)
     return EvaluationRunResult(

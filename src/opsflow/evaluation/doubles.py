@@ -7,7 +7,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from opsflow.extraction.errors import ProviderError
+from opsflow.application.errors import BusinessDataProviderError
+from opsflow.extraction.errors import ProviderError, ProviderUnavailableError
 from opsflow.extraction.fake import FakeProvider
 from opsflow.extraction.provider import (
     StructuredGenerationRequest,
@@ -66,13 +67,25 @@ class ProviderObservation:
 class RecordingScriptedProvider:
     """Record calls while delegating to the existing ``FakeProvider``."""
 
-    def __init__(self, case: CorpusCase) -> None:
+    def __init__(
+        self,
+        case: CorpusCase,
+        first_failure: str | None = None,
+        repeat_success: bool = False,
+    ) -> None:
         outcome: StructuredGenerationResult | ProviderError
         if case.expected_extraction is None:
             outcome = ProviderError("scripted extraction is not available for this case")
         else:
             outcome = StructuredGenerationResult(payload=scripted_payload(case.expected_extraction))
-        self._provider = FakeProvider((outcome,))
+        first_outcome: ProviderError | None = None
+        if first_failure == "PROVIDER_UNAVAILABLE":
+            first_outcome = ProviderUnavailableError("scripted provider unavailable")
+        if first_outcome is not None:
+            outcomes = (first_outcome, outcome)
+        else:
+            outcomes = (outcome, outcome, outcome) if repeat_success else (outcome,)
+        self._provider = FakeProvider(outcomes)
         self.observation = ProviderObservation()
 
     async def generate_structured(
@@ -97,8 +110,35 @@ class ScriptedProviderFactory:
         return self.provider
 
 
+class RecoveryScriptedProviderFactory(ScriptedProviderFactory):
+    """Script one bounded retryable extraction failure before normal output."""
+
+    def __init__(self, case: CorpusCase, first_failure: str) -> None:
+        self.provider = RecordingScriptedProvider(
+            case,
+            first_failure=first_failure,
+            repeat_success=first_failure != "PROVIDER_UNAVAILABLE",
+        )
+
+
+class FailOnceBusinessDataProvider:
+    """Inject one real retryable business-data failure, then delegate normally."""
+
+    def __init__(self, delegate: object) -> None:
+        self._delegate = delegate
+        self._failed = False
+
+    async def get_validation_data(self, request: object) -> object:
+        if not self._failed:
+            self._failed = True
+            raise BusinessDataProviderError("scripted business data provider unavailable")
+        return await self._delegate.get_validation_data(request)
+
+
 __all__ = [
     "ProviderObservation",
+    "FailOnceBusinessDataProvider",
+    "RecoveryScriptedProviderFactory",
     "RecordingScriptedProvider",
     "ScriptedProviderFactory",
     "scripted_payload",
