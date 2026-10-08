@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from opsflow.application.orders import CreateOrderDisposition
 from opsflow.domain.order import OrderState
 from opsflow.domain.records import SourceDocumentType, ValidationSeverity
 from opsflow.evaluation.corpus import (
@@ -25,7 +26,6 @@ from opsflow.evaluation.models import (
     ExpectedLine,
     ExpectedValidation,
     RecoveryScenario,
-    ReplayDisposition,
     ReplayScenario,
     SourceSpec,
     TrustedBusinessDataExpectation,
@@ -33,6 +33,7 @@ from opsflow.evaluation.models import (
     TrustedCustomer,
     TrustedProduct,
 )
+from opsflow.orchestration.contracts import IntakeExecution
 from opsflow.order_sync.contracts import OrderSyncFailureCode
 from opsflow.validation.models import ValidationFacts, ValidationRoute
 
@@ -218,7 +219,8 @@ def test_optional_scenarios_are_restricted_to_their_categories() -> None:
         duplicate_group_id="dup-001",
         seed_case_id="normal-001",
         replay_attempt_count=1,
-        expected_disposition=ReplayDisposition.STAND_DOWN,
+        expected_creation_disposition=CreateOrderDisposition.REPLAYED_EXISTING,
+        expected_intake_execution=IntakeExecution.STANDING_DOWN,
     )
     with pytest.raises(ValidationError, match="replay"):
         valid_case(replay=replay)
@@ -289,7 +291,8 @@ def test_repeated_source_sha_is_allowed_for_intentional_replay_cases(tmp_path: P
                 "duplicate_group_id": "replay-group-001",
                 "seed_case_id": "duplicate-001",
                 "replay_attempt_count": 1,
-                "expected_disposition": "STANDING_DOWN",
+                "expected_creation_disposition": "REPLAYED_EXISTING",
+                "expected_intake_execution": "STANDING_DOWN",
             },
         }
     )
@@ -319,10 +322,10 @@ def test_repeated_source_sha_is_allowed_for_intentional_replay_cases(tmp_path: P
     assert manifest.cases[0].source.sha256 == manifest.cases[1].source.sha256
 
 
-def test_v2_corpus_has_exact_approved_distribution() -> None:
+def test_v3_corpus_has_exact_approved_distribution() -> None:
     manifest = load_manifest(Path("evals/corpus/v1"))
 
-    assert manifest.corpus_version == "2.0.0"
+    assert manifest.corpus_version == "3.0.0"
     assert len(manifest.cases) == 36
     assert {case.primary_category for case in manifest.cases} == set(CaseCategory)
     assert {
@@ -350,6 +353,69 @@ def test_v2_corpus_has_exact_approved_distribution() -> None:
         SourceDocumentType.XLSX: 9,
         SourceDocumentType.PDF: 9,
     }
+
+
+def test_replay_contract_requires_both_production_layer_expectations() -> None:
+    with pytest.raises(ValidationError):
+        ReplayScenario.model_validate(
+            {
+                "duplicate_group_id": "dup-001",
+                "seed_case_id": "duplicate-001",
+                "replay_attempt_count": 1,
+                "expected_intake_execution": "STANDING_DOWN",
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        ReplayScenario.model_validate(
+            {
+                "duplicate_group_id": "dup-001",
+                "seed_case_id": "duplicate-001",
+                "replay_attempt_count": 1,
+                "expected_creation_disposition": "REPLAYED_EXISTING",
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        ReplayScenario.model_validate(
+            {
+                "duplicate_group_id": "dup-001",
+                "seed_case_id": "duplicate-001",
+                "replay_attempt_count": 1,
+                "expected_disposition": "STANDING_DOWN",
+            }
+        )
+
+
+def test_replay_contract_accepts_creation_replay_and_intake_stand_down() -> None:
+    replay = ReplayScenario(
+        duplicate_group_id="dup-001",
+        seed_case_id="duplicate-001",
+        replay_attempt_count=1,
+        expected_creation_disposition=CreateOrderDisposition.REPLAYED_EXISTING,
+        expected_intake_execution=IntakeExecution.STANDING_DOWN,
+    )
+
+    assert replay.expected_creation_disposition is CreateOrderDisposition.REPLAYED_EXISTING
+    assert replay.expected_intake_execution is IntakeExecution.STANDING_DOWN
+
+
+def test_active_duplicate_cases_split_creation_and_intake_expectations() -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    duplicate_cases = {case.case_id: case for case in manifest.cases if case.replay is not None}
+
+    assert set(duplicate_cases) == {
+        "duplicate-email-001",
+        "duplicate-csv-001",
+        "duplicate-xlsx-001",
+        "duplicate-xlsx-002",
+    }
+    assert all(
+        case.replay is not None
+        and case.replay.expected_creation_disposition is CreateOrderDisposition.REPLAYED_EXISTING
+        and case.replay.expected_intake_execution is IntakeExecution.STANDING_DOWN
+        for case in duplicate_cases.values()
+    )
 
 
 def test_v1_manifest_references_a_synthetic_lookup_catalog() -> None:
@@ -384,7 +450,8 @@ def test_manifest_rejects_duplicate_replay_group_identity() -> None:
                 "duplicate_group_id": "same-group",
                 "seed_case_id": "duplicate-001",
                 "replay_attempt_count": 1,
-                "expected_disposition": "STANDING_DOWN",
+                "expected_creation_disposition": "REPLAYED_EXISTING",
+                "expected_intake_execution": "STANDING_DOWN",
             },
         }
     )
@@ -611,7 +678,7 @@ def test_corrected_retry_recovery_truth_and_corpus_version() -> None:
     manifest = load_manifest(Path("evals/corpus/v1"))
     by_id = {case.case_id: case for case in manifest.cases}
 
-    assert manifest.corpus_version == "2.0.0"
+    assert manifest.corpus_version == "3.0.0"
     assert by_id["retry-email-001"].recovery is not None
     assert by_id["retry-email-001"].recovery.expected_final_state is OrderState.READY_FOR_APPROVAL
     assert by_id["retry-csv-001"].recovery is not None

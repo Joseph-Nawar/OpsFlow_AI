@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
+from opsflow.application.orders import CreateOrderDisposition
 from opsflow.evaluation.models import (
     CaseActual,
     CaseResult,
@@ -118,6 +119,20 @@ def test_case_has_exact_nested_stable_keys() -> None:
     }
     assert case["actual"]["extraction_contract"] == "PASS"
     assert case["provider"]["calls"] == 0
+
+
+def test_duplicate_result_separates_creation_and_intake_dispositions() -> None:
+    actual = CaseActual(
+        creation_disposition=CreateOrderDisposition.REPLAYED_EXISTING,
+        intake_execution="STANDING_DOWN",
+    )
+
+    payload = actual.model_dump(mode="json")
+    assert payload["creation_disposition"] == "REPLAYED_EXISTING"
+    assert payload["intake_execution"] == "STANDING_DOWN"
+
+    with pytest.raises(ValidationError):
+        CaseActual(replay_disposition="STANDING_DOWN")  # type: ignore[call-arg]
 
 
 def test_provider_free_result_is_explicitly_not_applicable_for_model_quality() -> None:

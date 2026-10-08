@@ -92,7 +92,12 @@ def _candidate_results() -> tuple[CaseResult, ...]:
                         else case.expected_validation.pre_approval_state
                     ),
                     idempotent_replay=is_duplicate,
-                    replay_disposition=(case.replay.expected_disposition if case.replay else None),
+                    creation_disposition=(
+                        case.replay.expected_creation_disposition if case.replay else None
+                    ),
+                    intake_execution=(
+                        case.replay.expected_intake_execution if case.replay else None
+                    ),
                     external_execution="COMPLETED" if is_approval else "NOT_RUN",
                     external_execution_eligible=is_approval,
                 ),
@@ -189,7 +194,7 @@ def test_real_provider_free_corpus_has_all_cases_and_all_gates_pass(
 
     assert result.corpus.case_count == 36
     assert len(result.cases) == 36
-    assert result.run.corpus_version == "2.0.0"
+    assert result.run.corpus_version == "3.0.0"
     assert result.metrics.extraction_quality.status.value == "NOT_APPLICABLE"
     assert result.release_gates.all_passed is True
     assert len(result.release_gates.results) == 5

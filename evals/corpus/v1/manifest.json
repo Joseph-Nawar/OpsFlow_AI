@@ -1,6 +1,6 @@
 {
   "schema_version": "opsflow-evaluation-corpus/v1",
-  "corpus_version": "2.0.0",
+  "corpus_version": "3.0.0",
   "benchmark_context": {
     "evaluation_date": "2026-10-10",
     "supported_currencies": [
@@ -298,7 +298,8 @@
         "duplicate_group_id": "dup-email-001",
         "seed_case_id": "duplicate-email-001",
         "replay_attempt_count": 1,
-        "expected_disposition": "STANDING_DOWN"
+        "expected_creation_disposition": "REPLAYED_EXISTING",
+        "expected_intake_execution": "STANDING_DOWN"
       }
     },
     {
@@ -614,7 +615,8 @@
         "duplicate_group_id": "dup-csv-001",
         "seed_case_id": "duplicate-csv-001",
         "replay_attempt_count": 1,
-        "expected_disposition": "STANDING_DOWN"
+        "expected_creation_disposition": "REPLAYED_EXISTING",
+        "expected_intake_execution": "STANDING_DOWN"
       }
     },
     {
@@ -1044,7 +1046,8 @@
         "duplicate_group_id": "dup-xlsx-001",
         "seed_case_id": "duplicate-xlsx-001",
         "replay_attempt_count": 1,
-        "expected_disposition": "REPLAYED_EXISTING"
+        "expected_creation_disposition": "REPLAYED_EXISTING",
+        "expected_intake_execution": "STANDING_DOWN"
       }
     },
     {
@@ -1099,7 +1102,8 @@
         "duplicate_group_id": "dup-xlsx-002",
         "seed_case_id": "duplicate-xlsx-002",
         "replay_attempt_count": 1,
-        "expected_disposition": "REPLAYED_EXISTING"
+        "expected_creation_disposition": "REPLAYED_EXISTING",
+        "expected_intake_execution": "STANDING_DOWN"
       }
     },
     {

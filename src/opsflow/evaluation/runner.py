@@ -91,7 +91,6 @@ from .models import (
     MetricsBundle,
     PricingStatus,
     ProviderSummary,
-    ReplayDisposition,
     RunMetadata,
     SideEffectDetail,
     SideEffectSummary,
@@ -299,10 +298,7 @@ def _result_from_intake(
         pre_approval_state=state,
         issue_facts=issues,
         idempotent_replay=intake.idempotent_replay,
-        replay_disposition=(
-            ReplayDisposition.STAND_DOWN if intake.execution.value == "STANDING_DOWN" else None
-        ),
-        intake_execution=intake.execution.value,
+        intake_execution=intake.execution,
         external_execution="NOT_RUN",
         external_execution_eligible=state
         in (OrderState.APPROVED, OrderState.SYNCING, OrderState.COMPLETED),

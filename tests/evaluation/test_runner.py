@@ -297,7 +297,7 @@ def test_run_case_uses_the_orchestration_intake_seam_and_serializes_actuals(monk
     assert captured["actor"] == "m11c-evaluator"
     assert result.status is CaseResultStatus.PASS
     assert result.actual.pre_approval_state is OrderState.NEEDS_REVIEW
-    assert result.actual.intake_execution == "COMPLETED"
+    assert result.actual.intake_execution is IntakeExecution.COMPLETED
     assert result.model_dump(mode="json")["provider"]["name"] == "fake"
 
 

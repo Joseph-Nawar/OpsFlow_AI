@@ -20,9 +20,11 @@ from pydantic import (
     model_validator,
 )
 
+from opsflow.application.orders import CreateOrderDisposition
 from opsflow.domain.order import OrderState
 from opsflow.domain.records import SourceDocumentType, ValidationSeverity
 from opsflow.extraction.models import ExtractionDraft
+from opsflow.orchestration.contracts import IntakeExecution
 from opsflow.order_sync.contracts import OrderSyncFailureCode
 from opsflow.review.contracts import OperatorRole
 from opsflow.validation.models import (
@@ -88,11 +90,6 @@ class CaseResultStatus(StrEnum):
 class ExtractionQualityStatus(StrEnum):
     NOT_APPLICABLE = "NOT_APPLICABLE"
     AVAILABLE = "AVAILABLE"
-
-
-class ReplayDisposition(StrEnum):
-    REPLAYED_EXISTING = "REPLAYED_EXISTING"
-    STAND_DOWN = "STANDING_DOWN"
 
 
 def _nonblank(value: str | None) -> str | None:
@@ -327,9 +324,18 @@ class ReplayScenario(ContractModel):
     duplicate_group_id: StrictStr
     seed_case_id: StrictStr
     replay_attempt_count: Annotated[int, Field(strict=True, ge=1, le=10)]
-    expected_disposition: ReplayDisposition
+    expected_creation_disposition: CreateOrderDisposition
+    expected_intake_execution: IntakeExecution
 
     _nonblank_ids = field_validator("duplicate_group_id", "seed_case_id")(_required_nonblank)
+
+    @model_validator(mode="after")
+    def _current_duplicate_contract(self) -> ReplayScenario:
+        if self.expected_creation_disposition is not CreateOrderDisposition.REPLAYED_EXISTING:
+            raise ValueError("duplicate replay creation disposition must be REPLAYED_EXISTING")
+        if self.expected_intake_execution is not IntakeExecution.STANDING_DOWN:
+            raise ValueError("duplicate replay intake execution must be STANDING_DOWN")
+        return self
 
 
 class RecoveryScenario(ContractModel):
@@ -650,8 +656,8 @@ class CaseActual(ContractModel):
     pre_approval_state: OrderState | None = None
     issue_facts: tuple[tuple[SafeFailureCode, ValidationSeverity], ...] = ()
     idempotent_replay: StrictBool | None = None
-    replay_disposition: ReplayDisposition | None = None
-    intake_execution: SafeFailureCode | None = None
+    creation_disposition: CreateOrderDisposition | None = None
+    intake_execution: IntakeExecution | None = None
     external_execution: SafeFailureCode | None = None
     external_execution_eligible: StrictBool | None = None
     failure_code: SafeFailureCode | None = None
@@ -945,7 +951,6 @@ __all__ = [
     "ProviderSummary",
     "RateMetric",
     "RecoveryScenario",
-    "ReplayDisposition",
     "ReplayScenario",
     "ReleaseGateResult",
     "ReleaseGateSummary",
