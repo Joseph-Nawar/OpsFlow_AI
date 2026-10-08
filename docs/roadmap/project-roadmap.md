@@ -404,3 +404,15 @@ By the end, OpsFlow should demonstrate:
 Completing Phase 12 means the project is finished. Voice agents, WhatsApp, Arabic localization, autonomous agents, Salesforce, SAP, QuickBooks, cloud Kubernetes deployment, multi-tenancy, billing, and mobile applications are not prerequisites. They may be added only when client demand or career needs justify them.
 
 OpsFlow is not intended to become a startup. Its purpose is to be a high-quality, market-relevant proof that the engineer can deliver real applied AI automation systems.
+
+### Phase 11 corrective status amendment
+
+M11B remains `COMPLETE` at its independently reviewed technical baseline, with
+the original approved corpus `1.0.0` preserved as historical evidence. M11C
+Task 5 exposed an authority contradiction in two intake-recovery expectations;
+the corrected executable corpus is `2.0.0`, changing only the expected final
+state of `retry-email-001` and `retry-csv-001` to `READY_FOR_APPROVAL`. No
+source bytes changed. The amendment is `PENDING INDEPENDENT REVIEW`; M11C is
+`IN PROGRESS — BLOCKED ON CORPUS-V2 CORRECTION`, and Tasks 6–7 remain stopped.
+M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12
+remains `NOT STARTED`.

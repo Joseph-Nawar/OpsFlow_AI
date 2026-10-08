@@ -25,6 +25,16 @@
 - M11E begins with a measured baseline. It may conclude `No optimization justified by the measured baseline`; caching, concurrency, model switching, OCR, queueing, prompt compression, and batching are not pre-authorized.
 - No Phase 12 marketing, demo, publication, ROI, screenshot, or release work is included.
 
+## Current execution status
+
+M11B is `COMPLETE` at its independently reviewed technical baseline, while its
+historical approved corpus remains `1.0.0`. M11C Task 5 exposed an authority
+contradiction in two intake-recovery final-state expectations; the corrective
+executable corpus is `2.0.0` and is pending independent review. M11C remains
+`IN PROGRESS — BLOCKED ON CORPUS-V2 CORRECTION`; Tasks 6–7 must not begin until
+the amendment is independently reviewed and approved. M11D–M11F remain
+`NOT STARTED`.
+
 ## Milestone Execution Gates
 
 The execution unit is one milestone, not the whole Phase 11 plan. A single

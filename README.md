@@ -107,3 +107,15 @@ make check
 For the containerized API and database lifecycle, use `make up`, `make migrate`, and `make down`. `make down` removes containers and the Compose network but preserves the named database volume.
 
 Verified M0B–M0E commands and still-planned commands are distinguished in the [development guide](docs/development/development-guide.md).
+
+### Phase 11 corrective status amendment
+
+M11B remains `COMPLETE` at its independently reviewed technical baseline, with
+the original approved corpus `1.0.0` preserved as historical evidence. M11C
+Task 5 exposed an authority contradiction in two intake-recovery expectations;
+the corrected executable corpus is `2.0.0`, changing only the expected final
+state of `retry-email-001` and `retry-csv-001` to `READY_FOR_APPROVAL`. No
+source bytes changed. The amendment is `PENDING INDEPENDENT REVIEW`; M11C is
+`IN PROGRESS — BLOCKED ON CORPUS-V2 CORRECTION`, and Tasks 6–7 remain stopped.
+M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12
+remains `NOT STARTED`.

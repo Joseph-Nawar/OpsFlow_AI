@@ -24,6 +24,18 @@ audit record](../audits/phase-9-audit.md) preserve closeout evidence.
 Commands below distinguish historical verified checks from current or
 still-planned later-milestone workflows.
 
+### Phase 11 corrective status amendment
+
+M11B remains `COMPLETE` at its independently reviewed technical baseline, with
+the original approved corpus `1.0.0` preserved as historical evidence. M11C
+Task 5 exposed an authority contradiction in two intake-recovery expectations;
+the corrected executable corpus is `2.0.0`, changing only the expected final
+state of `retry-email-001` and `retry-csv-001` to `READY_FOR_APPROVAL`. No
+source bytes changed. The amendment is `PENDING INDEPENDENT REVIEW`; M11C is
+`IN PROGRESS — BLOCKED ON CORPUS-V2 CORRECTION`, and Tasks 6–7 remain stopped.
+M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12
+remains `NOT STARTED`.
+
 ## Working principles
 
 - Keep the production-grade portfolio project understandable and locally demonstrable.
