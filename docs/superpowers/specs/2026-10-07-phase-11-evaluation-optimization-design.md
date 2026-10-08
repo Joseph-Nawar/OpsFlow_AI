@@ -3,7 +3,9 @@
 ## Status and authority
 
 This document is the authoritative M11A design for Phase 11 — Evaluation &
-Optimization. M11A is `IN PROGRESS — DESIGN PENDING HUMAN REVIEW`. It defines
+Optimization. M11A design is `APPROVED` at
+`bde63c54a66486aea8c1e7292887d004bf9e91f4`; M11A overall remains `IN PROGRESS —
+IMPLEMENTATION PLAN PENDING HUMAN REVIEW`. It defines
 the evaluation contract and implementation boundary; it does not implement the
 evaluator.
 
