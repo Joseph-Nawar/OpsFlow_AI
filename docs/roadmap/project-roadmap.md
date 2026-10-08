@@ -221,7 +221,7 @@ The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md)
 | Milestone | Status |
 | --- | --- |
 | M11A — Evaluation Contract & Benchmark Design | COMPLETE; design APPROVED at `bde63c54a66486aea8c1e7292887d004bf9e91f4`; implementation plan APPROVED at `1e8c152aa072b075f059020ca232889ad2bcfa91` |
-| M11B — Synthetic Ground-Truth Corpus & Scoring Foundation | NOT STARTED |
+| M11B — Synthetic Ground-Truth Corpus & Scoring Foundation | IN PROGRESS; Tasks 1–4 only, then independent review and human approval |
 | M11C — Correctness, Routing & Reliability Evaluation | NOT STARTED |
 | M11D — Performance, Token & Cost Evaluation | NOT STARTED |
 | M11E — Measurement-Driven Optimization & Regression Comparison | NOT STARTED |
@@ -357,7 +357,7 @@ Exit: no known tested failure causes duplicate execution, invalid automatic exec
 
 ### Phase 11 — Evaluation & Optimization
 
-**Status:** Phase 11 `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`. M11A completed the design and implementation-planning gate only; no evaluator has been implemented. M11B is next and remains `NOT STARTED`; its approved execution plan begins with Tasks 1–4 only, then independent review, remediation/re-review if needed, human approval, and durable M11B closeout before M11C. M11C–M11F are `NOT STARTED`. The authoritative M11A design is [the Evaluation Contract & Benchmark Design](../superpowers/specs/2026-10-07-phase-11-evaluation-optimization-design.md). Phase 12 remains `NOT STARTED`.
+**Status:** Phase 11 `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`. M11A completed the design and implementation-planning gate only; M11B implementation is `IN PROGRESS` within Tasks 1–4. No full benchmark evaluator, runner, or reference evidence has been implemented. M11B must stop after Tasks 1–4 for independent review, remediation/re-review if needed, human approval, and durable M11B closeout before M11C. M11C–M11F are `NOT STARTED`. The authoritative M11A design is [the Evaluation Contract & Benchmark Design](../superpowers/specs/2026-10-07-phase-11-evaluation-optimization-design.md). Phase 12 remains `NOT STARTED`.
 
 **Objective:** Produce quantitative evidence rather than screenshots or anecdotes.
 

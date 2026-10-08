@@ -6,12 +6,12 @@ This document is the authoritative M11A design for Phase 11 — Evaluation &
 Optimization. M11A design is `APPROVED` at
 `bde63c54a66486aea8c1e7292887d004bf9e91f4`; the implementation plan is
 `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11A overall is
-`COMPLETE`. M11A completed the design and implementation-planning gate only; no
-evaluator has been implemented. M11B is next and remains `NOT STARTED`; its
-approved execution plan begins with Tasks 1–4 only, then independent review,
-remediation/re-review if needed, human approval, and durable M11B closeout
-before M11C. M11C–M11F are `NOT STARTED`; Phase 11 remains `IN PROGRESS` and
-Phase 12 remains `NOT STARTED`. It defines the evaluation contract and
+`COMPLETE`. M11A completed the design and implementation-planning gate only;
+M11B implementation is `IN PROGRESS` within Tasks 1–4. No full benchmark
+evaluator, runner, or reference evidence has been implemented. M11B must stop
+after Tasks 1–4 for independent review, remediation/re-review if needed, human
+approval, and durable M11B closeout before M11C. M11C–M11F are `NOT STARTED`;
+Phase 11 remains `IN PROGRESS` and Phase 12 remains `NOT STARTED`. It defines the evaluation contract and
 implementation boundary; it does not implement the evaluator.
 
 The design is grounded in the repository at starting SHA
