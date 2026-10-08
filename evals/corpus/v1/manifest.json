@@ -1,6 +1,14 @@
 {
   "schema_version": "opsflow-evaluation-corpus/v1",
   "corpus_version": "1.0.0",
+  "benchmark_context": {
+    "evaluation_date": "2026-10-10",
+    "supported_currencies": [
+      "USD"
+    ],
+    "price_tolerance_fraction": "0.05",
+    "high_value_threshold": "1000"
+  },
   "trusted_catalog_path": "trusted-data/catalog.json",
   "cases": [
     {
@@ -338,10 +346,10 @@
         "external_execution_eligible": false
       },
       "recovery": {
-        "injected_stage": "intake",
+        "injected_stage": "PROCESSING",
         "failure_code": "PROVIDER_UNAVAILABLE",
         "expected_resume_origin": "PROCESSING",
-        "expected_durable_outcome": "RETRY_WAIT",
+        "expected_durable_outcome": "FAILED_RETRYABLE",
         "expected_final_state": "COMPLETED",
         "preserve_prior_receipts": true
       }
@@ -654,10 +662,10 @@
         "external_execution_eligible": false
       },
       "recovery": {
-        "injected_stage": "extraction",
-        "failure_code": "PROVIDER_RATE_LIMIT",
-        "expected_resume_origin": "PROCESSING",
-        "expected_durable_outcome": "RETRY_WAIT",
+        "injected_stage": "EXTRACTED",
+        "failure_code": "BUSINESS_DATA_PROVIDER_ERROR",
+        "expected_resume_origin": "EXTRACTED",
+        "expected_durable_outcome": "FAILED_RETRYABLE",
         "expected_final_state": "COMPLETED",
         "preserve_prior_receipts": true
       }
@@ -666,7 +674,8 @@
       "case_id": "retry-csv-002",
       "primary_category": "retry_recovery",
       "tags": [
-        "retry_recovery"
+        "retry_recovery",
+        "approval"
       ],
       "source": {
         "path": "documents/retry-csv-002.csv",
@@ -704,13 +713,18 @@
         "issue_codes": [],
         "issue_severities": {},
         "pre_approval_state": "READY_FOR_APPROVAL",
-        "external_execution_eligible": false
+        "external_execution_eligible": true
+      },
+      "approval": {
+        "role": "APPROVER",
+        "action": "APPROVE",
+        "expected_state": "APPROVED"
       },
       "recovery": {
-        "injected_stage": "order_sync",
+        "injected_stage": "SYNCING",
         "failure_code": "WORKER_LEASE_EXHAUSTED",
         "expected_resume_origin": "SYNCING",
-        "expected_durable_outcome": "RETRY_WAIT",
+        "expected_durable_outcome": "FAILED_RETRYABLE",
         "expected_final_state": "COMPLETED",
         "preserve_prior_receipts": true
       }
@@ -1043,22 +1057,22 @@
         "path": "documents/duplicate-xlsx-002.xlsx",
         "document_type": "XLSX",
         "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "sha256": "2590da0c839d5b518fe1d22340c4a3c7271350d9fffcf985bdc03d2c076320d0"
+        "sha256": "046e24f363092ae13a18712a077b0383b785825ee70905b6debec8a9c99b1093"
       },
       "expected_extraction": {
-        "customer_name": "Brightline Retail",
-        "customer_reference": "CUST-002",
-        "po_number": "PO-X-008",
-        "order_date": "2026-10-08",
-        "requested_delivery_date": "2026-10-20",
+        "customer_name": "Harbor Hospitality",
+        "customer_reference": "CUST-008",
+        "po_number": "PO-X-010",
+        "order_date": "2026-10-09",
+        "requested_delivery_date": "2026-10-23",
         "currency": "USD",
-        "notes": "Shared source bytes with the seed attempt.",
+        "notes": "Independent replay scenario with separate source identity.",
         "lines": [
           {
-            "sku": "SKU-029",
-            "description": "Visitor lanyard",
-            "quantity": 20,
-            "submitted_price": "1.50"
+            "sku": "SKU-021",
+            "description": "Conference pad",
+            "quantity": 4,
+            "submitted_price": "14.00"
           }
         ]
       },
@@ -1082,8 +1096,8 @@
         "external_execution_eligible": false
       },
       "replay": {
-        "duplicate_group_id": "dup-xlsx-001",
-        "seed_case_id": "duplicate-xlsx-001",
+        "duplicate_group_id": "dup-xlsx-002",
+        "seed_case_id": "duplicate-xlsx-002",
         "replay_attempt_count": 1,
         "expected_disposition": "REPLAYED_EXISTING"
       }
@@ -1322,11 +1336,11 @@
       "expected_validation": {
         "route": "NEEDS_REVIEW",
         "approval_level": "STANDARD",
-        "issue_codes": [
-          "PRODUCT_CURRENCY_MISMATCH"
+      "issue_codes": [
+          "UNSUPPORTED_CURRENCY"
         ],
         "issue_severities": {
-          "PRODUCT_CURRENCY_MISMATCH": "ERROR"
+          "UNSUPPORTED_CURRENCY": "ERROR"
         },
         "pre_approval_state": "NEEDS_REVIEW",
         "external_execution_eligible": false
@@ -1391,16 +1405,16 @@
         "path": "documents/deterministic-pdf-003.pdf",
         "document_type": "PDF",
         "mime_type": "application/pdf",
-        "sha256": "94396b3955164a147e24ae2ac846dc4ede73c5e5d13c9f948470eb42aaf2d4d5"
+        "sha256": "caef3a566c762d969cd070f127483561b915c36c1a01df98b8af70627ed33540"
       },
       "expected_extraction": {
-        "customer_name": "Kite Logistics",
+        "customer_name": null,
         "customer_reference": null,
         "po_number": "PO-P-009",
         "order_date": "2026-10-09",
         "requested_delivery_date": "2026-10-21",
         "currency": "USD",
-        "notes": "Missing customer reference is represented in the source.",
+        "notes": "Customer identity is intentionally omitted from this source.",
         "lines": [
           {
             "sku": "SKU-040",
@@ -1420,11 +1434,11 @@
       "expected_validation": {
         "route": "NEEDS_REVIEW",
         "approval_level": "STANDARD",
-        "issue_codes": [
-          "MISSING_CUSTOMER_REFERENCE"
+      "issue_codes": [
+          "CUSTOMER_REQUIRED"
         ],
         "issue_severities": {
-          "MISSING_CUSTOMER_REFERENCE": "ERROR"
+          "CUSTOMER_REQUIRED": "ERROR"
         },
         "pre_approval_state": "NEEDS_REVIEW",
         "external_execution_eligible": false
