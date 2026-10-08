@@ -221,8 +221,8 @@ The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md)
 | Milestone | Status |
 | --- | --- |
 | M11A — Evaluation Contract & Benchmark Design | COMPLETE; design APPROVED at `bde63c54a66486aea8c1e7292887d004bf9e91f4`; implementation plan APPROVED at `1e8c152aa072b075f059020ca232889ad2bcfa91` |
-| M11B — Synthetic Ground-Truth Corpus & Scoring Foundation | COMPLETE at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`; corpus/scoring foundation only; M11C remains NOT STARTED |
-| M11C — Correctness, Routing & Reliability Evaluation | NOT STARTED |
+| M11B — Synthetic Ground-Truth Corpus & Scoring Foundation | COMPLETE at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`; corpus/scoring foundation only; M11C is IN PROGRESS (Tasks 5–7) |
+| M11C — Correctness, Routing & Reliability Evaluation | IN PROGRESS; Tasks 5–7 only, then independent review and human approval before M11D |
 | M11D — Performance, Token & Cost Evaluation | NOT STARTED |
 | M11E — Measurement-Driven Optimization & Regression Comparison | NOT STARTED |
 | M11F — Independent Phase 11 Audit & Closeout | NOT STARTED |
@@ -357,7 +357,7 @@ Exit: no known tested failure causes duplicate execution, invalid automatic exec
 
 ### Phase 11 — Evaluation & Optimization
 
-**Status:** Phase 11 `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts; it did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C is the next milestone and remains `NOT STARTED`; M11C–M11F remain `NOT STARTED`, and M11C may begin only after this M11B closeout is independently checked. Phase 12 remains `NOT STARTED`.
+**Status:** Phase 11 `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts; it did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `IN PROGRESS` and executes Tasks 5–7 only; it must stop for independent review and human approval before M11D. M11D–M11F remain `NOT STARTED`. Phase 12 remains `NOT STARTED`.
 
 **Objective:** Produce quantitative evidence rather than screenshots or anecdotes.
 
