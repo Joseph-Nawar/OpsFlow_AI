@@ -30,10 +30,15 @@
 M11B is `COMPLETE` at its independently reviewed technical baseline, while its
 historical approved corpus remains `1.0.0`. M11C Task 5 exposed an authority
 contradiction in two intake-recovery final-state expectations; the approved
-active executable corpus is `2.0.0` at amendment SHA
-`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C is `IN PROGRESS`, and all
-further Phase 11 evaluation execution uses corpus `2.0.0`. M11D–M11F remain
-`NOT STARTED`.
+corpus correction was `2.0.0` at amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C is `IN PROGRESS`, and further
+M11C execution is blocked pending the duplicate replay-contract amendment. M11C
+real-path duplicate execution
+showed that Phase 2 creation replay and Phase 7 intake execution expose distinct
+dispositions; corpus `3.0.0` splits those expectations without changing
+production behavior or source bytes. Corpus `3.0.0` is `PENDING INDEPENDENT
+REVIEW`, and M11C is `IN PROGRESS — BLOCKED ON CORPUS 3.0.0 REPLAY-CONTRACT
+AMENDMENT`. M11D–M11F remain `NOT STARTED`.
 
 ## Milestone Execution Gates
 

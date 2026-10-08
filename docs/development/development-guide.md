@@ -29,13 +29,26 @@ still-planned later-milestone workflows.
 M11B remains `COMPLETE` at its independently reviewed technical baseline, with
 the original approved corpus `1.0.0` preserved as historical evidence. M11C
 Task 5 exposed an authority contradiction in two intake-recovery expectations;
-the corrected active executable corpus is `2.0.0`, approved at amendment SHA
+the corrected corpus was `2.0.0`, approved at amendment SHA
 `1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`; only the expected final state of
 `retry-email-001` and `retry-csv-001` changed to `READY_FOR_APPROVAL`. No
-source bytes changed. M11C is `IN PROGRESS`, and all further Phase 11
-evaluation execution uses corpus `2.0.0`.
+source bytes changed. M11C is `IN PROGRESS`, and evaluation execution used
+corpus `2.0.0` until the pending amendment below.
 M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12
 remains `NOT STARTED`.
+
+### Phase 11 duplicate replay-contract amendment
+
+Corpus `1.0.0` is the historical M11B-approved corpus. Corpus `2.0.0` is the
+approved recovery-authority correction at amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C real-path duplicate execution
+showed that Phase 2 creation replay and Phase 7 intake execution expose distinct
+dispositions. Corpus `2.0.0` encoded them in one ambiguous field; pending corpus
+`3.0.0` splits those expectations without changing production behavior, source
+documents, or source SHA-256 values. Corpus `3.0.0` is `PENDING INDEPENDENT
+REVIEW`; M11C is `IN PROGRESS — BLOCKED ON CORPUS 3.0.0 REPLAY-CONTRACT
+AMENDMENT`. M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`;
+Phase 12 remains `NOT STARTED`.
 
 ## Working principles
 

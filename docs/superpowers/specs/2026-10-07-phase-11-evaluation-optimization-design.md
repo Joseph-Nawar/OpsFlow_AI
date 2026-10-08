@@ -31,16 +31,28 @@ The design is grounded in the repository at starting SHA
 M11B was originally approved with corpus `1.0.0`. M11C Task 5 exposed an
 authority contradiction in the `retry-email-001` and `retry-csv-001` recovery
 expectations: retry and deterministic validation stop at `READY_FOR_APPROVAL`
-until an explicit human approval action. The approved executable correction is
+until an explicit human approval action. The approved executable correction was
 corpus `2.0.0` at amendment SHA
 `1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`; only those two expected final
-states changed, and no source bytes or SHA-256 values changed. M11C is
-`IN PROGRESS`, all further Phase 11 evaluation execution uses corpus `2.0.0`,
-and M11D–M11F remain `NOT STARTED`.
+states changed, and no source bytes or SHA-256 values changed. The subsequent
+duplicate replay-contract amendment is recorded below.
 
 The current status is intentionally separate from historical Phase 10 audit
 records. The Phase 10 audit remains an immutable record of its own closeout and
 is not rewritten to reflect the start of Phase 11.
+
+### Current duplicate replay-contract amendment
+
+Corpus `2.0.0` is the approved active corpus through amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C real-path duplicate execution
+showed that Phase 2 creation replay and Phase 7 intake execution expose
+distinct production dispositions: `REPLAYED_EXISTING` and `STANDING_DOWN`.
+Corpus `2.0.0` encoded those layers in one ambiguous field. Corpus `3.0.0`
+splits the expectations without changing production behavior, source documents,
+or source SHA-256 values. The corpus `3.0.0` amendment is `PENDING INDEPENDENT
+REVIEW`; M11C is `IN PROGRESS — BLOCKED ON CORPUS 3.0.0 REPLAY-CONTRACT
+AMENDMENT`. M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`;
+Phase 12 remains `NOT STARTED`.
 
 Normative words such as **MUST**, **MUST NOT**, **SHOULD**, and **MAY** state
 the implementation contract for M11B–M11F.
