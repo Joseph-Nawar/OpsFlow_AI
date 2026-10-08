@@ -25,6 +25,38 @@
 - M11E begins with a measured baseline. It may conclude `No optimization justified by the measured baseline`; caching, concurrency, model switching, OCR, queueing, prompt compression, and batching are not pre-authorized.
 - No Phase 12 marketing, demo, publication, ROI, screenshot, or release work is included.
 
+## Milestone Execution Gates
+
+The execution unit is one milestone, not the whole Phase 11 plan. A single
+`superpowers:executing-plans` invocation must execute only the selected
+milestone’s tasks, then stop for review. Execution remains single-agent and
+sequential; subagents and multi-agent workflows are prohibited.
+
+- **M11B:** execute Tasks 1–4 only, then stop. Return implementation SHA(s),
+  scope/files, RED→GREEN evidence, focused tests, regressions,
+  M11B-appropriate quality/security checks, deviations/limitations, and clean
+  branch/worktree state. M11C cannot begin until M11B has independent review,
+  all findings have been remediated and re-reviewed, human approval is
+  recorded, and M11B status closeout is durable.
+- **M11C:** execute Tasks 5–7 only, then stop with the same evidence report and
+  independent-review/human-approval gate before M11D.
+- **M11D:** execute Tasks 8–12 only, including the actual mandatory reference
+  run described in Task 12, then stop with the same evidence report and
+  independent-review/human-approval gate before M11E.
+- **M11E:** execute Tasks 13–14 only, including the baseline decision and only
+  a conditionally justified optimization, then stop with the same evidence
+  report and independent-review/human-approval gate before M11F. Freeze the
+  approved technical baseline SHA at this boundary.
+- **M11F:** start only from that frozen technical baseline in a fresh Codex
+  context/session as an audit-only milestone. M11F may inspect, verify, and
+  write the audit/status prose permitted by its tasks; it must not silently
+  remediate implementation findings.
+
+The handoff between milestones must include the approved prior milestone SHA,
+its durable status closeout, the independent review disposition, and the exact
+next milestone task range. The plan must not be handed to
+`superpowers:executing-plans` as an uninterrupted M11B–M11F run.
+
 ## Review Focus
 
 Every high-risk failure below has an owning test task and an explicit acceptance condition.
@@ -71,9 +103,14 @@ tests/evaluation/
   test_evaluation_database.py
   test_artifacts_commands.py
   test_live_preflight.py
+  test_reference_run.py
   test_comparison.py
 docs/evaluation/reference/
-  # selected sanitized evidence only; generated ad-hoc results remain ignored
+  phase-11-provider-free-baseline.json
+  phase-11-provider-free-baseline.md
+  phase-11-live-gemini-reference.json       # optional
+  phase-11-live-gemini-reference.md         # optional
+  phase-11-live-gemini-unavailable.md       # selected only when live is unavailable
 docs/audits/phase-11-audit.md
 ```
 
@@ -93,6 +130,88 @@ The implementation should preserve these existing seams rather than duplicate th
 - Persistence: existing SQLAlchemy models and Alembic head; evaluation database cleanup uses an explicit allowlist of application tables after a fresh isolation guard.
 
 No production-code modification is currently planned. If implementation finds a real measurement seam that cannot be adapted from evaluation code, pause before changing production behavior and record: the exact gap, why an adapter cannot solve it, the smallest change, and regression tests for existing behavior. Convenience, test injection, or evaluator observability alone is not sufficient justification.
+
+## Evaluation contract type inventory
+
+The plan uses the following minimal types. Types marked “existing” are imported
+from the cited repository file; types marked “Task 1” are defined in
+`src/opsflow/evaluation/models.py` and are produced before later tasks use
+them. The inventory is intentionally small and uses immutable tuples for
+deterministic serialization.
+
+- **Existing:** `ExtractionDraft` and `ExtractedLine` from
+  `src/opsflow/extraction/models.py`; `CanonicalDocument` from
+  `src/opsflow/documents/models.py`; `ValidationFacts`, `ValidationRoute`,
+  `BusinessDataLookupRequest`, `TrustedBusinessData`, `TrustedCustomer`, and
+  `TrustedProduct` from `src/opsflow/validation/models.py`; `BusinessDataProvider`,
+  `normalize_customer_name`, and `validate_trusted_business_data` from
+  `src/opsflow/validation/business_data.py`; `OrchestrationRuntime` from
+  `src/opsflow/orchestration/composition.py`; and
+  `async_sessionmaker[AsyncSession]` from `src/opsflow/database.py` / SQLAlchemy.
+- **Standard/dependency types:** `Path`, `Mapping`, and `Sequence` are from the
+  standard library; `Decimal`, `date`, `datetime`, `UUID`, and `Literal` retain
+  their standard-library meanings; `AsyncEngine` is SQLAlchemy’s existing async
+  engine type; and `Config` is `alembic.config.Config`.
+- **Task 1:** `CanonicalValue = str | Decimal | date | None`.
+- **Task 1:** `EvaluationMode` is an enum with exactly `provider_free` and
+  `live_gemini`; `CaseCategory` is an enum with exactly `normal`, `edge`,
+  `security`, `deterministic_violation`, `duplicate`, and `retry_recovery`.
+- **Task 1:** `SourceSpec(relative_path: str, sha256: str, document_type: str,
+  mime_type: str)`.
+- **Task 1:** `ExpectedExtraction(header_fields: tuple[tuple[str, CanonicalValue], ...],
+  lines: tuple[tuple[tuple[str, CanonicalValue], ...], ...])`.
+- **Task 1:** `CorpusCase(case_id: str, category: CaseCategory, source: SourceSpec,
+  expected_extraction: ExpectedExtraction, expected_route: ValidationRoute,
+  expected_issue_codes: tuple[str, ...], validation_facts: ValidationFacts)`.
+- **Task 1:** `CorpusManifest(version: str, cases: tuple[CorpusCase, ...],
+  trusted_catalog_path: str)`.
+- **Task 1:** `TrustedCatalog(customers: tuple[TrustedCustomer, ...],
+  products: tuple[TrustedProduct, ...])`.
+- **Task 2:** `EvaluationBusinessDataProvider(catalog: TrustedCatalog)` is a
+  frozen evaluation-only implementation of the existing `BusinessDataProvider`
+  protocol; its only produced method is
+  `get_validation_data(request: BusinessDataLookupRequest) -> TrustedBusinessData`.
+- **Task 1:** `FieldCounts(tp: int, fp: int, fn: int)`;
+  `CanonicalExtractionProjection(header_fields: tuple[tuple[str, CanonicalValue], ...],
+  lines: tuple[tuple[tuple[str, CanonicalValue], ...], ...])`;
+  `PositionedExtractionScore(exact_match: bool, total: FieldCounts,
+  per_field: tuple[tuple[str, FieldCounts], ...], micro_precision: Decimal,
+  micro_recall: Decimal, micro_f1: Decimal)`; and
+  `ValidationOutcomeScore(route_match: bool, issue_codes_match: bool,
+  expected_route: ValidationRoute, actual_route: ValidationRoute,
+  missing_issue_codes: tuple[str, ...], unexpected_issue_codes: tuple[str, ...])`.
+- **Task 1:** `ExtractionQuality(status: Literal["AVAILABLE", "NOT_APPLICABLE"], complete_exact_match: bool | None,
+  field_tp: int | None, field_fp: int | None, field_fn: int | None,
+  field_precision: Decimal | None, field_recall: Decimal | None,
+  field_f1: Decimal | None, per_field: tuple[tuple[str, FieldCounts], ...],
+  denominator: int, reason: str)`; `CaseResult` contains `case_id`, `mode`,
+  `status: Literal["PASS", "FAIL", "ERROR"]`, `provider_reached: bool`,
+  `validation_route: ValidationRoute | None`, `issue_codes: tuple[str, ...]`,
+  contract evidence, and an optional internal predicted extraction used for
+  scoring but excluded from serialized artifacts; `EvaluationRunResult` contains
+  `run_id: str`, `started_at: datetime`, `finished_at: datetime`, `git_sha: str`,
+  `corpus_version: str`, `result_schema_version: str`,
+  `scorer_contract_version: str`, `mode: EvaluationMode`, `command: str`,
+  environment metadata, ordered `CaseResult` values, `ExtractionQuality`, gate
+  facts, measurements, usage/cost facts, and limitations. Raw source bytes/text
+  and secrets are never fields of serialized result models.
+- **Task 8:** `ProviderCallRecord(initial_case_id: str, initial_order_id: UUID | None,
+  attempt_index: int, duration_ms: Decimal, input_tokens: int | None,
+  output_tokens: int | None, total_tokens: int | None,
+  pricing_snapshot_id: str | None, pricing_model: str | None,
+  call_cost: Decimal | None)`.
+- **Task 8:** `PricingSnapshot(snapshot_id: str, effective_date: date, model: str,
+  input_price_per_million: Decimal, output_price_per_million: Decimal,
+  source: str)` is the immutable file-backed pricing record used only by cost
+  calculation; `RunMeasurements` is the result model for the four named timing
+  summaries, nearest-rank p50/p95, and the timing/sample methodology metadata.
+- **Task 9:** `EvaluationDatabaseConfig(evaluation_url: str, normal_url: str,
+  migration_test_url: str | None, evaluation_database_name: str)`.
+- **M11E Task 13:** `ComparisonResult(correctness_comparable: bool,
+  latency_comparable: bool, invariant_mismatches: tuple[str, ...],
+  latency_limitation: str | None, baseline_git_sha: str,
+  candidate_git_sha: str)` returned by
+  `compare_runs(baseline: EvaluationRunResult, candidate: EvaluationRunResult)`.
 
 ## M11B — Synthetic Ground-Truth Corpus & Scoring Foundation
 
@@ -134,11 +253,11 @@ No production-code modification is currently planned. If implementation finds a 
 - Extend `tests/evaluation/test_corpus_contracts.py` for digest, path, distribution, format, and MIME checks.
 - Create `tests/evaluation/test_trusted_lookup.py`.
 
-**Interfaces consumed:** Task 1 models; `BusinessDataLookupRequest`; `TrustedBusinessData`; `TrustedCustomer`; `TrustedProduct`; the existing normalized-name rule and canonical provider ordering from `SandboxBusinessDataProvider`.
+**Interfaces consumed:** Task 1 models; `BusinessDataLookupRequest`; `TrustedBusinessData`; `TrustedCustomer`; `TrustedProduct`; `normalize_customer_name(...)`, `validate_trusted_business_data(...)`, and the `BusinessDataProvider` protocol from `src/opsflow/validation/business_data.py`. The provider must return customer candidates sorted by reference because that is the canonical ordering enforced by `validate_trusted_business_data(...)`; no production sandbox provider is introduced.
 
 **Interfaces produced:** an immutable manifest/corpus loader and an evaluation provider that accepts the actual predicted request and returns `products_by_line` with length equal to the predicted line count.
 
-**RED:** add tests for a digest mismatch, `../` traversal, absolute path, symlink/escape attempt, duplicate digest/case identity, wrong format/MIME, and the exact category/format counts. Add request-driven lookup tests proving: wrong customer reference returns no customer unless that value exists; wrong name follows the existing normalization rule; wrong/unknown SKU and missing SKU return `None` in the predicted position; returned SKU equals the requested predicted SKU; candidate ordering is canonical; and expected values cannot affect lookup. Add a test that a predicted wrong customer/SKU cannot receive the expected customer/product data.
+**RED:** add tests for a malformed digest, declared-versus-actual digest mismatch, `../` traversal, absolute path, symlink/escape attempt, duplicate `case_id`, wrong format/MIME, and the exact category/format counts. Add an intentional replay/duplicate-source case whose manifest entries reuse the same source SHA/content and assert corpus validation accepts it; repeated digest alone is not a uniqueness constraint. Add request-driven lookup tests proving: wrong customer reference returns no customer unless that value exists; wrong name follows the existing `normalize_customer_name(...)` rule; wrong/unknown SKU and missing SKU return `None` in the predicted position; returned SKU equals the requested predicted SKU; candidate ordering is canonical; and expected values cannot affect lookup. Add a test that a predicted wrong customer/SKU cannot receive the expected customer/product data.
 
 **Focused command:** `uv run pytest tests/evaluation/test_corpus_contracts.py tests/evaluation/test_trusted_lookup.py -q`.
 
@@ -156,7 +275,7 @@ No production-code modification is currently planned. If implementation finds a 
   - `canonicalize_value(field_name: str, value: object) -> CanonicalValue`;
   - `project_extraction(extraction: ExtractionDraft | ExpectedExtraction) -> CanonicalExtractionProjection`;
   - `score_positioned_extraction(expected: CanonicalExtractionProjection, predicted: CanonicalExtractionProjection) -> PositionedExtractionScore`;
-  - `score_validation_outcome(expected: ExpectedOutcome, actual: CaseOutcome) -> ValidationOutcomeScore`;
+  - `score_validation_outcome(expected: CorpusCase, actual: CaseResult) -> ValidationOutcomeScore`;
   - `score_extraction_quality(results: Sequence[CaseResult], mode: EvaluationMode) -> ExtractionQuality`.
 - Create `tests/evaluation/test_scoring.py`.
 
@@ -202,12 +321,12 @@ No production-code modification is currently planned. If implementation finds a 
 **Files:**
 
 - Create `src/opsflow/evaluation/runner.py` with the narrow runner interfaces:
-  - `run_case(session_factory: SessionFactory, case: CorpusCase, runtime: EvaluationRuntime) -> CaseResult`;
-  - `run_corpus(session_factory: SessionFactory, corpus: CorpusManifest, runtime: EvaluationRuntime) -> EvaluationRunResult`.
+  - `run_case(session_factory: async_sessionmaker[AsyncSession], case: CorpusCase, runtime: OrchestrationRuntime, mode: EvaluationMode) -> CaseResult`;
+  - `run_corpus(session_factory: async_sessionmaker[AsyncSession], corpus: CorpusManifest, runtime: OrchestrationRuntime, mode: EvaluationMode) -> EvaluationRunResult`.
 - Create `src/opsflow/evaluation/doubles.py` for provider-free observation hooks and bounded side-effect probes, using existing protocols rather than new business logic.
 - Create `tests/evaluation/test_runner.py`.
 
-**Interfaces consumed:** Task 1–4 contracts; `process_document`; `OrderExtractor`; `FakeProvider`; `execute_orchestration_intake`; existing validation application service and persistence session factory; `EvaluationBusinessDataProvider`.
+**Interfaces consumed:** Task 1–4 contracts; `process_document`; `OrderExtractor`; `FakeProvider`; `execute_orchestration_intake`; `OrchestrationRuntime`; `async_sessionmaker[AsyncSession]`; existing validation application service and persistence session factory; `EvaluationBusinessDataProvider`.
 
 **Interfaces produced:** provider-free per-case/run results containing parser/extraction-contract evidence, durable state, route/issues, provider call counts, side-effect observations, and enough reachability data for later scoring.
 
@@ -279,7 +398,7 @@ No production-code modification is currently planned. If implementation finds a 
 
 **Interfaces produced:** run-scoped latency summaries, per-call/per-order usage records, complete/incomplete usage counters, and `estimated_model_cost_per_initial_order` with an explicit denominator.
 
-**RED:** test nearest-rank p50/p95; exclude setup/migration time; attribute multiple Gemini calls and retry calls to one initial order; distinguish no-call order cost `0`; count initial, Gemini-called, zero-call, complete-usage, and incomplete-usage orders; count missing attribution/token/pricing fields; reject missing input tokens, missing output tokens, missing pricing, and wrong pricing model as incomplete; assert any incomplete Gemini-called order makes aggregate cost `null` without partial summation; assert all arithmetic remains Decimal.
+**RED:** test nearest-rank p50/p95; exclude setup/migration time; attribute multiple Gemini calls and retry calls to one initial order; distinguish no-call order cost `0`; count initial, Gemini-called, zero-call, complete-usage, and incomplete-usage orders; count missing attribution/token/pricing fields; reject missing input tokens, missing output tokens, missing pricing, and wrong pricing model as incomplete for cost purposes; assert any incomplete Gemini-called order makes aggregate cost `null` without partial summation; assert all arithmetic remains Decimal. Also test that extraction/latency evidence remains representable when pricing is unavailable and that a pricing-model mismatch cannot produce a numeric cost.
 
 **Focused command:** `uv run pytest tests/evaluation/test_measurements_cost.py -q`.
 
@@ -293,10 +412,10 @@ No production-code modification is currently planned. If implementation finds a 
 
 **Files:**
 
-- Create `src/opsflow/evaluation/database.py` with `EvaluationDatabaseConfig.from_environment(...)` parsing `OPSFLOW_EVALUATION_DATABASE_URL`; `assert_evaluation_database_isolated(config) -> None` validating PostgreSQL, nonblank database name, distinct normal/migration-test names, and unambiguous strict configuration; `reset_evaluation_application_data(config, engine) -> None` that rechecks the guard immediately before a transactional, foreign-key-safe delete of only the allowlisted OpsFlow application tables; and `confirm_current_migration_head(...) -> None` without downgrade.
+- Create `src/opsflow/evaluation/database.py` with `EvaluationDatabaseConfig.from_environment(environ: Mapping[str, str], normal_url: str, migration_test_url: str | None) -> EvaluationDatabaseConfig` parsing `OPSFLOW_EVALUATION_DATABASE_URL`; `assert_evaluation_database_isolated(config: EvaluationDatabaseConfig) -> None` validating PostgreSQL, nonblank database name, distinct normal/migration-test names, and unambiguous strict configuration; `reset_evaluation_application_data(config: EvaluationDatabaseConfig, engine: AsyncEngine) -> None` that rechecks the guard immediately before a transactional, foreign-key-safe delete of only the allowlisted OpsFlow application tables; and `confirm_current_migration_head(alembic_config: Config, expected_revision: str) -> None` without downgrade.
 - Create `tests/evaluation/test_evaluation_database.py` before implementing destructive reset behavior.
 
-**Interfaces consumed:** existing `Settings.database_url`, migration-test URL semantics, SQLAlchemy URL parsing, existing application metadata/models, Alembic current-head metadata.
+**Interfaces consumed:** existing `Settings.database_url`, migration-test URL semantics, `Mapping` from `collections.abc`, `AsyncEngine` from SQLAlchemy, `Config` from `alembic.config`, SQLAlchemy URL parsing, existing application metadata/models, and Alembic current-head metadata.
 
 **Interfaces produced:** a fail-closed clean-state operation used by both `make evaluate` and `make evaluate-live`, with no lifecycle-management flag.
 
@@ -346,27 +465,55 @@ No production-code modification is currently planned. If implementation finds a 
 
 **Interfaces produced:** exact reproducible command behavior and preflight errors before case 1.
 
-**RED:** assert live mode refuses missing/blank opt-in, blank API key, blank model, non-finite timeout, zero timeout, and negative timeout before loading/executing case 1; assert provider-free mode requires no Gemini configuration and runs all 36 cases; assert live mode uses no fake fallback; assert configured live model must match the selected pricing snapshot model before cost calculation and otherwise produces unavailable/error cost. Assert no normal CI command invokes live mode.
+**RED:** assert live mode refuses missing/blank opt-in, blank API key, blank model, non-finite timeout, zero timeout, and negative timeout before loading/executing case 1; these are the complete live execution preflight checks. Assert provider-free mode requires no Gemini configuration and runs all 36 cases; assert live mode uses no fake fallback. Separately test that valid live runtime configuration can proceed when pricing is unavailable, preserving extraction, latency, call-count, and authoritative-token evidence while cost is `null`/unavailable with an explicit reason. Before calculating cost, assert configured live model must match the selected pricing snapshot model; mismatch produces unavailable/error cost and never a numeric value or another model’s price. Assert no normal CI command invokes live mode.
 
 **Focused command:** `uv run pytest tests/evaluation/test_live_preflight.py tests/evaluation/test_artifacts_commands.py -q`.
 
-**Minimal implementation:** reuse current Gemini runtime/configuration validation rather than introducing evaluation-specific defaults; perform preflight, isolation guard, clean reset, migration-head confirmation, and pricing-model validation before the first corpus case; then run the selected mode and write JSON/report. Both modes load the same v1 manifest, source SHAs, and human-authored ground truth. Provider-free mode executes the complete 36-case release-gate corpus; live mode uses that same corpus/version, while deterministic injected-fault cases remain explicitly provider-free scenario evidence rather than being attributed to Gemini.
+**Minimal implementation:** reuse current Gemini runtime/configuration validation rather than introducing evaluation-specific defaults; perform only the four runtime preflight checks, then the isolation guard, clean reset, and migration-head confirmation before the first corpus case. Load pricing for cost calculation after provider evidence exists; missing pricing or model mismatch limits cost only and does not block truthful live extraction/latency evidence. Both modes load the same v1 manifest, source SHAs, and human-authored ground truth. Provider-free mode executes the complete 36-case release-gate corpus; live mode uses that same corpus/version, while deterministic injected-fault cases remain explicitly provider-free scenario evidence rather than being attributed to Gemini.
 
 **GREEN:** command tests pass; `make evaluate` is provider-free and `$0`; `make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1` is explicit, fails closed, and never silently evaluates scripted output as Gemini quality.
 
 **Commit:** `feat(phase11): add evaluation commands and live preflight`.
 
-## M11E — Measurement-Driven Optimization & Regression Comparison
-
-### Task 12 — Validate comparison invariants and make the baseline decision
+### Task 12 — Produce and select the mandatory M11D reference evidence
 
 **Files:**
 
-- Create `src/opsflow/evaluation/comparison.py` with comparison metadata validation over corpus version, result schema version, scorer/evaluation contract version, mode/command, pricing snapshot for live cost, Gemini model for live comparison, Python major/minor and dependency lock, platform/CPU, database engine/version family, and timing/sample methodology. It must explicitly allow run ID, timestamps, and Git SHA to differ and require both Git SHAs in comparison output.
-- Create `tests/evaluation/test_comparison.py`.
-- Create the selected sanitized decision evidence at `docs/evaluation/reference/phase-11-baseline-decision.md` only after the reproducible baseline has been inspected; it must record the measured bottleneck ranking, comparison metadata, and either the exact justified change or `No optimization justified by the measured baseline`.
+- Create `tests/evaluation/test_reference_run.py` for reference-selection acceptance rules.
+- Create the mandatory sanitized provider-free reference pair:
+  - `docs/evaluation/reference/phase-11-provider-free-baseline.json`;
+  - `docs/evaluation/reference/phase-11-provider-free-baseline.md`.
+- If an explicitly authorized live run is configured and completed, create the optional sanitized pair:
+  - `docs/evaluation/reference/phase-11-live-gemini-reference.json`;
+  - `docs/evaluation/reference/phase-11-live-gemini-reference.md`.
+- If the optional live run is unavailable, create `docs/evaluation/reference/phase-11-live-gemini-unavailable.md` recording that real LLM extraction and cost evidence is unavailable; do not substitute provider-free scores.
+- Do not commit generated scratch output from `evals/results/`.
 
-**Interfaces consumed:** Task 8 measurements/artifacts; Task 11 command metadata; selected provider-free/live baseline JSON; current Git SHA and dependency/platform/database facts.
+**Interfaces consumed:** Task 11 commands; Task 10 JSON writer/Markdown renderer; Task 9 guarded database reset; the v1 manifest and source SHAs; `EvaluationRunResult` and its schema/version metadata.
+
+**Interfaces produced:** the committed mandatory provider-free M11E baseline and, only when explicitly authorized and configured, the optional live reference evidence. The JSON and Markdown in each pair must come from the same run, with Markdown rendered from that exact JSON.
+
+**RED:** add acceptance tests that reject reference selection unless the JSON records the complete 36-case corpus, exact Git SHA, corpus version, environment metadata, result schema, provider-free extraction quality `NOT_APPLICABLE`, latency summaries, passing five release gates, limitations, and no raw source material/secrets. Assert the selected Markdown is rendered from the selected JSON and cannot carry different metrics. Add optional-live acceptance cases for reached-Gemini denominator, model identifier, exact/field metrics, provider latency, authoritative token availability, and cost limitation when pricing is unavailable or mismatched.
+
+**Focused command:** `uv run pytest tests/evaluation/test_reference_run.py tests/evaluation/test_artifacts_commands.py -q`.
+
+**Minimal implementation:** after all M11D implementation tests pass, use a clean guarded evaluation database and run the exact `make evaluate` command. Require all 36 cases and all five provider-free gates to pass before selecting the output. Inspect the generated JSON fields listed above, generate Markdown from that JSON, sanitize only permitted metadata, and copy/select the pair under the fixed reference paths. If explicitly authorized live credentials are available, run exactly `make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1` over the same corpus/version/source truth and select only truthful sanitized live evidence; otherwise record live unavailability. A matching dated pricing snapshot is preferred for live cost evidence, but missing/mismatched pricing limits cost and does not invalidate real extraction or latency evidence.
+
+**GREEN:** the provider-free pair is committed from one passing `$0` run and becomes the mandatory M11E provider-free baseline; any live pair or unavailability record is explicit, sanitized, and never used to relabel provider-free evidence as model quality.
+
+**Commit:** `docs(phase11): record M11D reference evidence`.
+
+## M11E — Measurement-Driven Optimization & Regression Comparison
+
+### Task 13 — Validate comparison invariants and make the baseline decision
+
+**Files:**
+
+- Create `src/opsflow/evaluation/comparison.py` with `compare_runs(baseline: EvaluationRunResult, candidate: EvaluationRunResult) -> ComparisonResult` and comparison metadata validation over corpus version, result schema version, scorer/evaluation contract version, mode/command, pricing snapshot for live cost, Gemini model for live comparison, Python major/minor and dependency lock, platform/CPU, database engine/version family, and timing/sample methodology. It must explicitly allow run ID, timestamps, and Git SHA to differ and require both Git SHAs in comparison output.
+- Create `tests/evaluation/test_comparison.py`.
+- Create the selected sanitized decision evidence at `docs/evaluation/reference/phase-11-baseline-decision.md` only after the mandatory provider-free baseline has been inspected; it must record the measured bottleneck ranking, comparison metadata, and either the exact justified change or `No optimization justified by the measured baseline`.
+
+**Interfaces consumed:** Task 8 measurements/artifacts; Task 11 command metadata; mandatory `docs/evaluation/reference/phase-11-provider-free-baseline.json`; optional `docs/evaluation/reference/phase-11-live-gemini-reference.json` when present, otherwise the explicit live-unavailability record; current Git SHA and dependency/platform/database facts.
 
 **Interfaces produced:** a comparison result that separates correctness/safety comparability from latency comparability and a durable baseline decision for the next conditional task.
 
@@ -374,27 +521,27 @@ No production-code modification is currently planned. If implementation finds a 
 
 **Focused command:** `uv run pytest tests/evaluation/test_comparison.py -q`.
 
-**Minimal implementation:** first inspect the selected reproducible baseline and rank actual measured bottlenecks. Apply the comparison contract to the baseline decision. If no justified change exists, record the exact no-change outcome and preserve baseline evidence; do not create an optimization patch. If a bottleneck exists, record its exact metric and smallest proposed change before any implementation.
+**Minimal implementation:** first inspect the mandatory committed provider-free baseline and optional committed live reference, then rank actual measured bottlenecks. Apply the comparison contract to the baseline decision. If no justified change exists, record the exact no-change outcome and preserve baseline evidence; do not create an optimization patch. If a bottleneck exists, record its exact metric and smallest proposed change before any implementation.
 
 **GREEN:** comparison tests pass; no unmeasured optimization is authorized; latency is never presented as improved across non-comparable environments; a no-change decision is a valid successful M11E outcome.
 
 **Commit:** `feat(phase11): add baseline comparison invariants`.
 
-### Task 13 — Conditionally implement and remeasure one justified optimization
+### Task 14 — Conditionally implement and remeasure one justified optimization
 
 **Files:**
 
-- No production or evaluation implementation file is authorized before Task 12 produces a measured bottleneck decision.
-- If Task 12 records no justified change, create no optimization code; preserve the selected baseline and close M11E with the decision evidence.
-- If Task 12 records a justified change, modify only the exact production/evaluation path named in that decision record, add its focused regression/performance test beside the owning existing module, and update only the comparison/reference evidence required to rerun the same contract. The decision record is the source of the exact path list; do not broaden it to caching, concurrency, model switching, OCR, queueing, prompt compression, or batching without new measured evidence.
+- No production or evaluation implementation file is authorized before Task 13 produces a measured bottleneck decision.
+- If Task 13 records no justified change, create no optimization code; preserve the selected baseline and close M11E with the decision evidence.
+- If Task 13 records a justified change, modify only the exact production/evaluation path named in that decision record, add its focused regression/performance test beside the owning existing module, and update only the comparison/reference evidence required to rerun the same contract. The decision record is the source of the exact path list; do not broaden it to caching, concurrency, model switching, OCR, queueing, prompt compression, or batching without new measured evidence.
 
-**Interfaces consumed:** Task 12 decision record; existing production seam and tests; Task 11 command; Task 8 measurements; all five release gates.
+**Interfaces consumed:** Task 13 decision record; existing production seam and tests; Task 11 command; Task 8 measurements; all five release gates.
 
 **Interfaces produced:** a candidate result using the same corpus/version, scoring contract, mode, pricing/model, runtime, platform, database, and timing methodology, or an explicit no-change M11E result.
 
 **RED:** for a justified change, add a failing focused regression/performance assertion for the measured bottleneck and rerun all relevant correctness/safety gates before accepting a candidate. For no-change, add a failing test to the comparison evidence if it would incorrectly label the baseline as improved.
 
-**Focused command:** the owning focused test command named by the baseline decision, followed by `uv run pytest tests/evaluation -q` and the comparison command from Task 12.
+**Focused command:** the owning focused test command named by the baseline decision, followed by `uv run pytest tests/evaluation -q` and the comparison command from Task 13.
 
 **Minimal implementation:** make the smallest measured change, preserve every release gate, rerun the exact evaluation contract, and compare only through `comparison.py`. If latency metadata is non-comparable, report correctness/safety comparison and mark latency deltas unavailable.
 
@@ -404,7 +551,20 @@ No production-code modification is currently planned. If implementation finds a 
 
 ## M11F — Independent Phase 11 Audit & Closeout
 
-### Task 14 — Perform the independent Phase 11 audit
+M11F begins only after M11E has completed, received independent technical
+review, had findings remediated and re-reviewed, and received human approval.
+At that point the approved technical baseline SHA is frozen and the M11E
+implementation context stops. M11F is not a continuation of that context.
+
+The M11F handoff starts a fresh Codex context/session with the frozen technical
+baseline SHA, approved M11A design, approved implementation plan, repository
+sources of truth, and selected reference evidence. Its audit-only prompt must
+state that the new agent may inspect code and evidence, run verification, and
+write the audit/status prose permitted below, but must not implement or silently
+remediate defects. Fresh context means a new session, not a spawned subagent;
+repository policy remains one agent with no subagents or multi-agent workflow.
+
+### Task 15 — Perform the independent Phase 11 audit
 
 **Files:**
 
@@ -419,24 +579,24 @@ No production-code modification is currently planned. If implementation finds a 
 
 **Focused command:** the audit’s documented read-only verification sequence, including `uv run pytest tests/evaluation -q`, relevant existing regression checks, current-head verification, Markdown-link validation, and pinned Gitleaks scan; no live provider.
 
-**Minimal implementation:** write the audit as an independent assessment using the same severity policy as prior audits. Any finding requiring code or contract remediation becomes a separate follow-up task/commit, not an unrecorded audit edit.
+**Minimal implementation:** write the audit as an independent assessment using the same severity policy as prior audits. If a Critical, High, or Medium finding exists, record it, mark the audit `FAIL`, leave Phase 11 `IN PROGRESS`, and stop the fresh audit context. Remediation occurs in a separate implementation task/context, followed by independent re-review and a final audit-disposition update that preserves the initial finding.
 
 **GREEN:** the audit explicitly records the evidence and disposition; Phase 11 cannot close with unresolved Critical, High, or Medium findings.
 
 **Commit:** `docs(phase11): add independent evaluation audit`.
 
-### Task 15 — Close Phase 11 only after audit disposition
+### Task 16 — Close Phase 11 only after audit disposition
 
 **Files:**
 
 - Modify `README.md`, `docs/roadmap/project-roadmap.md`, and `docs/development/development-guide.md` only after independent audit approval, recording M11B–M11F and Phase 11 statuses according to the repository’s completion protocol.
 - Update `docs/audits/phase-11-audit.md` only for transparent disposition references; never erase the original finding.
 
-**Interfaces consumed:** Task 14 audit; all committed result/reference evidence; clean-clone and verification outputs.
+**Interfaces consumed:** Task 15 audit; all committed result/reference evidence; clean-clone and verification outputs.
 
 **Interfaces produced:** final Phase 11 status documentation and a clean, reviewable closeout commit.
 
-**RED:** verify that status cannot be marked complete while the audit has unresolved Critical/High/Medium findings, while live-only evidence is missing from a claim, while generated ad-hoc results are being treated as reference evidence, or while Phase 12 files/claims have leaked into Phase 11.
+**RED:** verify that status cannot be marked complete while Task 15 has unresolved Critical/High/Medium findings, while the final audit has not received independent human review, while live-only evidence is missing from a claim, while generated ad-hoc results are being treated as reference evidence, or while Phase 12 files/claims have leaked into Phase 11.
 
 **Focused command:** the complete Phase 11 verification hierarchy below, with no live Gemini requirement for ordinary CI.
 
@@ -452,7 +612,7 @@ The evaluation command must receive a dedicated PostgreSQL URL through `OPSFLOW_
 
 ## Live Gemini safety plan
 
-Live mode is a separate command path and cannot be reached through provider-free defaults. Before case 1 it validates exact opt-in, nonblank API key, nonblank model, finite positive timeout, pricing snapshot availability, and pricing model identity equality. It uses the existing `GeminiConfig` semantics and actual configured model; no fake provider substitutes for a failed preflight or failed live call. Every provider call is attributed to its originating initial case/order, including authorized retries. Live extraction quality denominators include only corpus cases that actually reached Gemini, while provider-free deterministic fault scenarios remain provider-free evidence and are never attributed to Gemini.
+Live mode is a separate command path and cannot be reached through provider-free defaults. Before case 1 it validates only exact opt-in, nonblank API key, nonblank model, and finite positive timeout, using the existing `GeminiConfig` semantics. Pricing availability and pricing-model equality are checked at cost calculation, not live execution preflight. A valid live run may retain extraction exact match, TP/FP/FN, precision/recall/F1, provider latency, call counts, and authoritative token evidence when pricing is unavailable; cost is then `null`/unavailable with an explicit limitation. A pricing-model mismatch never blocks or reclassifies the real model run and never applies another model’s price. No fake provider substitutes for a failed preflight or failed live call. Every provider call is attributed to its originating initial case/order, including authorized retries. Live extraction quality denominators include only corpus cases that actually reached Gemini, while provider-free deterministic fault scenarios remain provider-free evidence and are never attributed to Gemini.
 
 ## Verification hierarchy
 
@@ -473,9 +633,9 @@ No application tests or live providers are run during this planning task.
 
 - M11B owns strict contracts, all 36 human-authored cases, source SHAs/path safety, request-driven trusted lookup, canonical positioned scoring, and mode-safe result foundations.
 - M11C owns existing-seam execution, durable routing/replay/recovery/notification/sync observation, authority probes, network isolation, and all five release gates.
-- M11D owns timing, nearest-rank percentiles, live/provider attribution, complete-usage Decimal costs, pricing identity, JSON/report separation, guarded DB reset, commands, and preflight.
-- M11E begins with measured baseline evidence, permits a no-change outcome, and forbids non-comparable latency claims and unmeasured optimization categories.
-- M11F audits every normative contract independently and blocks close for unresolved Critical/High/Medium findings.
-- Every Review Focus risk has an owning test: fake-quality leakage (Tasks 3–4), trusted-data bias (Task 2), DB contamination (Task 9), incomplete cost usage (Task 8), and non-comparable optimization (Task 12).
+- M11D owns timing, nearest-rank percentiles, live/provider attribution, complete-usage Decimal costs, pricing identity, JSON/report separation, guarded DB reset, commands, preflight, and the mandatory provider-free reference run plus optional live/unavailability evidence.
+- M11E begins with the committed M11D references, permits a no-change outcome, and forbids non-comparable latency claims and unmeasured optimization categories.
+- M11F audits every normative contract independently from a frozen M11E SHA in a fresh context and blocks close for unresolved Critical/High/Medium findings.
+- Every Review Focus risk has an owning test: fake-quality leakage (Tasks 3–4), trusted-data bias (Task 2), DB contamination (Task 9), incomplete cost usage (Task 8), and non-comparable optimization (Task 13).
 - The plan does not add a second state machine, a second retry implementation, a live external benchmark, a Phase 12 deliverable, an implementation-plan file beyond this artifact, or an unresolved placeholder step.
 - Production changes are not pre-authorized; any later change must satisfy the documented measurement-gap and regression-test policy.
