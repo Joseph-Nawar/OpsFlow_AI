@@ -540,6 +540,10 @@ def test_duplicate_expected_issue_codes_are_allowed_but_unknown_codes_are_reject
         ("PROCESSING", "PROVIDER_RATE_LIMIT"),
         ("EXTRACTED", "PROVIDER_RATE_LIMIT"),
         ("SYNCING", "BUSINESS_DATA_PROVIDER_ERROR"),
+        ("SYNCING", "IDEMPOTENCY_CONFLICT"),
+        ("SYNCING", "RECONCILIATION_REQUIRED"),
+        ("SYNCING", "PROVIDER_UNAVAILABLE"),
+        ("SYNCING", "PROVIDER_RATE_LIMIT"),
     ],
 )
 def test_recovery_rejects_impossible_stage_and_failure_combinations(
@@ -554,6 +558,19 @@ def test_recovery_rejects_impossible_stage_and_failure_combinations(
             expected_final_state="COMPLETED",
             preserve_prior_receipts=True,
         )
+
+
+def test_syncing_worker_lease_exhaustion_is_the_v1_retryable_sync_fault() -> None:
+    scenario = RecoveryScenario(
+        injected_stage="SYNCING",
+        failure_code="WORKER_LEASE_EXHAUSTED",
+        expected_resume_origin="SYNCING",
+        expected_durable_outcome="FAILED_RETRYABLE",
+        expected_final_state="COMPLETED",
+        preserve_prior_receipts=True,
+    )
+
+    assert scenario.failure_code == "WORKER_LEASE_EXHAUSTED"
 
 
 def test_approval_eligibility_has_manifest_grounded_human_action() -> None:
@@ -599,3 +616,45 @@ def test_approval_eligibility_has_manifest_grounded_human_action() -> None:
                 ),
             ),
         )
+
+
+@pytest.mark.parametrize(
+    ("role", "level", "valid"),
+    [
+        ("REVIEWER", "STANDARD", False),
+        ("APPROVER", "STANDARD", True),
+        ("ELEVATED_APPROVER", "STANDARD", True),
+        ("APPROVER", "ELEVATED", False),
+        ("ELEVATED_APPROVER", "ELEVATED", True),
+    ],
+)
+def test_approval_role_must_match_phase6_authorization_matrix(
+    role: str, level: str, valid: bool
+) -> None:
+    case_id_role = role.lower().replace("_", "-")
+    values = dict(
+        case_id=f"approval-{case_id_role}-{level.lower()}",
+        tags=("validation", "approval"),
+        expected_validation=ExpectedValidation(
+            route=ValidationRoute.READY_FOR_APPROVAL,
+            approval_level=level,
+            issue_codes=(),
+            issue_severities={},
+            pre_approval_state=OrderState.READY_FOR_APPROVAL,
+            external_execution_eligible=True,
+        ),
+        trusted_business_data=TrustedBusinessDataExpectation(
+            fixture_path="trusted-data/catalog.json",
+            facts=ValidationFacts(
+                duplicate_customer_po=False,
+                document_already_processed=False,
+            ),
+        ),
+        approval=ApprovalScenario(role=role, action="APPROVE"),
+    )
+
+    if valid:
+        assert valid_case(**values).approval is not None
+    else:
+        with pytest.raises(ValidationError, match="role"):
+            valid_case(**values)

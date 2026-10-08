@@ -11,7 +11,9 @@ from opsflow.evaluation.models import (
     CaseScores,
     ContractEvidence,
     CorpusComposition,
+    CostMetrics,
     DatabaseMetadata,
+    DurationSummary,
     EvaluationMode,
     EvaluationRunResult,
     ExtractionQuality,
@@ -71,6 +73,9 @@ def valid_run(
             finished_at_utc=datetime(2026, 10, 8, 0, 1, tzinfo=UTC),
             git_sha="a" * 40,
             corpus_version="1.0.0",
+            command="make evaluate",
+            dependency_lock_identity="uv.lock",
+            database_version="PostgreSQL 16",
             database=DatabaseMetadata(engine="postgresql", isolated=True),
         ),
         corpus=CorpusComposition(
@@ -208,6 +213,107 @@ def test_live_mode_can_record_an_unreached_non_provider_scenario() -> None:
     assert result.cases[0].provider.name is None
 
 
+def test_provider_free_result_rejects_gemini_case_evidence() -> None:
+    with pytest.raises(ValidationError, match="provider-free"):
+        valid_run(cases=(valid_case(reached=True, provider_name="gemini"),))
+
+
+def test_provider_free_result_rejects_gemini_model_identity() -> None:
+    base = valid_run()
+    with pytest.raises(ValidationError, match="provider-free"):
+        EvaluationRunResult.model_validate(
+            {
+                **base.model_dump(),
+                "run": {**base.run.model_dump(), "gemini_model": "gemini-test"},
+            }
+        )
+
+
+def test_provider_free_result_rejects_available_pricing() -> None:
+    base = valid_run()
+    with pytest.raises(ValidationError, match="provider-free"):
+        EvaluationRunResult.model_validate(
+            {
+                **base.model_dump(),
+                "pricing": PricingStatus(
+                    status="AVAILABLE", pricing_snapshot_id="pricing-2026-10", model="gemini-test"
+                ).model_dump(),
+            }
+        )
+
+
+def test_provider_free_result_rejects_numeric_model_cost() -> None:
+    base = valid_run()
+    with pytest.raises(ValidationError, match="provider-free"):
+        EvaluationRunResult.model_validate(
+            {
+                **base.model_dump(),
+                "metrics": MetricsBundle(
+                    extraction_quality=valid_quality(),
+                    cost=CostMetrics(estimated_model_cost_per_initial_order=Decimal("0.01")),
+                ).model_dump(),
+            }
+        )
+
+
+def test_provider_free_result_rejects_gemini_called_orders() -> None:
+    with pytest.raises(ValidationError, match="provider-free"):
+        EvaluationRunResult.model_validate(
+            {
+                **valid_run().model_dump(),
+                "metrics": MetricsBundle(
+                    extraction_quality=valid_quality(),
+                    cost=CostMetrics(gemini_called_order_count=1),
+                ).model_dump(),
+            }
+        )
+
+
+def test_duration_contract_uses_named_decimal_milliseconds() -> None:
+    result = valid_run(
+        cases=(
+            CaseResult(
+                case_id="normal-001",
+                status=CaseResultStatus.PASS,
+                durations_ms=DurationSummary(
+                    parse_ms=Decimal("1.234"),
+                    deterministic_validation_ms=Decimal("2.345"),
+                    provider_free_intake_ms=Decimal("3.456"),
+                    live_gemini_call_ms=None,
+                ),
+            ),
+        )
+    )
+    durations = result.model_dump(mode="json")["cases"][0]["durations_ms"]
+
+    assert set(durations) == {
+        "parse_ms",
+        "deterministic_validation_ms",
+        "provider_free_intake_ms",
+        "live_gemini_call_ms",
+    }
+    assert durations["parse_ms"] == "1.234"
+
+
+@pytest.mark.parametrize("duration", [Decimal("-0.001"), Decimal("NaN"), Decimal("Infinity")])
+def test_duration_contract_rejects_negative_or_non_finite_values(duration: Decimal) -> None:
+    with pytest.raises(ValidationError):
+        DurationSummary(parse_ms=duration)
+
+
+def test_duration_contract_rejects_old_generic_duration_names() -> None:
+    with pytest.raises(ValidationError):
+        DurationSummary.model_validate({"validation_ms": 1})
+
+
+def test_run_identity_contains_command_and_future_environment_slots() -> None:
+    run = valid_run().model_dump(mode="json")["run"]
+
+    assert run["command"] == "make evaluate"
+    assert run["dependency_lock_identity"] == "uv.lock"
+    assert run["database_version"] == "PostgreSQL 16"
+
+
 @pytest.mark.parametrize(
     "failure_code",
     [
@@ -278,3 +384,15 @@ def test_human_readable_limitations_are_bounded_and_sanitized() -> None:
 
     with pytest.raises(ValidationError):
         PricingStatus(status="ERROR", reason="Bearer secret")
+
+
+def test_rate_metric_rejects_numerator_above_denominator() -> None:
+    with pytest.raises(ValidationError, match="numerator"):
+        RateMetric(numerator=2, denominator=1, value=Decimal("1"))
+
+
+def test_rate_metric_requires_zero_numerator_for_zero_denominator() -> None:
+    with pytest.raises(ValidationError, match="denominator"):
+        RateMetric(numerator=1, denominator=0, value=None)
+
+    assert RateMetric(numerator=0, denominator=0, value=None).value is None

@@ -358,7 +358,7 @@ class RecoveryScenario(ContractModel):
         allowed_by_stage = {
             OrderState.PROCESSING: frozenset({"PROVIDER_UNAVAILABLE"}),
             OrderState.EXTRACTED: frozenset({"BUSINESS_DATA_PROVIDER_ERROR"}),
-            OrderState.SYNCING: frozenset(item.value for item in OrderSyncFailureCode),
+            OrderState.SYNCING: frozenset({OrderSyncFailureCode.WORKER_LEASE_EXHAUSTED.value}),
         }
         if self.failure_code not in allowed_by_stage[self.injected_stage]:
             raise ValueError("recovery failure code is not valid for the injected stage")
@@ -420,6 +420,19 @@ class CorpusCase(ContractModel):
                 or self.expected_validation.external_execution_eligible is not True
             ):
                 raise ValueError("approval scenarios require READY_FOR_APPROVAL validation truth")
+            if self.approval is not None:
+                allowed_roles = {
+                    ApprovalLevel.STANDARD: frozenset(
+                        {OperatorRole.APPROVER, OperatorRole.ELEVATED_APPROVER}
+                    ),
+                    ApprovalLevel.ELEVATED: frozenset({OperatorRole.ELEVATED_APPROVER}),
+                }
+                approval_level = self.expected_validation.approval_level
+                if (
+                    approval_level is None
+                    or self.approval.role not in allowed_roles[approval_level]
+                ):
+                    raise ValueError("approval role is not authorized for the approval level")
         elif self.approval is not None:
             raise ValueError("approval scenarios require expected validation truth")
 
@@ -516,9 +529,15 @@ class RateMetric(ContractModel):
 
     @model_validator(mode="after")
     def _undefined_rate_is_null(self) -> RateMetric:
+        if self.numerator > self.denominator:
+            raise ValueError("rate numerator must not exceed denominator")
+        if self.denominator == 0 and self.numerator != 0:
+            raise ValueError("zero-denominator rates must have a zero numerator")
         if self.denominator == 0 and self.value is not None:
             raise ValueError("undefined rates must have a null value")
-        if self.value is not None and (self.value < 0 or self.value > 1):
+        if self.value is not None and (
+            not self.value.is_finite() or self.value < 0 or self.value > 1
+        ):
             raise ValueError("rate values must be between zero and one")
         return self
 
@@ -620,10 +639,22 @@ class CaseScores(ContractModel):
 class DurationSummary(ContractModel):
     """Named duration extension points; absent measurements remain null."""
 
-    parse_ms: NonNegativeInt | None = None
-    validation_ms: NonNegativeInt | None = None
-    provider_ms: NonNegativeInt | None = None
-    intake_ms: NonNegativeInt | None = None
+    parse_ms: Decimal | None = None
+    deterministic_validation_ms: Decimal | None = None
+    provider_free_intake_ms: Decimal | None = None
+    live_gemini_call_ms: Decimal | None = None
+
+    @field_validator(
+        "parse_ms",
+        "deterministic_validation_ms",
+        "provider_free_intake_ms",
+        "live_gemini_call_ms",
+    )
+    @classmethod
+    def _finite_nonnegative_duration(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and (not value.is_finite() or value < 0):
+            raise ValueError("duration milliseconds must be finite and non-negative")
+        return value
 
 
 class ProviderSummary(ContractModel):
@@ -719,6 +750,9 @@ class RunMetadata(ContractModel):
     finished_at_utc: datetime
     git_sha: StrictStr
     corpus_version: StrictStr
+    command: BoundedReason
+    dependency_lock_identity: BoundedReason | None = None
+    database_version: BoundedReason | None = None
     gemini_model: StrictStr | None = None
     python_version: StrictStr | None = None
     platform: StrictStr | None = None
@@ -731,6 +765,10 @@ class RunMetadata(ContractModel):
         if re.fullmatch(r"[0-9a-f]{40}", value, flags=re.ASCII) is None:
             raise ValueError("git_sha must be a lowercase 40-character commit SHA")
         return value
+
+    _safe_environment_identity = field_validator(
+        "command", "dependency_lock_identity", "database_version"
+    )(_safe_reason)
 
 
 class MetricExtension(ContractModel):
@@ -819,11 +857,26 @@ class EvaluationRunResult(ContractModel):
 
     @model_validator(mode="after")
     def _provider_free_quality(self) -> EvaluationRunResult:
-        if (
-            self.run.mode is EvaluationMode.PROVIDER_FREE
-            and self.metrics.extraction_quality.status is not ExtractionQualityStatus.NOT_APPLICABLE
-        ):
-            raise ValueError("provider-free results require NOT_APPLICABLE extraction quality")
+        if self.run.mode is EvaluationMode.PROVIDER_FREE:
+            if self.metrics.extraction_quality.status is not ExtractionQualityStatus.NOT_APPLICABLE:
+                raise ValueError("provider-free results require NOT_APPLICABLE extraction quality")
+            if self.run.gemini_model is not None:
+                raise ValueError("provider-free results cannot identify a Gemini model")
+            if any(case.provider.name == "gemini" for case in self.cases):
+                raise ValueError("provider-free results cannot contain Gemini provider evidence")
+            if (
+                self.pricing.status != "NOT_APPLICABLE"
+                or self.pricing.pricing_snapshot_id is not None
+                or self.pricing.model is not None
+            ):
+                raise ValueError("provider-free results cannot contain live pricing evidence")
+            cost = self.metrics.cost
+            if (
+                cost.status != "NOT_APPLICABLE"
+                or cost.estimated_model_cost_per_initial_order is not None
+                or cost.gemini_called_order_count != 0
+            ):
+                raise ValueError("provider-free results cannot contain Gemini cost evidence")
         if self.run.mode is EvaluationMode.LIVE_GEMINI:
             for case in self.cases:
                 if case.provider.name == "fake" and case.provider.calls > 0:
