@@ -15,9 +15,10 @@ contracts, canonical extraction scorer, validation scorer, and result contracts;
 it did not implement the full evaluation runner, application-level reliability
 execution, release-gate execution, evaluation database lifecycle, latency
 benchmark execution, live Gemini evaluation, token/cost calculation, reference
-result generation, optimization, or the Phase 11 audit. M11C is the next
-milestone and remains `NOT STARTED`; M11C–M11F remain `NOT STARTED`. M11C may
-begin only after this M11B closeout is independently checked. Phase 11 remains
+result generation, optimization, or the Phase 11 audit. M11C — Correctness,
+Routing & Reliability Evaluation is `IN PROGRESS` and is limited to Tasks 5–7
+in the approved implementation plan; it must stop for independent review and
+human approval before M11D. M11D–M11F remain `NOT STARTED`. Phase 11 remains
 `IN PROGRESS` and Phase 12 remains `NOT STARTED`. It defines the evaluation contract and
 implementation boundary; it does not implement the evaluator.
 
