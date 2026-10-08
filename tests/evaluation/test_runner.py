@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from opsflow.domain import OrderState
 from opsflow.evaluation.corpus import EvaluationBusinessDataProvider, load_catalog, load_manifest
@@ -19,7 +27,10 @@ from opsflow.evaluation.runner import run_case, run_corpus
 from opsflow.extraction.provider import StructuredGenerationRequest
 from opsflow.orchestration.composition import OrchestrationRuntime
 from opsflow.orchestration.contracts import IntakeExecution, OrchestrationIntakeResult
+from opsflow.persistence.models import SourceDocumentModel
+from opsflow.persistence.repositories import get_audit_events, get_extraction_snapshot, get_order
 from opsflow.review.composition import ReviewDateProvider
+from opsflow.validation.models import ApprovalLevel
 from opsflow.validation.policy import ValidationPolicy
 
 
@@ -54,6 +65,191 @@ def _runtime(factory=None) -> OrchestrationRuntime:
         date_provider=_FixedDateProvider(),
         review_base_url="https://review.invalid/evaluation",
     )
+
+
+class _RecordingBusinessDataProvider:
+    def __init__(self, delegate: EvaluationBusinessDataProvider) -> None:
+        self.delegate = delegate
+        self.requests = []
+
+    async def get_validation_data(self, request):
+        self.requests.append(request)
+        return await self.delegate.get_validation_data(request)
+
+
+@pytest.fixture
+def m11c_session_factory() -> Iterator[async_sessionmaker[AsyncSession]]:
+    configured_url = os.environ.get("OPSFLOW_M11C_TEST_DATABASE_URL")
+    if not configured_url:
+        pytest.skip("M11C real-path tests require OPSFLOW_M11C_TEST_DATABASE_URL")
+    parsed_url = make_url(configured_url)
+    if parsed_url.get_backend_name() != "postgresql":
+        pytest.fail("M11C real-path tests require a PostgreSQL database")
+    if parsed_url.database is None or not parsed_url.database.startswith("opsflow_m11c_"):
+        pytest.fail("M11C real-path tests require a separately named disposable database")
+    engine = create_async_engine(configured_url, poolclass=NullPool)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        yield factory
+    finally:
+        asyncio.run(engine.dispose())
+
+
+async def _source_order_observation(
+    session_factory: async_sessionmaker[AsyncSession],
+    case,
+):
+    async with session_factory() as session:
+        source = await session.scalar(
+            select(SourceDocumentModel).where(SourceDocumentModel.sha256 == case.source.sha256)
+        )
+        assert source is not None
+        persisted = await get_order(session, source.order_id)
+        snapshot = await get_extraction_snapshot(session, source.order_id, source.id)
+        audits = await get_audit_events(session, source.order_id)
+    return persisted, snapshot, audits
+
+
+def _real_case_runtime(case, business_data_provider=None) -> OrchestrationRuntime:
+    runtime = _runtime(ScriptedProviderFactory(case))
+    return OrchestrationRuntime(
+        extraction_provider_factory=runtime.extraction_provider_factory,
+        business_data_provider=business_data_provider or runtime.business_data_provider,
+        policy=runtime.policy,
+        date_provider=runtime.date_provider,
+        review_base_url=runtime.review_base_url,
+    )
+
+
+def test_real_postgresql_path_persists_ready_order_and_request_driven_lookup(
+    m11c_session_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import opsflow.orchestration.composition as composition
+
+    monkeypatch.setattr(
+        composition,
+        "GeminiProvider",
+        lambda *_args, **_kwargs: pytest.fail("real provider-free path must not construct Gemini"),
+    )
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "retry-email-001")
+    catalog = load_catalog(Path("evals/corpus/v1/trusted-data/catalog.json"))
+    provider = _RecordingBusinessDataProvider(EvaluationBusinessDataProvider(catalog))
+    runtime = _real_case_runtime(case, provider)
+
+    async def exercise():
+        result = await run_case(
+            m11c_session_factory,
+            case,
+            runtime,
+            EvaluationMode.PROVIDER_FREE,
+        )
+        persisted, snapshot, audits = await _source_order_observation(m11c_session_factory, case)
+        return result, persisted, snapshot, audits
+
+    result, persisted, snapshot, audits = asyncio.run(exercise())
+
+    assert persisted is not None
+    assert snapshot is not None
+    assert result.status is CaseResultStatus.PASS
+    assert result.actual.route == case.expected_validation.route
+    assert result.actual.pre_approval_state is OrderState.READY_FOR_APPROVAL
+    assert result.provider.name == "fake"
+    assert result.provider.calls == 1
+    assert provider.requests
+    request = provider.requests[0]
+    assert request.customer_reference == snapshot.draft.customer_reference
+    assert request.skus == tuple(line.sku for line in snapshot.draft.lines)
+    assert persisted.order.state is OrderState.READY_FOR_APPROVAL
+    assert audits[-1].event_type == "ORDER_READY_FOR_APPROVAL"
+    assert result.model_dump(mode="json")["provider"]["name"] == "fake"
+
+
+def test_real_postgresql_path_persists_deterministic_violation_truth(
+    m11c_session_factory,
+) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "deterministic-csv-001")
+    runtime = _real_case_runtime(case)
+
+    async def exercise():
+        result = await run_case(
+            m11c_session_factory,
+            case,
+            runtime,
+            EvaluationMode.PROVIDER_FREE,
+        )
+        persisted, snapshot, _audits = await _source_order_observation(m11c_session_factory, case)
+        return result, persisted, snapshot
+
+    result, persisted, snapshot = asyncio.run(exercise())
+
+    assert persisted is not None
+    assert snapshot is not None
+    assert result.actual.route is case.expected_validation.route
+    assert result.actual.approval_level is ApprovalLevel.STANDARD
+    assert result.actual.pre_approval_state is OrderState.NEEDS_REVIEW
+    assert tuple(
+        (issue.rule_code, issue.severity) for issue in persisted.validation_issues
+    ) == tuple(
+        (code, case.expected_validation.issue_severities[code])
+        for code in case.expected_validation.issue_codes
+    )
+    assert persisted.order.state is OrderState.NEEDS_REVIEW
+
+
+def test_real_postgresql_path_records_bounded_processing_failure(
+    m11c_session_factory,
+) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "security-email-001")
+    runtime = _real_case_runtime(case)
+
+    async def exercise():
+        result = await run_case(
+            m11c_session_factory,
+            case,
+            runtime,
+            EvaluationMode.PROVIDER_FREE,
+        )
+        return result, *(await _source_order_observation(m11c_session_factory, case))
+
+    result, persisted, snapshot, audits = asyncio.run(exercise())
+
+    assert persisted is not None
+    assert snapshot is None
+    assert result.actual.parse is CaseResultStatus.ERROR
+    assert result.actual.extraction_contract is CaseResultStatus.ERROR
+    assert result.actual.external_execution_eligible is False
+    assert persisted.order.state is OrderState.FAILED_FINAL
+    assert persisted.order.failure_origin is OrderState.PROCESSING
+    assert audits[-1].event_type == "ORDER_PROCESSING_FAILED"
+
+
+def test_real_postgresql_security_source_cannot_authorize_side_effects(
+    m11c_session_factory,
+) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "security-csv-001")
+    runtime = _real_case_runtime(case)
+
+    async def exercise():
+        result = await run_case(
+            m11c_session_factory,
+            case,
+            runtime,
+            EvaluationMode.PROVIDER_FREE,
+        )
+        return result, *(await _source_order_observation(m11c_session_factory, case))
+
+    result, persisted, _snapshot, _audits = asyncio.run(exercise())
+
+    assert persisted is not None
+    assert result.actual.external_execution == "NOT_RUN"
+    assert result.actual.external_execution_eligible is False
+    assert result.actual.route is not None
+    assert result.actual.approval_level is ApprovalLevel.STANDARD
+    assert result.actual.pre_approval_state is not OrderState.APPROVED
 
 
 def test_run_case_uses_the_orchestration_intake_seam_and_serializes_actuals(monkeypatch) -> None:
