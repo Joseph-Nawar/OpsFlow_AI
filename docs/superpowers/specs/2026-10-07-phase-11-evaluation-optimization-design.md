@@ -7,11 +7,18 @@ Optimization. M11A design is `APPROVED` at
 `bde63c54a66486aea8c1e7292887d004bf9e91f4`; the implementation plan is
 `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11A overall is
 `COMPLETE`. M11A completed the design and implementation-planning gate only;
-M11B implementation is `IN PROGRESS` within Tasks 1–4. No full benchmark
-evaluator, runner, or reference evidence has been implemented. M11B must stop
-after Tasks 1–4 for independent review, remediation/re-review if needed, human
-approval, and durable M11B closeout before M11C. M11C–M11F are `NOT STARTED`;
-Phase 11 remains `IN PROGRESS` and Phase 12 remains `NOT STARTED`. It defines the evaluation contract and
+M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at
+independently reviewed technical baseline
+`c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned
+36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth
+contracts, canonical extraction scorer, validation scorer, and result contracts;
+it did not implement the full evaluation runner, application-level reliability
+execution, release-gate execution, evaluation database lifecycle, latency
+benchmark execution, live Gemini evaluation, token/cost calculation, reference
+result generation, optimization, or the Phase 11 audit. M11C is the next
+milestone and remains `NOT STARTED`; M11C–M11F remain `NOT STARTED`. M11C may
+begin only after this M11B closeout is independently checked. Phase 11 remains
+`IN PROGRESS` and Phase 12 remains `NOT STARTED`. It defines the evaluation contract and
 implementation boundary; it does not implement the evaluator.
 
 The design is grounded in the repository at starting SHA
