@@ -298,7 +298,11 @@ def score_extraction_quality(
     reached = [
         result
         for result in results
-        if result.provider_reached and result.expected_extraction is not None
+        if (
+            result.provider_reached
+            and result.provider_name == "gemini"
+            and result.expected_extraction is not None
+        )
     ]
     scores: list[PositionedExtractionScore] = []
     for result in reached:

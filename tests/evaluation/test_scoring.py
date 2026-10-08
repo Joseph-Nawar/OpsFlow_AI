@@ -314,9 +314,18 @@ def test_live_quality_denominator_contains_only_cases_that_reached_gemini() -> N
     failed_after_call = case(
         expected_value=expected(), predicted=None, reached=True, status=CaseResultStatus.FAILED
     )
+    fake_reached = CaseResult(
+        case_id="scripted-001",
+        status=CaseResultStatus.SUCCEEDED,
+        provider_reached=True,
+        provider_name="fake",
+        provider_call_count=1,
+        expected_extraction=expected(),
+        predicted_extraction=draft(),
+    )
 
     result = score_extraction_quality(
-        [reached, not_reached, failed_after_call], EvaluationMode.LIVE_GEMINI
+        [reached, not_reached, failed_after_call, fake_reached], EvaluationMode.LIVE_GEMINI
     )
 
     assert result.status is ExtractionQualityStatus.AVAILABLE
