@@ -446,10 +446,7 @@ def evaluate_release_gates(
             tuple(corpus.cases),
             lambda case, result: (
                 result.provider.name != "gemini"
-                and (
-                    result.actual.external_execution != "COMPLETED"
-                    or case.approval is not None
-                )
+                and (result.actual.external_execution != "COMPLETED" or case.approval is not None)
             ),
         ),
     )
