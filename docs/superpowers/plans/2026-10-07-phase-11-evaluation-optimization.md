@@ -142,12 +142,18 @@ deterministic serialization.
 - **Existing:** `ExtractionDraft` and `ExtractedLine` from
   `src/opsflow/extraction/models.py`; `CanonicalDocument` from
   `src/opsflow/documents/models.py`; `ValidationFacts`, `ValidationRoute`,
-  `BusinessDataLookupRequest`, `TrustedBusinessData`, `TrustedCustomer`, and
-  `TrustedProduct` from `src/opsflow/validation/models.py`; `BusinessDataProvider`,
+  `ApprovalLevel`, `BusinessDataLookupRequest`, `TrustedBusinessData`,
+  `TrustedCustomer`, and `TrustedProduct` from
+  `src/opsflow/validation/models.py`; `SourceDocumentType`,
+  `ValidationSeverity`, and `ValidationIssue` from
+  `src/opsflow/domain/records.py`; `OrderState` from
+  `src/opsflow/domain/order.py`; `BusinessDataProvider`,
   `normalize_customer_name`, and `validate_trusted_business_data` from
   `src/opsflow/validation/business_data.py`; `OrchestrationRuntime` from
   `src/opsflow/orchestration/composition.py`; and
-  `async_sessionmaker[AsyncSession]` from `src/opsflow/database.py` / SQLAlchemy.
+  `OrderSyncStep`, `OrderSyncFailureCode`, and `ExecuteNextKind` from
+  `src/opsflow/order_sync/contracts.py`; `async_sessionmaker[AsyncSession]`
+  from `src/opsflow/database.py` / SQLAlchemy.
 - **Standard/dependency types:** `Path`, `Mapping`, and `Sequence` are from the
   standard library; `Decimal`, `date`, `datetime`, `UUID`, and `Literal` retain
   their standard-library meanings; `AsyncEngine` is SQLAlchemy’s existing async
@@ -156,15 +162,69 @@ deterministic serialization.
 - **Task 1:** `EvaluationMode` is an enum with exactly `provider_free` and
   `live_gemini`; `CaseCategory` is an enum with exactly `normal`, `edge`,
   `security`, `deterministic_violation`, `duplicate`, and `retry_recovery`.
-- **Task 1:** `SourceSpec(relative_path: str, sha256: str, document_type: str,
-  mime_type: str)`.
-- **Task 1:** `ExpectedExtraction(header_fields: tuple[tuple[str, CanonicalValue], ...],
-  lines: tuple[tuple[tuple[str, CanonicalValue], ...], ...])`.
-- **Task 1:** `CorpusCase(case_id: str, category: CaseCategory, source: SourceSpec,
-  expected_extraction: ExpectedExtraction, expected_route: ValidationRoute,
-  expected_issue_codes: tuple[str, ...], validation_facts: ValidationFacts)`.
-- **Task 1:** `CorpusManifest(version: str, cases: tuple[CorpusCase, ...],
-  trusted_catalog_path: str)`.
+- **Task 1:** `SourceSpec(path: str, document_type: SourceDocumentType,
+  mime_type: str, sha256: str)`, where `path` is the serialized
+  `source.path` relative to the corpus-version directory. It uses the existing
+  `SourceDocumentType` enum; it is not a free-form document-type string and is
+  not renamed to `relative_path`.
+- **Task 1:** `ExpectedLine(sku: str | None, description: str | None,
+  quantity: Decimal | None, submitted_price: Decimal | None)` and
+  `ExpectedExtraction(customer_name: str | None, customer_reference: str | None,
+  po_number: str | None, order_date: date | None,
+  requested_delivery_date: date | None, currency: str | None,
+  notes: str | None, lines: tuple[ExpectedLine, ...])`. These are the
+  human-readable named manifest fields; they are not generic header tuples.
+- **Task 1:** `ExpectedValidation(route: ValidationRoute,
+  approval_level: ApprovalLevel | None, issue_codes: tuple[str, ...],
+  issue_severities: Mapping[str, ValidationSeverity],
+  pre_approval_state: OrderState, external_execution_eligible: bool)`. These
+  fields serialize the approved `issue_codes` and `issue_severities` manifest
+  members directly; the scorer canonicalizes their paired code/severity facts
+  into a multiset for comparison.
+- **Task 1:** `TrustedBusinessDataExpectation(fixture_path: str,
+  facts: ValidationFacts)`; it is present only when deterministic validation
+  runs. `fixture_path` identifies a synthetic catalog/lookup fixture and
+  `facts` carries the manifest-directed OpsFlow-local duplicate/document
+  facts.
+- **Task 1:** `ApprovalScenario(role: str, action: str,
+  expected_state: OrderState)` is present only for approval cases;
+  `expected_state` is validated as the approved `OrderState.APPROVED` value.
+  The role and action are deterministic test configuration, and the runner
+  supplies the actor; neither document text nor provider output can supply
+  them.
+- **Task 1:** `ReplayDisposition` is an evaluation enum containing exactly
+  `REPLAYED_EXISTING` and `STANDING_DOWN`; `ReplayScenario(duplicate_group_id: str,
+  seed_case_id: str, replay_attempt_count: int,
+  expected_disposition: ReplayDisposition)` is present only for duplicate
+  cases.
+- **Task 1:** `RecoveryScenario(injected_stage: str, failure_code: str,
+  expected_resume_origin: OrderState, expected_durable_outcome: str,
+  expected_final_state: OrderState, preserve_prior_receipts: bool)` is present
+  only for retry cases. `injected_stage`, `failure_code`,
+  `expected_resume_origin`, and `expected_durable_outcome` are bounded to the
+  approved manifest values during validation; they are not arbitrary runtime
+  instructions. Existing `OrderState` is reused for resume/final state; when
+  the injected stage or failure is an order-sync scenario, validation reuses
+  the existing `OrderSyncStep`, `OrderSyncFailureCode`, and bounded execution
+  outcome values rather than inventing a parallel production enum.
+- **Task 1:** `CorpusCase(case_id: str, primary_category: CaseCategory,
+  tags: tuple[str, ...], source: SourceSpec,
+  expected_extraction: ExpectedExtraction | None,
+  trusted_business_data: TrustedBusinessDataExpectation | None,
+  expected_validation: ExpectedValidation | None,
+  approval: ApprovalScenario | None, replay: ReplayScenario | None,
+  recovery: RecoveryScenario | None)`. Validation enforces the M11A
+  category/scenario requirements: extraction is omitted for parser-only or
+  failure cases; trusted data and validation are both required and paired when
+  validation runs and both omitted otherwise; approval, replay, and recovery
+  appear only for their corresponding scenarios; irrelevant optional objects
+  are omitted. A repeated source SHA is allowed and is not a case-identity
+  constraint.
+- **Task 1:** `CorpusManifest(schema_version: str, corpus_version: str,
+  cases: tuple[CorpusCase, ...], trusted_catalog_path: str | None)`. The
+  serialized identity remains `schema_version` and `corpus_version`; the
+  optional catalog path is retained only if the implementation keeps a global
+  catalog reference in addition to per-case fixture paths.
 - **Task 1:** `TrustedCatalog(customers: tuple[TrustedCustomer, ...],
   products: tuple[TrustedProduct, ...])`.
 - **Task 2:** `EvaluationBusinessDataProvider(catalog: TrustedCatalog)` is a
@@ -172,29 +232,57 @@ deterministic serialization.
   protocol; its only produced method is
   `get_validation_data(request: BusinessDataLookupRequest) -> TrustedBusinessData`.
 - **Task 1:** `FieldCounts(tp: int, fp: int, fn: int)`;
-  `CanonicalExtractionProjection(header_fields: tuple[tuple[str, CanonicalValue], ...],
-  lines: tuple[tuple[tuple[str, CanonicalValue], ...], ...])`;
-  `PositionedExtractionScore(exact_match: bool, total: FieldCounts,
-  per_field: tuple[tuple[str, FieldCounts], ...], micro_precision: Decimal,
-  micro_recall: Decimal, micro_f1: Decimal)`; and
-  `ValidationOutcomeScore(route_match: bool, issue_codes_match: bool,
-  expected_route: ValidationRoute, actual_route: ValidationRoute,
-  missing_issue_codes: tuple[str, ...], unexpected_issue_codes: tuple[str, ...])`.
-- **Task 1:** `ExtractionQuality(status: Literal["AVAILABLE", "NOT_APPLICABLE"], complete_exact_match: bool | None,
-  field_tp: int | None, field_fp: int | None, field_fn: int | None,
-  field_precision: Decimal | None, field_recall: Decimal | None,
-  field_f1: Decimal | None, per_field: tuple[tuple[str, FieldCounts], ...],
-  denominator: int, reason: str)`; `CaseResult` contains `case_id`, `mode`,
-  `status: Literal["PASS", "FAIL", "ERROR"]`, `provider_reached: bool`,
-  `validation_route: ValidationRoute | None`, `issue_codes: tuple[str, ...]`,
-  contract evidence, and an optional internal predicted extraction used for
-  scoring but excluded from serialized artifacts; `EvaluationRunResult` contains
-  `run_id: str`, `started_at: datetime`, `finished_at: datetime`, `git_sha: str`,
-  `corpus_version: str`, `result_schema_version: str`,
-  `scorer_contract_version: str`, `mode: EvaluationMode`, `command: str`,
-  environment metadata, ordered `CaseResult` values, `ExtractionQuality`, gate
-  facts, measurements, usage/cost facts, and limitations. Raw source bytes/text
-  and secrets are never fields of serialized result models.
+  `CanonicalExtractionProjection(field_facts: tuple[tuple[str, CanonicalValue], ...])`
+  is an internal immutable scoring projection produced by
+  `project_extraction(...)` from either an `ExpectedExtraction` or an
+  `ExtractionDraft`; it is not a manifest model and is never hand-authored in
+  the corpus JSON. `RateMetric(numerator: int, denominator: int,
+  value: Decimal | None)` represents an aggregate rate and keeps undefined
+  math as `value=None`.
+- **Task 1:** `FieldMetric(counts: FieldCounts, precision: RateMetric,
+  recall: RateMetric, f1: RateMetric)` preserves TP/FP/FN and each rate’s
+  numerator, denominator, and nullable value. `PositionedExtractionScore(
+  exact_match: bool, total: FieldCounts,
+  per_field: tuple[tuple[str, FieldMetric], ...],
+  micro_precision: RateMetric, micro_recall: RateMetric,
+  micro_f1: RateMetric)` uses a boolean only for the per-case positioned
+  complete match; undefined precision, recall, and F1 remain null rather than
+  becoming zero.
+- **Task 1:** `ValidationOutcomeScore(route_match: bool,
+  approval_level_applicable: bool, approval_level_match: bool | None,
+  pre_approval_state_match: bool, issue_multiset_match: bool,
+  expected_route: ValidationRoute | None, actual_route: ValidationRoute | None,
+  expected_approval_level: ApprovalLevel | None,
+  actual_approval_level: ApprovalLevel | None,
+  expected_pre_approval_state: OrderState | None,
+  actual_pre_approval_state: OrderState | None,
+  missing_issue_facts: tuple[tuple[str, ValidationSeverity], ...],
+  unexpected_issue_facts: tuple[tuple[str, ValidationSeverity], ...],
+  overall_match: bool)`. Routing agreement therefore exposes route,
+  approval-level applicability, durable pre-approval state, and the canonical
+  code/severity multiset separately.
+- **Task 1:** `ExtractionQuality(status: Literal["AVAILABLE", "NOT_APPLICABLE"],
+  complete_exact_match: RateMetric | None, field_tp: int | None,
+  field_fp: int | None, field_fn: int | None,
+  field_micro_precision: RateMetric | None,
+  field_micro_recall: RateMetric | None, field_micro_f1: RateMetric | None,
+  per_field: tuple[tuple[str, FieldMetric], ...] | None,
+  reached_live_gemini_case_count: int, reason: str)`. A live complete exact
+  match is the reached-case rate; provider-free mode has status
+  `NOT_APPLICABLE` and null quality metrics. `CaseResult` contains the
+  serialized per-case envelope and, when exercised, actual route, approval
+  level, durable state, issue code/severity facts, replay disposition,
+  notification result, sync step/receipt facts, logical side-effect counts,
+  provider reachability/call information (using existing `ValidationIssue`
+  facts where applicable), bounded contract evidence, and an
+  optional internal predicted extraction used for scoring but excluded from
+  serialized artifacts. `EvaluationRunResult` contains the run-level corpus
+  composition, extraction-contract evidence, mode-scoped extraction quality,
+  routing/safety metrics, latency, provider usage, cost, pricing
+  identity/status, release gates, limitations, and run/environment identity,
+  including `run_id`, timestamps, Git SHA, corpus version, result schema
+  version, scorer/evaluation contract version, mode, and command. Raw source
+  bytes/text and secrets are never fields of serialized result models.
 - **Task 8:** `ProviderCallRecord(initial_case_id: str, initial_order_id: UUID | None,
   attempt_index: int, duration_ms: Decimal, input_tokens: int | None,
   output_tokens: int | None, total_tokens: int | None,
@@ -220,10 +308,10 @@ deterministic serialization.
 **Files:**
 
 - Create `src/opsflow/evaluation/__init__.py` with the small public evaluation package surface.
-- Create `src/opsflow/evaluation/models.py` containing strict Pydantic/dataclass models for `EvaluationMode`, corpus source metadata, case category/format, expected extraction, expected route/issues, trusted catalog records, per-case results, extraction-quality status, release-gate facts, usage counters, run metadata, and the initial versioned result schema.
+- Create `src/opsflow/evaluation/models.py` containing strict Pydantic/dataclass models for `EvaluationMode`, corpus source metadata, case category/format, named expected extraction, conditional trusted-data/validation/approval/replay/recovery scenarios, trusted catalog records, per-case results, extraction-quality status, release-gate facts, usage counters, run metadata, and the initial versioned result schema.
 - Create `src/opsflow/evaluation/corpus.py` with the manifest loader and source-verification interface:
   - `load_manifest(corpus_root: Path) -> CorpusManifest`;
-  - `resolve_manifest_source(corpus_root: Path, relative_path: str) -> Path`;
+  - `resolve_manifest_source(corpus_root: Path, source_path: str) -> Path`;
   - `verify_source_sha256(source_path: Path, expected_sha256: str) -> None`.
 - Create `tests/evaluation/test_corpus_contracts.py`.
 - Create `tests/evaluation/test_result_contracts.py`.
@@ -232,7 +320,7 @@ deterministic serialization.
 
 **Interfaces produced:** strict manifest/case/result models consumed by Tasks 2–4 and later runner/artifact tasks. Result models must represent provider-free extraction quality as `status="NOT_APPLICABLE"`, nullable live-quality fields, and an explicit limitation reason.
 
-**RED:** write tests first for malformed manifests, unsupported category/format, duplicate case IDs, missing required expected-result sections, illegal result status combinations, and a provider-free result that attempts to provide an extraction score. Assert serialization is JSON-safe and rejects raw document bytes, raw document text, API keys, authorization headers, and arbitrary secret-bearing metadata.
+**RED:** write tests first for malformed manifests, unsupported category/format, duplicate case IDs, missing required extraction sections only on extraction cases, missing trusted-data/validation sections only when validation runs, illegal optional scenario/category combinations, illegal result status combinations, and a provider-free result that attempts to provide an extraction score. Assert serialization is JSON-safe and rejects raw document bytes, raw document text, API keys, authorization headers, and arbitrary secret-bearing metadata.
 
 **Focused command:** `uv run pytest tests/evaluation/test_corpus_contracts.py tests/evaluation/test_result_contracts.py -q`.
 
@@ -246,7 +334,7 @@ deterministic serialization.
 
 **Files:**
 
-- Create `evals/corpus/v1/manifest.json`, version `1.0.0`, declaring exactly 36 cases, their human-authored expected extraction/route/issue outcomes, source relative paths, SHA-256 digests, document formats/MIME values, category distribution, and manifest-driven local `ValidationFacts` where needed.
+- Create `evals/corpus/v1/manifest.json`, version `1.0.0`, declaring exactly 36 cases, their human-authored expected extraction and conditional route/issue/approval/replay/recovery outcomes, source paths, SHA-256 digests, document formats/MIME values, category distribution, and manifest-driven local `ValidationFacts` where needed.
 - Create the 36 manifest-declared source files below `evals/corpus/v1/documents/`: nine EMAIL_BODY/text cases, nine CSV cases, nine XLSX cases, and nine PDF cases. Use the manifest’s explicit case IDs and ensure every path is safe and every digest is committed with the source.
 - Create `evals/corpus/v1/trusted-data/catalog.json` containing only synthetic lookup data sufficient for exact customer reference, normalized customer name, product SKU, active state, currency, catalogue price, and available quantity. It must not contain an expected-extraction-to-result map.
 - Extend `src/opsflow/evaluation/corpus.py` with `load_catalog(catalog_path: Path) -> TrustedCatalog` and `EvaluationBusinessDataProvider`, implementing the existing `BusinessDataProvider` request contract and canonical candidate ordering.
@@ -275,7 +363,7 @@ deterministic serialization.
   - `canonicalize_value(field_name: str, value: object) -> CanonicalValue`;
   - `project_extraction(extraction: ExtractionDraft | ExpectedExtraction) -> CanonicalExtractionProjection`;
   - `score_positioned_extraction(expected: CanonicalExtractionProjection, predicted: CanonicalExtractionProjection) -> PositionedExtractionScore`;
-  - `score_validation_outcome(expected: CorpusCase, actual: CaseResult) -> ValidationOutcomeScore`;
+  - `score_validation_outcome(expected: ExpectedValidation | None, actual: CaseResult) -> ValidationOutcomeScore | None`;
   - `score_extraction_quality(results: Sequence[CaseResult], mode: EvaluationMode) -> ExtractionQuality`.
 - Create `tests/evaluation/test_scoring.py`.
 
@@ -283,7 +371,7 @@ deterministic serialization.
 
 **Interfaces produced:** exact-match, field TP/FP/FN, micro precision/recall/F1, per-field scores, route/issue comparison, and mode-gated extraction-quality values for the result/artifact layers.
 
-**RED:** test NFC normalization, exact case-sensitive identifiers, string trimming rules, Decimal normalization, ISO date normalization, null handling, equal and unequal complete projections, wrong value as one FN plus one FP, missing/extra lines, line-position mismatch, per-field counts, micro formulas, and expected route/issue comparison. Test that provider-free input containing a scripted perfect prediction returns `NOT_APPLICABLE` and all live/model quality values `null`; test that only live results whose cases reached real Gemini can contribute quality denominators.
+**RED:** test NFC normalization, exact case-sensitive identifiers, string trimming rules, Decimal normalization, ISO date normalization, null handling, equal and unequal complete projections, wrong value as one FN plus one FP, missing/extra lines, line-position mismatch, per-field counts, micro formulas including undefined nullable precision/recall/F1, and validation comparison across route, optional approval level, durable pre-approval state, and code/severity issue multiset. Test that parser-only/failure cases bypass extraction and validation scoring cleanly. Test that provider-free input containing a scripted perfect prediction returns `NOT_APPLICABLE` and all live/model quality values `null`; test that only live results whose cases reached real Gemini can contribute quality denominators.
 
 **Focused command:** `uv run pytest tests/evaluation/test_scoring.py -q`.
 
@@ -370,7 +458,11 @@ deterministic serialization.
 - Extend `src/opsflow/evaluation/runner.py` with complete v1 provider-free corpus execution and direct-LLM-authority probe collection.
 - Create `tests/evaluation/test_release_gates.py`.
 
-**Interfaces consumed:** Task 5–6 case outcomes; approved five release-gate definitions; existing application authority boundaries.
+**Interfaces consumed:** Task 5–6 case outcomes; each `CorpusCase` optional
+scenario and validation expectation; `ValidationOutcomeScore` components for
+route, optional approval level, durable pre-approval state, and issue
+code/severity facts; approved five release-gate definitions; existing
+application authority boundaries.
 
 **Interfaces produced:** gate facts and pass/fail reasons included in the structured run result.
 
@@ -637,5 +729,15 @@ No application tests or live providers are run during this planning task.
 - M11E begins with the committed M11D references, permits a no-change outcome, and forbids non-comparable latency claims and unmeasured optimization categories.
 - M11F audits every normative contract independently from a frozen M11E SHA in a fresh context and blocks close for unresolved Critical/High/Medium findings.
 - Every Review Focus risk has an owning test: fake-quality leakage (Tasks 3–4), trusted-data bias (Task 2), DB contamination (Task 9), incomplete cost usage (Task 8), and non-comparable optimization (Task 13).
+- Manifest-facing types remain human-readable and conditional: named
+  `ExpectedExtraction`, optional validation/trusted-data/approval/replay/recovery
+  scenarios, serialized `source.path`, and `schema_version`/`corpus_version`.
+- `ExpectedExtraction` remains distinct from the internal
+  `CanonicalExtractionProjection`; per-case exact match is boolean, while
+  aggregate rates use `RateMetric` and preserve undefined values as null.
+- Validation scoring exposes route, optional approval level, durable state, and
+  code/severity issue-multiset agreement; parser-only/failure cases can omit
+  extraction and validation without placeholder objects. Tasks 1–16 use these
+  contracts consistently.
 - The plan does not add a second state machine, a second retry implementation, a live external benchmark, a Phase 12 deliverable, an implementation-plan file beyond this artifact, or an unresolved placeholder step.
 - Production changes are not pre-authorized; any later change must satisfy the documented measurement-gap and regression-test policy.
