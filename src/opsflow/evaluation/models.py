@@ -7,6 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -54,6 +55,11 @@ type SafeIdentifier = Annotated[
 type BoundedReason = Annotated[
     str,
     StringConstraints(strict=True, min_length=1, max_length=512),
+]
+type AuthorityProbeStatus = Literal["PASS", "FAIL", "ERROR", "NOT_APPLICABLE"]
+type GateId = Annotated[
+    str,
+    StringConstraints(strict=True, min_length=1, max_length=64, pattern=r"^[a-z0-9_]+$"),
 ]
 
 _SHA256 = re.compile(r"[0-9a-f]{64}", re.ASCII)
@@ -646,6 +652,51 @@ class ContractEvidence(ContractModel):
     scorer_self_test: StrictBool | None = None
 
 
+class AuthorityEvidence(ContractModel):
+    """Deterministic evidence that document/provider content lacked authority."""
+
+    operator_context_bound: StrictBool | None = None
+    approval_probe: AuthorityProbeStatus | None = None
+    retry_probe: AuthorityProbeStatus | None = None
+    notification_probe: AuthorityProbeStatus | None = None
+    external_execution_probe: AuthorityProbeStatus | None = None
+    direct_authority_violation_count: NonNegativeInt | None = None
+
+
+class ReplayEvidence(ContractModel):
+    """Layer-specific duplicate observations retained for later gate scoring."""
+
+    creation_disposition: CreateOrderDisposition | None = None
+    intake_execution: IntakeExecution | None = None
+    seed_order_id: UUID | None = None
+    replay_order_id: UUID | None = None
+    authoritative_order_count: NonNegativeInt | None = None
+    provider_calls_before: NonNegativeInt | None = None
+    provider_calls_after: NonNegativeInt | None = None
+    notification_intents_before: NonNegativeInt | None = None
+    notification_intents_after: NonNegativeInt | None = None
+    order_sync_intents_before: NonNegativeInt | None = None
+    order_sync_intents_after: NonNegativeInt | None = None
+    logical_external_object_count: NonNegativeInt | None = None
+    provider_work_stood_down: StrictBool | None = None
+
+
+class RecoveryEvidence(ContractModel):
+    """Durable retry/recovery observations for later JSON/report rendering."""
+
+    injected_stage: OrderState | None = None
+    failure_code: SafeFailureCode | None = None
+    failed_state: OrderState | None = None
+    failure_origin: OrderState | None = None
+    retry_used: StrictBool | None = None
+    retry_generation: NonNegativeInt | None = None
+    final_state: OrderState | None = None
+    receipt_count: NonNegativeInt | None = None
+    receipt_ids: tuple[SafeIdentifier, ...] = ()
+    resumed_sync_steps: tuple[SafeFailureCode, ...] = ()
+    prior_receipts_preserved: StrictBool | None = None
+
+
 class CaseActual(ContractModel):
     """Sanitized per-case actuals; source and provider payloads are excluded."""
 
@@ -654,6 +705,7 @@ class CaseActual(ContractModel):
     route: ValidationRoute | None = None
     approval_level: ApprovalLevel | None = None
     pre_approval_state: OrderState | None = None
+    order_id: UUID | None = None
     issue_facts: tuple[tuple[SafeFailureCode, ValidationSeverity], ...] = ()
     idempotent_replay: StrictBool | None = None
     creation_disposition: CreateOrderDisposition | None = None
@@ -661,6 +713,9 @@ class CaseActual(ContractModel):
     external_execution: SafeFailureCode | None = None
     external_execution_eligible: StrictBool | None = None
     failure_code: SafeFailureCode | None = None
+    authority: AuthorityEvidence | None = None
+    replay: ReplayEvidence | None = None
+    recovery: RecoveryEvidence | None = None
 
 
 class CaseScores(ContractModel):
@@ -668,6 +723,9 @@ class CaseScores(ContractModel):
 
     extraction_exact_match: StrictBool | None = None
     validation_match: StrictBool | None = None
+    reliability_match: StrictBool | None = None
+    replay_match: StrictBool | None = None
+    execution_safety_match: StrictBool | None = None
 
 
 class DurationSummary(ContractModel):
@@ -830,10 +888,22 @@ class CostMetrics(ContractModel):
     missing_pricing_snapshot_count: NonNegativeInt = 0
 
 
+class RoutingMetrics(ContractModel):
+    """Aggregate correctness and reliability rates produced by M11C."""
+
+    full_routing_accuracy: RateMetric | None = None
+    invalid_pass_through: RateMetric | None = None
+    duplicate_blocking: RateMetric | None = None
+    retry_recovery: RateMetric | None = None
+    malformed_security_safety: RateMetric | None = None
+    execution_safety: RateMetric | None = None
+    logical_duplication_count: NonNegativeInt | None = None
+
+
 class MetricsBundle(ContractModel):
     extraction_quality: ExtractionQuality
     extraction_contract: ContractEvidence = Field(default_factory=ContractEvidence)
-    routing: MetricExtension = Field(default_factory=MetricExtension)
+    routing: RoutingMetrics = Field(default_factory=RoutingMetrics)
     safety: MetricExtension = Field(default_factory=MetricExtension)
     latency: MetricExtension = Field(default_factory=MetricExtension)
     provider_usage: MetricExtension = Field(default_factory=MetricExtension)
@@ -857,7 +927,7 @@ class CorpusComposition(ContractModel):
 
 
 class ReleaseGateResult(ContractModel):
-    gate_id: SafeFailureCode
+    gate_id: GateId
     numerator: NonNegativeInt | None = None
     denominator: NonNegativeInt | None = None
     failing_case_ids: tuple[StrictStr, ...] = ()
@@ -921,6 +991,7 @@ class EvaluationRunResult(ContractModel):
 __all__ = [
     "ApprovalLevel",
     "ApprovalScenario",
+    "AuthorityEvidence",
     "BenchmarkValidationContext",
     "BusinessDataLookupRequest",
     "CanonicalValue",
@@ -950,10 +1021,13 @@ __all__ = [
     "PricingStatus",
     "ProviderSummary",
     "RateMetric",
+    "RecoveryEvidence",
     "RecoveryScenario",
+    "ReplayEvidence",
     "ReplayScenario",
     "ReleaseGateResult",
     "ReleaseGateSummary",
+    "RoutingMetrics",
     "RunMetadata",
     "SafeFailureCode",
     "SideEffectSummary",

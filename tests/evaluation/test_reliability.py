@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from db_support import clear_m11c_application_data
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -44,19 +44,7 @@ def isolated_m11c_session_factory() -> Iterator[async_sessionmaker[AsyncSession]
         pytest.fail("M11C reliability tests require a separately named disposable database")
     engine = create_async_engine(configured_url, poolclass=NullPool)
 
-    async def clear_application_data() -> None:
-        async with engine.begin() as connection:
-            await connection.execute(
-                text(
-                    "TRUNCATE TABLE "
-                    "notification_deliveries, order_syncs, validation_issues, "
-                    "extraction_snapshots, review_revisions, audit_events, "
-                    "order_lines, source_documents, order_creation_idempotency, orders "
-                    "RESTART IDENTITY CASCADE"
-                )
-            )
-
-    asyncio.run(clear_application_data())
+    asyncio.run(clear_m11c_application_data(engine))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         yield factory
@@ -130,6 +118,16 @@ def test_duplicate_scenarios_use_real_idempotency_without_new_graph(
     assert all(item.authoritative_order_count == 1 for item in outcomes)
     assert all(item.idempotent_replay for item in outcomes)
     assert all(item.logical_external_object_count == 0 for item in outcomes)
+    assert all(item.case_result.scores.replay_match is True for item in outcomes)
+    assert all(item.case_result.actual.replay is not None for item in outcomes)
+    assert all(
+        item.case_result.actual.replay.creation_disposition.value == "REPLAYED_EXISTING"
+        and item.case_result.actual.replay.intake_execution.value == "STANDING_DOWN"
+        and item.case_result.actual.replay.seed_order_id
+        == item.case_result.actual.replay.replay_order_id
+        and item.case_result.actual.replay.provider_work_stood_down
+        for item in outcomes
+    )
 
 
 def test_approved_sync_recovery_uses_real_review_and_phase9_receipts(
@@ -156,6 +154,10 @@ def test_approved_sync_recovery_uses_real_review_and_phase9_receipts(
     assert "ODOO_LOOKUP" not in outcome.resumed_steps
     assert "ODOO_BRIDGE" not in outcome.resumed_steps
     assert outcome.logical_external_object_count == 4
+    assert outcome.case_result.actual.pre_approval_state is OrderState.READY_FOR_APPROVAL
+    assert outcome.case_result.actual.recovery is not None
+    assert outcome.case_result.actual.recovery.final_state is OrderState.COMPLETED
+    assert outcome.case_result.actual.recovery.prior_receipts_preserved is True
 
 
 def test_reliability_outputs_are_provider_free_and_no_live_provider_is_used(

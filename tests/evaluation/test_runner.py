@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from db_support import clear_m11c_application_data
 from sqlalchemy import select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -88,6 +89,7 @@ def m11c_session_factory() -> Iterator[async_sessionmaker[AsyncSession]]:
     if parsed_url.database is None or not parsed_url.database.startswith("opsflow_m11c_"):
         pytest.fail("M11C real-path tests require a separately named disposable database")
     engine = create_async_engine(configured_url, poolclass=NullPool)
+    asyncio.run(clear_m11c_application_data(engine))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         yield factory
@@ -387,3 +389,55 @@ def test_provider_free_runner_does_not_construct_a_live_gemini_provider(monkeypa
     )
 
     assert constructed is False
+
+
+def test_m11c_runner_has_no_evaluation_session_policy_substitution() -> None:
+    import opsflow.evaluation.runner as runner
+
+    assert not hasattr(runner, "_execution_session_factory")
+
+
+def test_provider_free_runner_has_fail_closed_remote_adapter_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    import opsflow.evaluation.runner as runner
+
+    def forbidden_http_client(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("provider-free evaluation must not construct external HTTP clients")
+
+    monkeypatch.setattr(httpx, "AsyncClient", forbidden_http_client)
+    monkeypatch.setattr(runner, "GeminiProvider", forbidden_http_client, raising=False)
+
+    manifest = load_manifest(Path("evals/corpus/v1"))
+
+    async def fake_intake(*_args: object, **_kwargs: object) -> OrchestrationIntakeResult:
+        return OrchestrationIntakeResult(
+            order_id=uuid4(),
+            state=OrderState.NEEDS_REVIEW,
+            failure_origin=None,
+            idempotent_replay=False,
+            execution=IntakeExecution.COMPLETED,
+        )
+
+    monkeypatch.setattr(runner, "execute_orchestration_intake", fake_intake)
+
+    async def fake_reliability(session_factory, case, runtime, mode):
+        return ReliabilityEvidence(
+            case_result=await run_case(session_factory, case, runtime, mode),
+            order_id=uuid4(),
+            failure_state=None,
+            failure_origin=None,
+            final_state=OrderState.NEEDS_REVIEW,
+        )
+
+    monkeypatch.setattr(runner, "run_recovery_scenario", fake_reliability)
+    monkeypatch.setattr(runner, "run_duplicate_scenario", fake_reliability)
+    monkeypatch.setattr(runner, "run_approval_sync_scenario", fake_reliability)
+
+    result = asyncio.run(
+        run_corpus(_FakeSessionFactory(), manifest, _runtime(), EvaluationMode.PROVIDER_FREE)
+    )
+
+    assert len(result.cases) == 36

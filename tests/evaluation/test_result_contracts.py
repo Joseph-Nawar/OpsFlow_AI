@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from opsflow.application.orders import CreateOrderDisposition
 from opsflow.evaluation.models import (
+    AuthorityEvidence,
     CaseActual,
     CaseResult,
     CaseResultStatus,
@@ -23,7 +24,9 @@ from opsflow.evaluation.models import (
     PricingStatus,
     ProviderSummary,
     RateMetric,
+    RecoveryEvidence,
     ReleaseGateSummary,
+    ReplayEvidence,
     RunMetadata,
 )
 
@@ -133,6 +136,53 @@ def test_duplicate_result_separates_creation_and_intake_dispositions() -> None:
 
     with pytest.raises(ValidationError):
         CaseActual(replay_disposition="STANDING_DOWN")  # type: ignore[call-arg]
+
+
+def test_case_result_has_authority_replay_and_recovery_evidence_homes() -> None:
+    actual = CaseActual(
+        authority=AuthorityEvidence(
+            operator_context_bound=True,
+            approval_probe="PASS",
+            retry_probe="NOT_APPLICABLE",
+            notification_probe="PASS",
+            external_execution_probe="PASS",
+            direct_authority_violation_count=0,
+        ),
+        replay=ReplayEvidence(
+            creation_disposition="REPLAYED_EXISTING",
+            intake_execution="STANDING_DOWN",
+            seed_order_id="00000000-0000-0000-0000-000000000001",
+            replay_order_id="00000000-0000-0000-0000-000000000001",
+            authoritative_order_count=1,
+            provider_calls_before=1,
+            provider_calls_after=1,
+            notification_intents_before=1,
+            notification_intents_after=1,
+            order_sync_intents_before=0,
+            order_sync_intents_after=0,
+            logical_external_object_count=0,
+            provider_work_stood_down=True,
+        ),
+        recovery=RecoveryEvidence(
+            injected_stage="SYNCING",
+            failure_code="WORKER_LEASE_EXHAUSTED",
+            failed_state="FAILED_RETRYABLE",
+            failure_origin="SYNCING",
+            retry_used=True,
+            retry_generation=1,
+            final_state="COMPLETED",
+            receipt_count=1,
+            receipt_ids=("receipt-001",),
+            resumed_sync_steps=("HUBSPOT_DEAL",),
+            prior_receipts_preserved=True,
+        ),
+    )
+
+    payload = actual.model_dump(mode="json")
+    assert payload["authority"]["direct_authority_violation_count"] == 0
+    assert payload["replay"]["creation_disposition"] == "REPLAYED_EXISTING"
+    assert payload["replay"]["intake_execution"] == "STANDING_DOWN"
+    assert payload["recovery"]["final_state"] == "COMPLETED"
 
 
 def test_provider_free_result_is_explicitly_not_applicable_for_model_quality() -> None:

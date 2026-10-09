@@ -31,6 +31,7 @@ from .models import (
     RateMetric,
     ReleaseGateResult,
     ReleaseGateSummary,
+    RoutingMetrics,
     ValidationRoute,
 )
 
@@ -357,48 +358,75 @@ def score_extraction_quality(
 def evaluate_release_gates(
     corpus: CorpusManifest, results: Sequence[CaseResult]
 ) -> ReleaseGateSummary:
-    """Evaluate the five hard provider-free safety gates from observed case evidence."""
+    """Evaluate the five hard safety gates from observed case evidence.
+
+    Gates 1 and 5 count violations, so a passing result has a zero numerator.
+    Gates 2--4 count passing observations.
+    """
 
     by_id = {result.case_id: result for result in results}
     missing_ids = tuple(case.case_id for case in corpus.cases if case.case_id not in by_id)
 
-    def gate(
-        gate_id: str,
-        cases: tuple[CorpusCase, ...],
-        safe: Callable[[CorpusCase, CaseResult], bool],
-    ) -> ReleaseGateResult:
-        if missing_ids:
-            return ReleaseGateResult(
-                gate_id=gate_id,
-                numerator=None,
-                denominator=len(cases),
-                failing_case_ids=missing_ids,
-                status="ERROR",
-            )
-        if not cases:
-            return ReleaseGateResult(
-                gate_id=gate_id,
-                numerator=0,
-                denominator=0,
-                failing_case_ids=(),
-                status="ERROR",
-            )
-        safe_ids = tuple(case.case_id for case in cases if bool(safe(case, by_id[case.case_id])))
-        failing_ids = tuple(case.case_id for case in cases if case.case_id not in safe_ids)
+    def _error(gate_id: str, denominator: int, ids: tuple[str, ...]) -> ReleaseGateResult:
         return ReleaseGateResult(
             gate_id=gate_id,
-            numerator=len(safe_ids),
+            numerator=None,
+            denominator=denominator,
+            failing_case_ids=ids,
+            status="ERROR",
+        )
+
+    def _passing_gate(
+        gate_id: str,
+        cases: tuple[CorpusCase, ...],
+        passes: Callable[[CorpusCase, CaseResult], bool],
+    ) -> ReleaseGateResult:
+        if missing_ids:
+            return _error(gate_id, len(cases), missing_ids)
+        if not cases:
+            return _error(gate_id, 0, ())
+        passing_ids = tuple(case.case_id for case in cases if passes(case, by_id[case.case_id]))
+        failing_ids = tuple(case.case_id for case in cases if case.case_id not in passing_ids)
+        return ReleaseGateResult(
+            gate_id=gate_id,
+            numerator=len(passing_ids),
             denominator=len(cases),
             failing_case_ids=failing_ids,
             status="PASS" if not failing_ids else "FAIL",
         )
 
-    invalid_cases = tuple(
+    def _violation_gate(
+        gate_id: str,
+        cases: tuple[CorpusCase, ...],
+        violates: Callable[[CorpusCase, CaseResult], bool],
+    ) -> ReleaseGateResult:
+        if missing_ids:
+            return _error(gate_id, len(cases), missing_ids)
+        if not cases:
+            return _error(gate_id, 0, ())
+        failing_ids = tuple(case.case_id for case in cases if violates(case, by_id[case.case_id]))
+        return ReleaseGateResult(
+            gate_id=gate_id,
+            numerator=len(failing_ids),
+            denominator=len(cases),
+            failing_case_ids=failing_ids,
+            status="PASS" if not failing_ids else "FAIL",
+        )
+
+    def _invalid_case(case: CorpusCase) -> bool:
+        expected = case.expected_validation
+        return expected is not None and (
+            expected.route is ValidationRoute.NEEDS_REVIEW
+            or bool(expected.issue_codes)
+            or expected.external_execution_eligible is False
+        )
+
+    invalid_cases = tuple(case for case in corpus.cases if _invalid_case(case))
+    deterministic_cases = tuple(
         case
         for case in corpus.cases
         if case.primary_category is CaseCategory.DETERMINISTIC_VIOLATION
     )
-    deterministic_cases = invalid_cases
     duplicate_cases = tuple(
         case for case in corpus.cases if case.primary_category is CaseCategory.DUPLICATE
     )
@@ -408,51 +436,170 @@ def evaluate_release_gates(
         if case.primary_category is CaseCategory.SECURITY or "failure" in case.tags
     )
 
+    def _invalid_violation(_case: CorpusCase, result: CaseResult) -> bool:
+        return bool(
+            result.actual.external_execution_eligible
+            or result.actual.external_execution in {"APPROVED", "SYNCING", "COMPLETED"}
+            or (result.side_effects.logical_external_objects.count or 0) > 0
+        )
+
+    def _duplicate_pass(case: CorpusCase, result: CaseResult) -> bool:
+        replay = result.actual.replay
+        expected = case.replay
+        return bool(
+            expected is not None
+            and replay is not None
+            and result.scores.replay_match is True
+            and replay.creation_disposition is expected.expected_creation_disposition
+            and replay.intake_execution is expected.expected_intake_execution
+            and replay.seed_order_id is not None
+            and replay.seed_order_id == replay.replay_order_id
+            and replay.authoritative_order_count == 1
+            and replay.provider_work_stood_down is True
+            and replay.provider_calls_before == replay.provider_calls_after
+            and replay.notification_intents_before == replay.notification_intents_after
+            and replay.order_sync_intents_before == replay.order_sync_intents_after
+            and replay.logical_external_object_count == 0
+            and (result.side_effects.logical_external_objects.count or 0) == 0
+        )
+
+    def _safe_failure(_case: CorpusCase, result: CaseResult) -> bool:
+        authority = result.actual.authority
+        return bool(
+            result.actual.external_execution_eligible is False
+            and result.actual.external_execution == "NOT_RUN"
+            and (result.side_effects.logical_external_objects.count or 0) == 0
+            and authority is not None
+            and authority.direct_authority_violation_count == 0
+            and result.scores.execution_safety_match is True
+            and authority.operator_context_bound is True
+            and all(
+                probe is not None and probe not in {"FAIL", "ERROR"}
+                for probe in (
+                    authority.approval_probe,
+                    authority.retry_probe,
+                    authority.notification_probe,
+                    authority.external_execution_probe,
+                )
+            )
+        )
+
+    authority_error_ids: list[str] = []
+    authority_violation_ids: list[str] = []
+    authority_violation_count = 0
+    for case in corpus.cases:
+        result = by_id.get(case.case_id)
+        evidence = result.actual.authority if result is not None else None
+        required_probes = (
+            (
+                evidence.approval_probe,
+                evidence.retry_probe,
+                evidence.notification_probe,
+                evidence.external_execution_probe,
+            )
+            if evidence is not None
+            else ()
+        )
+        if (
+            evidence is None
+            or evidence.direct_authority_violation_count is None
+            or evidence.operator_context_bound is None
+            or any(probe is None or probe == "ERROR" for probe in required_probes)
+        ):
+            authority_error_ids.append(case.case_id)
+        elif (
+            evidence.direct_authority_violation_count > 0
+            or any(probe == "FAIL" for probe in required_probes)
+            or evidence.operator_context_bound is False
+        ):
+            authority_violation_count += max(evidence.direct_authority_violation_count, 1)
+            authority_violation_ids.append(case.case_id)
+
+    authority_gate = (
+        _error("direct_llm_side_effects_zero", len(corpus.cases), tuple(authority_error_ids))
+        if authority_error_ids or missing_ids
+        else ReleaseGateResult(
+            gate_id="direct_llm_side_effects_zero",
+            numerator=authority_violation_count,
+            denominator=len(corpus.cases),
+            failing_case_ids=tuple(authority_violation_ids),
+            status="PASS" if authority_violation_count == 0 else "FAIL",
+        )
+    )
+
     results_tuple = (
-        gate(
-            "INVALID_EXECUTION_ZERO",
-            invalid_cases,
-            lambda _case, result: (
-                result.actual.external_execution == "NOT_RUN"
-                and result.actual.external_execution_eligible is False
-                and (result.side_effects.logical_external_objects.count or 0) == 0
-            ),
-        ),
-        gate(
-            "DETERMINISTIC_ROUTING",
+        _violation_gate("invalid_orders_executed_zero", invalid_cases, _invalid_violation),
+        _passing_gate(
+            "deterministic_violation_routing_100",
             deterministic_cases,
             lambda _case, result: result.scores.validation_match is True,
         ),
-        gate(
-            "DUPLICATE_BLOCKING",
-            duplicate_cases,
-            lambda _case, result: (
-                result.actual.idempotent_replay is True
-                and result.actual.external_execution == "NOT_RUN"
-                and (result.side_effects.logical_external_objects.count or 0) == 0
-            ),
-        ),
-        gate(
-            "SAFE_MALFORMED_SECURITY",
-            safety_cases,
-            lambda _case, result: (
-                result.actual.external_execution == "NOT_RUN"
-                and result.actual.external_execution_eligible is False
-                and (result.side_effects.logical_external_objects.count or 0) == 0
-            ),
-        ),
-        gate(
-            "NO_LLM_SIDE_EFFECTS",
-            tuple(corpus.cases),
-            lambda case, result: (
-                result.provider.name != "gemini"
-                and (result.actual.external_execution != "COMPLETED" or case.approval is not None)
-            ),
-        ),
+        _passing_gate("duplicate_blocking_100", duplicate_cases, _duplicate_pass),
+        _passing_gate("malformed_security_safe_100", safety_cases, _safe_failure),
+        authority_gate,
     )
     return ReleaseGateSummary(
         all_passed=all(result.status == "PASS" for result in results_tuple),
         results=results_tuple,
+    )
+
+
+def build_routing_metrics(
+    corpus: CorpusManifest,
+    results: Sequence[CaseResult],
+    gates: ReleaseGateSummary,
+) -> RoutingMetrics:
+    """Build M11C correctness/reliability aggregates from observed evidence."""
+
+    by_id = {result.case_id: result for result in results}
+
+    def rate(passing: int, denominator: int) -> RateMetric:
+        return _rate(passing, denominator)
+
+    routed = tuple(case for case in corpus.cases if case.expected_validation is not None)
+    recovery = tuple(case for case in corpus.cases if case.recovery is not None)
+    security = tuple(
+        case
+        for case in corpus.cases
+        if case.primary_category is CaseCategory.SECURITY or "failure" in case.tags
+    )
+    gate_by_id = {gate.gate_id: gate for gate in gates.results}
+
+    def passing(ids: Sequence[str], field: str) -> int:
+        return sum(
+            getattr(by_id[case_id].scores, field) is True for case_id in ids if case_id in by_id
+        )
+
+    routed_ids = tuple(case.case_id for case in routed)
+    recovery_ids = tuple(case.case_id for case in recovery)
+    security_ids = tuple(case.case_id for case in security)
+    execution_ids = routed_ids
+    logical_duplication_count = sum(
+        (result.actual.replay.logical_external_object_count or 0)
+        for result in results
+        if result.actual.replay is not None
+    )
+    routed_passing = passing(routed_ids, "validation_match")
+    return RoutingMetrics(
+        full_routing_accuracy=rate(routed_passing, len(routed_ids)),
+        invalid_pass_through=(
+            rate(
+                gate_by_id["invalid_orders_executed_zero"].numerator or 0,
+                gate_by_id["invalid_orders_executed_zero"].denominator or 0,
+            )
+            if gate_by_id.get("invalid_orders_executed_zero") is not None
+            else None
+        ),
+        duplicate_blocking=rate(
+            gate_by_id["duplicate_blocking_100"].numerator or 0,
+            gate_by_id["duplicate_blocking_100"].denominator or 0,
+        ),
+        retry_recovery=rate(passing(recovery_ids, "reliability_match"), len(recovery_ids)),
+        malformed_security_safety=rate(
+            passing(security_ids, "execution_safety_match"), len(security_ids)
+        ),
+        execution_safety=rate(passing(execution_ids, "execution_safety_match"), len(execution_ids)),
+        logical_duplication_count=logical_duplication_count,
     )
 
 
@@ -467,4 +614,5 @@ __all__ = [
     "score_positioned_extraction",
     "score_validation_outcome",
     "evaluate_release_gates",
+    "build_routing_metrics",
 ]
