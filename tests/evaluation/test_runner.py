@@ -16,10 +16,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+import opsflow.evaluation.runner as runner_module
 from opsflow.domain import OrderState
 from opsflow.evaluation.corpus import EvaluationBusinessDataProvider, load_catalog, load_manifest
 from opsflow.evaluation.doubles import ScriptedProviderFactory
 from opsflow.evaluation.models import (
+    CaseResult,
     CaseResultStatus,
     EvaluationMode,
     ExtractionQualityStatus,
@@ -441,3 +443,56 @@ def test_provider_free_runner_has_fail_closed_remote_adapter_guard(
     )
 
     assert len(result.cases) == 36
+
+
+def test_run_corpus_keeps_benchmark_mismatch_as_structured_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    duplicate_case = next(case for case in manifest.cases if case.replay is not None)
+
+    def result_for(case, status: CaseResultStatus) -> CaseResult:
+        return CaseResult(case_id=case.case_id, status=status)
+
+    async def fake_case(_session_factory, case, _runtime, _mode):
+        return result_for(case, CaseResultStatus.PASS)
+
+    async def fake_duplicate(_session_factory, case, _runtime, _mode):
+        return ReliabilityEvidence(
+            case_result=result_for(
+                case,
+                CaseResultStatus.FAIL
+                if case.case_id == duplicate_case.case_id
+                else CaseResultStatus.PASS,
+            ),
+            order_id=uuid4(),
+            failure_state=None,
+            failure_origin=None,
+            final_state=None,
+        )
+
+    async def fake_recovery(_session_factory, case, _runtime, _mode):
+        return ReliabilityEvidence(
+            case_result=result_for(case, CaseResultStatus.PASS),
+            order_id=uuid4(),
+            failure_state=None,
+            failure_origin=None,
+            final_state=None,
+        )
+
+    monkeypatch.setattr(runner_module, "run_case", fake_case)
+    monkeypatch.setattr(runner_module, "run_duplicate_scenario", fake_duplicate)
+    monkeypatch.setattr(runner_module, "run_recovery_scenario", fake_recovery)
+    monkeypatch.setattr(runner_module, "run_approval_sync_scenario", fake_recovery)
+
+    result = asyncio.run(
+        run_corpus(_FakeSessionFactory(), manifest, _runtime(), EvaluationMode.PROVIDER_FREE)
+    )
+
+    observed = next(case for case in result.cases if case.case_id == duplicate_case.case_id)
+    assert observed.status is CaseResultStatus.FAIL
+    duplicate_gate = next(
+        gate for gate in result.release_gates.results if gate.gate_id == "duplicate_blocking_100"
+    )
+    assert duplicate_gate.status == "FAIL"
+    assert duplicate_case.case_id in duplicate_gate.failing_case_ids
