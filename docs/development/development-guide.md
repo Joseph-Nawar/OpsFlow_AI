@@ -43,12 +43,12 @@ Corpus `1.0.0` is the historical M11B-approved corpus. Corpus `2.0.0` is the
 approved recovery-authority correction at amendment SHA
 `1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C real-path duplicate execution
 showed that Phase 2 creation replay and Phase 7 intake execution expose distinct
-dispositions. Corpus `2.0.0` encoded them in one ambiguous field; pending corpus
+dispositions. Corpus `2.0.0` encoded them in one ambiguous field; approved corpus
 `3.0.0` splits those expectations without changing production behavior, source
-documents, or source SHA-256 values. Corpus `3.0.0` is `PENDING INDEPENDENT
-REVIEW`; M11C is `IN PROGRESS — BLOCKED ON CORPUS 3.0.0 REPLAY-CONTRACT
-AMENDMENT`. M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`;
-Phase 12 remains `NOT STARTED`.
+documents, or source SHA-256 values. The corpus `3.0.0` amendment is approved at
+`7184efb9589445d16e354decd486f28bc90ac09b`; all further Phase 11 evaluation
+execution uses corpus `3.0.0`. M11C is `IN PROGRESS`; M11D–M11F remain
+`NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
 
 ## Working principles
 

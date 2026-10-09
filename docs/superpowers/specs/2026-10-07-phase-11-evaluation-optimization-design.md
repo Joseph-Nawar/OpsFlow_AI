@@ -49,10 +49,10 @@ showed that Phase 2 creation replay and Phase 7 intake execution expose
 distinct production dispositions: `REPLAYED_EXISTING` and `STANDING_DOWN`.
 Corpus `2.0.0` encoded those layers in one ambiguous field. Corpus `3.0.0`
 splits the expectations without changing production behavior, source documents,
-or source SHA-256 values. The corpus `3.0.0` amendment is `PENDING INDEPENDENT
-REVIEW`; M11C is `IN PROGRESS — BLOCKED ON CORPUS 3.0.0 REPLAY-CONTRACT
-AMENDMENT`. M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`;
-Phase 12 remains `NOT STARTED`.
+or source SHA-256 values. The corpus `3.0.0` amendment is approved at
+`7184efb9589445d16e354decd486f28bc90ac09b`; all further Phase 11 evaluation
+execution uses corpus `3.0.0`. M11C is `IN PROGRESS`; M11D–M11F remain
+`NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
 
 Normative words such as **MUST**, **MUST NOT**, **SHOULD**, and **MAY** state
 the implementation contract for M11B–M11F.

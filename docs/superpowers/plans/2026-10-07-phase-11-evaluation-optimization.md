@@ -36,9 +36,10 @@ M11C execution is blocked pending the duplicate replay-contract amendment. M11C
 real-path duplicate execution
 showed that Phase 2 creation replay and Phase 7 intake execution expose distinct
 dispositions; corpus `3.0.0` splits those expectations without changing
-production behavior or source bytes. Corpus `3.0.0` is `PENDING INDEPENDENT
-REVIEW`, and M11C is `IN PROGRESS — BLOCKED ON CORPUS 3.0.0 REPLAY-CONTRACT
-AMENDMENT`. M11D–M11F remain `NOT STARTED`.
+production behavior or source bytes. Corpus `3.0.0` is approved at amendment SHA
+`7184efb9589445d16e354decd486f28bc90ac09b`, and all further Phase 11 evaluation
+execution uses corpus `3.0.0`. M11C is `IN PROGRESS`; M11D–M11F remain
+`NOT STARTED`.
 
 ## Milestone Execution Gates
 
