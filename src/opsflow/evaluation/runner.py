@@ -57,6 +57,7 @@ from opsflow.persistence.models import (
     AuditEventModel,
     ExtractionSnapshotModel,
     NotificationDeliveryModel,
+    OrderCreationIdempotencyModel,
     OrderModel,
     OrderSyncModel,
     SourceDocumentModel,
@@ -931,20 +932,44 @@ async def run_case(
     )
 
 
-async def _order_id_for_case(
-    session_factory: async_sessionmaker[AsyncSession], case: CorpusCase
+async def _order_id_from_intake(
+    session_factory: async_sessionmaker[AsyncSession],
+    case: CorpusCase,
+    result: CaseResult,
+    *,
+    require_creation_identity: bool = False,
 ) -> UUID:
+    """Use and validate the authoritative order identity returned by intake."""
+
+    order_id = result.actual.order_id
+    if not isinstance(order_id, UUID):
+        raise RuntimeError(f"intake returned no durable order for evaluation case {case.case_id}")
     async with session_factory() as session:
         if not hasattr(session, "scalar"):
             raise RuntimeError("durable order lookup requires an application session")
-        order_id = await session.scalar(
-            select(SourceDocumentModel.order_id)
-            .where(SourceDocumentModel.sha256 == case.source.sha256)
-            .order_by(SourceDocumentModel.order_id)
+        source_document_id = await session.scalar(
+            select(SourceDocumentModel.id)
+            .where(
+                SourceDocumentModel.order_id == order_id,
+                SourceDocumentModel.sha256 == case.source.sha256,
+            )
             .limit(1)
         )
-    if not isinstance(order_id, UUID):
-        raise RuntimeError(f"no durable order exists for evaluation case {case.case_id}")
+        if not isinstance(source_document_id, UUID):
+            raise RuntimeError(
+                f"intake order {order_id} has no durable source for evaluation case {case.case_id}"
+            )
+        if require_creation_identity:
+            persisted_order_id = await session.scalar(
+                select(OrderCreationIdempotencyModel.order_id).where(
+                    OrderCreationIdempotencyModel.idempotency_key == f"m11c-{case.case_id}"
+                )
+            )
+            if persisted_order_id != order_id:
+                raise RuntimeError(
+                    f"intake order {order_id} does not match the durable creation identity "
+                    f"for evaluation case {case.case_id}"
+                )
     return order_id
 
 
@@ -1051,7 +1076,7 @@ async def run_recovery_scenario(
         ),
     )
     initial = await run_case(session_factory, case, recovery_runtime, mode)
-    order_id = await _order_id_for_case(session_factory, case)
+    order_id = await _order_id_from_intake(session_factory, case, initial)
     async with session_factory() as session:
         failed = await get_order(session, order_id)
         if failed is None:
@@ -1214,7 +1239,9 @@ async def run_duplicate_scenario(
     await _seed_duplicate_validation_context(session_factory, case)
     before = await _count_orders(session_factory)
     initial = await run_case(session_factory, case, runtime, mode)
-    order_id = await _order_id_for_case(session_factory, case)
+    order_id = await _order_id_from_intake(
+        session_factory, case, initial, require_creation_identity=True
+    )
     await _drain_notifications(session_factory, order_id)
     provider = _provider_observation(runtime)
     provider_calls_before = provider.calls if provider is not None else 0
@@ -1266,6 +1293,7 @@ async def run_duplicate_scenario(
     replay_match = (
         creation_disposition is case.replay.expected_creation_disposition
         and replay.actual.intake_execution is case.replay.expected_intake_execution
+        and replay.actual.order_id == order_id
         and replay_evidence.seed_order_id == replay_evidence.replay_order_id
         and replay_evidence.authoritative_order_count == 1
         and replay_evidence.provider_work_stood_down is True
@@ -1397,7 +1425,7 @@ async def run_approval_sync_scenario(
         raise ValueError("approval and recovery scenarios are required")
     _require_evaluation_provider_factory(runtime)
     initial = await run_case(session_factory, case, runtime, mode)
-    order_id = await _order_id_for_case(session_factory, case)
+    order_id = await _order_id_from_intake(session_factory, case, initial)
     async with session_factory() as session:
         before_approval = await get_order(session, order_id)
         if before_approval is None:
@@ -1760,17 +1788,22 @@ async def run_corpus(
                 )
             else:
                 result = await run_case(session_factory, case, case_runtime, mode)
-                try:
-                    order_id = await _order_id_for_case(session_factory, case)
-                except RuntimeError:
+                if not isinstance(result.actual.order_id, UUID):
                     results.append(result)
                 else:
-                    results.append(
-                        _with_notification_evidence(
-                            result,
-                            await _drain_notifications(session_factory, order_id),
+                    try:
+                        order_id = await _order_id_from_intake(session_factory, case, result)
+                    except RuntimeError as error:
+                        results.append(
+                            _error_result(case, error, _provider_observation(case_runtime))
                         )
-                    )
+                    else:
+                        results.append(
+                            _with_notification_evidence(
+                                result,
+                                await _drain_notifications(session_factory, order_id),
+                            )
+                        )
         except Exception as error:
             results.append(_error_result(case, error, _provider_observation(case_runtime)))
 

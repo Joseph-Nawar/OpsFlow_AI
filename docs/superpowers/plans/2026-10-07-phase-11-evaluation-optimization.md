@@ -32,13 +32,37 @@ historical approved corpus remains `1.0.0`. M11C Task 5 exposed an authority
 contradiction in two intake-recovery final-state expectations; the approved
 corpus correction was `2.0.0` at amendment SHA
 `1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C is `IN PROGRESS`, and further
-M11C execution is blocked pending the duplicate replay-contract amendment. M11C
-real-path duplicate execution
-showed that Phase 2 creation replay and Phase 7 intake execution expose distinct
-dispositions; corpus `3.0.0` splits those expectations without changing
-production behavior or source bytes. Corpus `3.0.0` is approved at amendment SHA
+M11C execution uses the approved duplicate replay-contract amendment. Real-path
+duplicate execution showed that Phase 2 creation replay and Phase 7 intake
+execution expose distinct dispositions; corpus `3.0.0` splits those
+expectations without changing production behavior or source bytes. Corpus
+`3.0.0` is approved at amendment SHA
 `7184efb9589445d16e354decd486f28bc90ac09b`, and all further Phase 11 evaluation
 execution uses corpus `3.0.0`. M11C is `IN PROGRESS`; M11D–M11F remain
+`NOT STARTED`.
+
+### M11C-FINAL-01 — duplicate order identity evidence
+
+Independent review of candidate `a79aa9b4981351370b9bf37b6accb0b9c17117a1`
+found that duplicate evidence selected a durable order by source SHA-256 and
+UUID order. Because the seeded and evaluated documents can share that digest,
+the selected order did not necessarily belong to the evaluated intake. The
+ruling is to retain the order ID returned by initial intake, verify it against
+the case's durable source document and Phase 2 creation idempotency record, and
+use it for all intent counts and replay comparisons. Replay must return that
+same order ID. SHA-256 remains source identity evidence and does not select the
+authoritative order.
+
+PostgreSQL RED→GREEN regression coverage creates two durable source documents
+with the same SHA-256 and a seeded order UUID that sorts before the evaluated
+order. Injected notification and order-sync intents on the evaluated order
+produce structured duplicate-evidence FAIL results; a changed replay order ID
+also fails. All four unmodified duplicate scenarios pass with
+`REPLAYED_EXISTING + STANDING_DOWN` and unchanged durable intent counts. The
+real corpus `3.0.0` run passes all 36 cases and all five hard gates, with zero
+notification or sync intent deltas across duplicate replays. Corpus sources and
+production behavior are unchanged. This finding is remediated and ready for
+independent review; M11C remains `IN PROGRESS` and M11D–M11F remain
 `NOT STARTED`.
 
 ## Milestone Execution Gates

@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Iterator
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from db_support import clear_m11c_application_data
@@ -14,6 +15,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+import opsflow.evaluation.runner as runner_module
 from opsflow.domain import OrderState
 from opsflow.evaluation.corpus import load_catalog, load_manifest
 from opsflow.evaluation.doubles import ScriptedProviderFactory
@@ -25,7 +27,14 @@ from opsflow.evaluation.runner import (
     run_recovery_scenario,
 )
 from opsflow.orchestration.composition import OrchestrationRuntime
-from opsflow.persistence.models import AuditEventModel, OrderModel, OrderSyncModel
+from opsflow.persistence.models import (
+    AuditEventModel,
+    NotificationDeliveryModel,
+    OrderCreationIdempotencyModel,
+    OrderModel,
+    OrderSyncModel,
+    SourceDocumentModel,
+)
 from opsflow.review.composition import ReviewDateProvider
 from opsflow.review.contracts import OperatorRole
 from opsflow.validation.policy import ValidationPolicy
@@ -140,16 +149,209 @@ def test_duplicate_scenarios_use_real_idempotency_without_new_graph(
     assert all(item.authoritative_order_count == 1 for item in outcomes)
     assert all(item.idempotent_replay for item in outcomes)
     assert all(item.logical_external_object_count == 0 for item in outcomes)
+    assert all(item.case_result.status.value == "PASS" for item in outcomes)
     assert all(item.case_result.scores.replay_match is True for item in outcomes)
     assert all(item.case_result.actual.replay is not None for item in outcomes)
+    assert all(item.case_result.actual.order_id == item.order_id for item in outcomes)
     assert all(
         item.case_result.actual.replay.creation_disposition.value == "REPLAYED_EXISTING"
         and item.case_result.actual.replay.intake_execution.value == "STANDING_DOWN"
         and item.case_result.actual.replay.seed_order_id
         == item.case_result.actual.replay.replay_order_id
         and item.case_result.actual.replay.provider_work_stood_down
+        and item.case_result.actual.replay.notification_intents_before
+        == item.case_result.actual.replay.notification_intents_after
+        and item.case_result.actual.replay.order_sync_intents_before
+        == item.case_result.actual.replay.order_sync_intents_after
         for item in outcomes
     )
+
+
+@pytest.mark.parametrize("extra_effect", ("notification", "order_sync"))
+def test_duplicate_evidence_counts_effects_on_intake_order_with_same_sha_seed(
+    isolated_m11c_session_factory, monkeypatch, extra_effect: str
+) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "duplicate-email-001")
+    assert case.trusted_business_data is not None
+    assert case.trusted_business_data.facts.document_already_processed
+
+    generated_uuid = 0
+
+    def ordered_uuid() -> UUID:
+        nonlocal generated_uuid
+        generated_uuid += 1
+        return UUID(int=generated_uuid)
+
+    monkeypatch.setattr(runner_module, "uuid4", ordered_uuid)
+    original_run_case = runner_module.run_case
+    evaluated_order_ids: list[UUID] = []
+    calls = 0
+
+    async def observe_replay_and_add_effect(*args, **kwargs):
+        nonlocal calls
+        result = await original_run_case(*args, **kwargs)
+        calls += 1
+        if calls == 1:
+            assert result.actual.order_id is not None
+            evaluated_order_ids.append(result.actual.order_id)
+            return result
+
+        order_id = evaluated_order_ids[0]
+        assert result.actual.order_id == order_id
+        async with isolated_m11c_session_factory() as session, session.begin():
+            if extra_effect == "notification":
+                event_id = await session.scalar(
+                    select(AuditEventModel.id)
+                    .where(AuditEventModel.order_id == order_id)
+                    .order_by(AuditEventModel.occurred_at, AuditEventModel.id)
+                    .limit(1)
+                )
+                assert event_id is not None
+                used_channels = set(
+                    (
+                        await session.scalars(
+                            select(NotificationDeliveryModel.channel).where(
+                                NotificationDeliveryModel.trigger_audit_event_id == event_id,
+                                NotificationDeliveryModel.kind == "REVIEW_REQUIRED",
+                            )
+                        )
+                    ).all()
+                )
+                channel = next(
+                    candidate for candidate in ("SLACK", "GMAIL") if candidate not in used_channels
+                )
+                session.add(
+                    NotificationDeliveryModel(
+                        order_id=order_id,
+                        trigger_audit_event_id=event_id,
+                        channel=channel,
+                        kind="REVIEW_REQUIRED",
+                        payload={"source": "regression-test"},
+                    )
+                )
+            else:
+                session.add(
+                    OrderSyncModel(
+                        order_id=order_id,
+                        next_attempt_at=datetime.now(UTC),
+                    )
+                )
+        return result
+
+    monkeypatch.setattr(runner_module, "run_case", observe_replay_and_add_effect)
+
+    outcome = asyncio.run(
+        run_duplicate_scenario(
+            isolated_m11c_session_factory,
+            case,
+            _runtime(case),
+            EvaluationMode.PROVIDER_FREE,
+        )
+    )
+
+    async def durable_identity_observations():
+        async with isolated_m11c_session_factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(SourceDocumentModel.order_id)
+                        .where(SourceDocumentModel.sha256 == case.source.sha256)
+                        .order_by(SourceDocumentModel.order_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            idempotent_order_id = await session.scalar(
+                select(OrderCreationIdempotencyModel.order_id).where(
+                    OrderCreationIdempotencyModel.idempotency_key == f"m11c-{case.case_id}"
+                )
+            )
+            notification_counts = dict(
+                (
+                    await session.execute(
+                        select(NotificationDeliveryModel.order_id, func.count())
+                        .where(NotificationDeliveryModel.order_id.in_(rows))
+                        .group_by(NotificationDeliveryModel.order_id)
+                    )
+                ).all()
+            )
+            sync_counts = dict(
+                (
+                    await session.execute(
+                        select(OrderSyncModel.order_id, func.count())
+                        .where(OrderSyncModel.order_id.in_(rows))
+                        .group_by(OrderSyncModel.order_id)
+                    )
+                ).all()
+            )
+        return rows, idempotent_order_id, notification_counts, sync_counts
+
+    source_order_ids, idempotent_order_id, notification_counts, sync_counts = asyncio.run(
+        durable_identity_observations()
+    )
+    assert len(source_order_ids) == 2
+    assert source_order_ids[0] < evaluated_order_ids[0]
+    assert evaluated_order_ids[0] == outcome.order_id == idempotent_order_id
+    assert source_order_ids[1] == evaluated_order_ids[0]
+
+    replay = outcome.case_result.actual.replay
+    assert replay is not None
+    assert replay.seed_order_id == evaluated_order_ids[0]
+    assert replay.replay_order_id == evaluated_order_ids[0]
+    assert outcome.case_result.status.value == "FAIL"
+    assert outcome.case_result.scores.replay_match is False
+    if extra_effect == "notification":
+        assert replay.notification_intents_after == replay.notification_intents_before + 1
+        assert replay.order_sync_intents_after == replay.order_sync_intents_before
+        assert notification_counts[evaluated_order_ids[0]] == replay.notification_intents_after
+        assert notification_counts.get(source_order_ids[0], 0) == 0
+    else:
+        assert replay.order_sync_intents_after == replay.order_sync_intents_before + 1
+        assert replay.notification_intents_after == replay.notification_intents_before
+        assert sync_counts[evaluated_order_ids[0]] == replay.order_sync_intents_after
+        assert sync_counts.get(source_order_ids[0], 0) == 0
+
+
+def test_duplicate_replay_with_changed_order_id_fails(
+    isolated_m11c_session_factory, monkeypatch
+) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "duplicate-email-001")
+    original_run_case = runner_module.run_case
+    calls = 0
+
+    async def change_replay_order_id(*args, **kwargs):
+        nonlocal calls
+        result = await original_run_case(*args, **kwargs)
+        calls += 1
+        if calls == 1:
+            return result
+        return result.model_copy(
+            update={
+                "actual": result.actual.model_copy(
+                    update={"order_id": UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")}
+                )
+            }
+        )
+
+    monkeypatch.setattr(runner_module, "run_case", change_replay_order_id)
+    outcome = asyncio.run(
+        run_duplicate_scenario(
+            isolated_m11c_session_factory,
+            case,
+            _runtime(case),
+            EvaluationMode.PROVIDER_FREE,
+        )
+    )
+
+    replay = outcome.case_result.actual.replay
+    assert replay is not None
+    assert replay.seed_order_id == outcome.order_id
+    assert replay.replay_order_id == UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")
+    assert outcome.case_result.status.value == "FAIL"
+    assert outcome.case_result.scores.replay_match is False
 
 
 def test_logical_object_tracker_counts_extra_objects_per_stable_identity() -> None:
