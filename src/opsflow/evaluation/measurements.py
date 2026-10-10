@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from functools import wraps
 from pathlib import Path
@@ -264,6 +264,20 @@ class PricingSnapshot:
         if self.source_url and not self.source_url.startswith("https://ai.google.dev/"):
             raise ValueError("pricing source must be an authoritative Google AI page")
 
+    def is_effective_at(self, evaluation_at: datetime) -> bool:
+        """Return whether this snapshot covers the evaluation's UTC calendar date."""
+
+        if evaluation_at.tzinfo is None or evaluation_at.utcoffset() is None:
+            return False
+        if not self.effective_from or not self.effective_through:
+            return False
+        evaluation_date = evaluation_at.astimezone(UTC).date()
+        return (
+            date.fromisoformat(self.effective_from)
+            <= evaluation_date
+            <= date.fromisoformat(self.effective_through)
+        )
+
 
 def load_pricing_snapshot(path: str | Path) -> PricingSnapshot:
     """Load one strict, immutable JSON pricing record without floating point."""
@@ -512,6 +526,7 @@ def aggregate_provider_usage(
     *,
     pricing_snapshot: PricingSnapshot | None,
     configured_model: str | None,
+    evaluation_at: datetime,
 ) -> ProviderUsageSummary:
     """Aggregate real attempts without partial order-cost or token estimates."""
 
@@ -539,6 +554,7 @@ def aggregate_provider_usage(
             or pricing_snapshot is None
             or record.pricing_snapshot_id != pricing_snapshot.snapshot_id
             or pricing_snapshot.model != configured_model
+            or not pricing_snapshot.is_effective_at(evaluation_at)
         ):
             missing_pricing += 1
         if (
@@ -554,6 +570,7 @@ def aggregate_provider_usage(
             or pricing_snapshot is None
             or record.pricing_snapshot_id != pricing_snapshot.snapshot_id
             or pricing_snapshot.model != configured_model
+            or not pricing_snapshot.is_effective_at(evaluation_at)
         ):
             incomplete_calls += 1
         if (
@@ -589,6 +606,7 @@ def aggregate_provider_usage(
                     and pricing_snapshot.model == configured_model
                     and record.model == configured_model
                     and record.pricing_snapshot_id == pricing_snapshot.snapshot_id
+                    and pricing_snapshot.is_effective_at(evaluation_at)
                 )
                 usage_complete = (
                     record.input_tokens is not None and record.output_tokens is not None

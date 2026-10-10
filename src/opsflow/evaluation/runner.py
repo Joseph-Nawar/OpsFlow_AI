@@ -2064,11 +2064,12 @@ async def run_corpus(
             run_measurements.provider_calls,
             pricing_snapshot=pricing_snapshot,
             configured_model=configured_model,
+            evaluation_at=started,
         )
         extraction_quality = score_extraction_quality(result_tuple, mode)
         provider_usage = _provider_usage_metrics(usage)
         cost_metrics = _cost_metrics(usage)
-        pricing_status = _pricing_status(configured_model, pricing_snapshot)
+        pricing_status = _pricing_status(configured_model, pricing_snapshot, started)
         limitation_items = [
             "Provider-free fault-injection recovery cases are labeled fake and "
             "excluded from Gemini quality.",
@@ -2176,6 +2177,7 @@ def _cost_metrics(usage: Any) -> CostMetrics:
 def _pricing_status(
     configured_model: str,
     pricing_snapshot: PricingSnapshot | None,
+    evaluation_at: datetime,
 ) -> PricingStatus:
     if pricing_snapshot is None:
         return PricingStatus(
@@ -2191,6 +2193,13 @@ def _pricing_status(
             model=pricing_snapshot.model,
             status="ERROR",
             reason="Pricing snapshot model does not match the configured Gemini model.",
+        )
+    if not pricing_snapshot.is_effective_at(evaluation_at):
+        return PricingStatus(
+            pricing_snapshot_id=pricing_snapshot.snapshot_id,
+            model=pricing_snapshot.model,
+            status="ERROR",
+            reason="Pricing snapshot does not cover the evaluation's UTC date.",
         )
     return PricingStatus(
         pricing_snapshot_id=pricing_snapshot.snapshot_id,

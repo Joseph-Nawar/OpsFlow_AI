@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID
@@ -28,6 +30,7 @@ MODEL = "gemini-3.8-flash"
 SNAPSHOT_ID = "google-gemini-3.8-flash-standard-paid-2026-10-10"
 ORDER_A = UUID("00000000-0000-4000-8000-000000000001")
 ORDER_B = UUID("00000000-0000-4000-8000-000000000002")
+EVALUATION_AT = datetime(2026, 10, 10, tzinfo=UTC)
 
 
 def pricing() -> PricingSnapshot:
@@ -37,6 +40,10 @@ def pricing() -> PricingSnapshot:
         token_unit=1_000_000,
         input_rate_usd=Decimal("0.75"),
         output_rate_usd=Decimal("3.75"),
+        effective_from="2026-10-10",
+        effective_through="2026-12-31",
+        retrieved_on="2026-10-10",
+        source_url="https://ai.google.dev/gemini-api/docs/pricing",
     )
 
 
@@ -157,6 +164,7 @@ def test_multiple_calls_and_authorized_retry_are_attributed_to_one_initial_order
         ),
         pricing_snapshot=pricing(),
         configured_model=MODEL,
+        evaluation_at=EVALUATION_AT,
     )
 
     assert result.initial_order_count == 2
@@ -189,6 +197,7 @@ def test_incomplete_call_makes_aggregate_unavailable_without_partial_cost(
         (call(input_tokens=100, output_tokens=20), broken),
         pricing_snapshot=pricing(),
         configured_model=MODEL,
+        evaluation_at=EVALUATION_AT,
     )
 
     assert getattr(result, expected_counter) == 1
@@ -207,6 +216,7 @@ def test_missing_total_token_is_counted_without_rewriting_authoritative_values()
         (call(input_tokens=2, output_tokens=3, total_tokens=None),),
         pricing_snapshot=pricing(),
         configured_model=MODEL,
+        evaluation_at=EVALUATION_AT,
     )
 
     assert result.missing_total_token_count == 1
@@ -222,6 +232,7 @@ def test_inconsistent_reported_total_is_flagged_without_mutating_usage() -> None
         (call(input_tokens=2, output_tokens=3, total_tokens=99),),
         pricing_snapshot=pricing(),
         configured_model=MODEL,
+        evaluation_at=EVALUATION_AT,
     )
 
     assert result.input_tokens_sum == 2
@@ -236,6 +247,7 @@ def test_zero_call_orders_have_known_zero_cost_without_pricing() -> None:
         (),
         pricing_snapshot=None,
         configured_model=MODEL,
+        evaluation_at=EVALUATION_AT,
     )
 
     assert result.zero_call_order_count == 2
@@ -251,6 +263,7 @@ def test_missing_pricing_preserves_call_and_latency_observations() -> None:
         (measured,),
         pricing_snapshot=None,
         configured_model=MODEL,
+        evaluation_at=EVALUATION_AT,
     )
     latency = EvaluationMeasurements()
     latency.record("live_gemini_call_ms", measured.duration_ms)
@@ -259,6 +272,50 @@ def test_missing_pricing_preserves_call_and_latency_observations() -> None:
     assert result.missing_pricing_snapshot_count == 1
     assert result.estimated_model_cost_per_initial_order is None
     assert latency.summary("live_gemini_call_ms").p50_ms == Decimal("18.75")
+
+
+def test_expired_pricing_snapshot_cannot_produce_a_numeric_cost() -> None:
+    expired = replace(pricing(), effective_through="2026-12-31")
+    result = aggregate_provider_usage(
+        {"case-a": ORDER_A},
+        (call(),),
+        pricing_snapshot=expired,
+        configured_model=MODEL,
+        evaluation_at=datetime(2027, 1, 1, tzinfo=UTC),
+    )
+
+    assert result.gemini_call_count == 1
+    assert result.missing_pricing_snapshot_count == 1
+    assert result.incomplete_usage_order_count == 1
+    assert result.estimated_model_cost_per_initial_order is None
+
+
+@pytest.mark.parametrize(
+    ("effective_from", "effective_through", "evaluation_at"),
+    [
+        ("2026-10-10", "2026-12-31", datetime(2026, 10, 9, tzinfo=UTC)),
+        ("", "2026-12-31", EVALUATION_AT),
+    ],
+)
+def test_not_yet_effective_or_unbounded_pricing_cannot_produce_cost(
+    effective_from: str,
+    effective_through: str,
+    evaluation_at: datetime,
+) -> None:
+    inapplicable = replace(
+        pricing(), effective_from=effective_from, effective_through=effective_through
+    )
+    result = aggregate_provider_usage(
+        {"case-a": ORDER_A},
+        (call(),),
+        pricing_snapshot=inapplicable,
+        configured_model=MODEL,
+        evaluation_at=evaluation_at,
+    )
+
+    assert result.missing_pricing_snapshot_count == 1
+    assert result.incomplete_usage_order_count == 1
+    assert result.estimated_model_cost_per_initial_order is None
 
 
 def test_failed_provider_attempt_is_counted_and_cannot_contribute_partial_cost() -> None:
@@ -274,6 +331,7 @@ def test_failed_provider_attempt_is_counted_and_cannot_contribute_partial_cost()
         ),
         pricing_snapshot=pricing(),
         configured_model=MODEL,
+        evaluation_at=EVALUATION_AT,
     )
 
     assert result.gemini_call_count == 1
@@ -288,10 +346,24 @@ def test_pricing_uses_decimal_arithmetic_without_float_round_trip() -> None:
         (call(input_tokens=1, output_tokens=1),),
         pricing_snapshot=pricing(),
         configured_model=MODEL,
+        evaluation_at=EVALUATION_AT,
     )
 
     assert type(result.estimated_model_cost_per_initial_order) is Decimal
     assert result.estimated_model_cost_per_initial_order == Decimal("0.0000045")
+
+
+def test_pricing_effective_dates_are_inclusive_and_evaluated_in_utc() -> None:
+    snapshot = pricing()
+
+    assert not snapshot.is_effective_at(datetime(2026, 10, 9, 23, 59, tzinfo=UTC))
+    assert snapshot.is_effective_at(datetime(2026, 10, 10, tzinfo=UTC))
+    assert snapshot.is_effective_at(datetime(2026, 11, 15, tzinfo=UTC))
+    assert snapshot.is_effective_at(datetime(2026, 12, 31, 23, 59, tzinfo=UTC))
+    assert not snapshot.is_effective_at(datetime(2027, 1, 1, tzinfo=UTC))
+    assert snapshot.is_effective_at(datetime.fromisoformat("2027-01-01T00:30:00+01:00"))
+    assert not snapshot.is_effective_at(datetime(2026, 10, 10))
+    assert not replace(snapshot, effective_through="").is_effective_at(EVALUATION_AT)
 
 
 def test_dated_snapshot_loads_exact_model_tier_rates_and_source() -> None:
