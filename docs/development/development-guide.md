@@ -17,7 +17,7 @@ is `COMPLETE` (M9A–M9F `COMPLETE`; M9F and Phase 9 technical approval at
 M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`,
 M10B `COMPLETE` at human-approved technical SHA
 `765c5030659d6c4d0aebe325b7d35d577766dbfd`, M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`, M10D `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`, M10E `COMPLETE` at human-approved technical SHA `b73d7add25c273b5efac10f86bdd3ebef952d6da`, and M10F `COMPLETE` after final audit disposition on technical remediation SHA `3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; Phase 10 is `COMPLETE`.
-Phase 11 is `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts. It did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at independently reviewed technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; it delivered Tasks 5–7 using active corpus `3.0.0`. M11D–M11F remain `NOT STARTED`. Phase 11 remains `IN PROGRESS`; Phase 12 is `NOT STARTED`. The [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md) records M11C scope and local milestone verification. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
+Phase 11 is `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts. It did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at independently reviewed technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; it delivered Tasks 5–7 using active corpus `3.0.0`. M11D — Performance, Live Gemini, Token & Cost Evaluation is `IN PROGRESS`, pending independent re-review and human approval; M11E–M11F remain `NOT STARTED`. Phase 11 remains `IN PROGRESS`; Phase 12 is `NOT STARTED`. The [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md) records M11C scope and local milestone verification. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
 Independent local M11B milestone verification recorded: corpus version `1.0.0`, 36 cases with category split 10/8/4/7/4/3 (normal/edge/security/deterministic violation/duplicate/retry-recovery), format split 9/9/9/9 (EMAIL_BODY/CSV/XLSX/PDF), all 14 routed cases mechanically verified against the real deterministic validation engine, all 36 source artifacts verified through the production document processor, provider-free extraction quality `NOT_APPLICABLE`, no live provider called, and no existing production behavior modified. Evaluation tests: 83 passed; focused regressions: 673 passed; integration: 367 passed; local `make check`: 1,847 passed, 6 skipped, 91.11% coverage; Ruff, format, mypy, Gitleaks, Markdown links, and `git diff --check`: PASS. These are local milestone verification results, not GitHub PR-head CI.
 The [Phase 0 audit record](../audits/phase-0-audit.md) through the [Phase 9
 audit record](../audits/phase-9-audit.md) preserve closeout evidence.
@@ -190,11 +190,13 @@ The README’s [local development sequence](../../README.md#local-development) i
 
 ## Phase 11 evaluation commands
 
-Both evaluation commands require a one-time dedicated PostgreSQL database. The
-database guard compares its name with the normal and configured migration-test
-database names, verifies the live connection, clears only the application
-tables in the dedicated evaluation database, and preserves Alembic metadata.
-The command does not create the database.
+Both evaluation commands require a one-time dedicated PostgreSQL database
+named exactly `opsflow_evaluation`. This explicit allowlisted identity is
+provisioned once below; a different name alone does not prove a database is
+safe to reset. The guard also checks that the name differs from normal and
+configured migration-test databases, verifies the connected database and
+`public` schema, clears only application tables, and preserves Alembic
+metadata. The command does not create the database.
 
 For a local Compose PostgreSQL service, create the evaluation database once and
 apply the current schema to that database:
@@ -242,12 +244,41 @@ Tests must not remove assertions, change expected results to suit broken behavio
 
 ### Destructive migration test isolation
 
-Integration tests that downgrade Alembic revisions require an explicit
-`OPSFLOW_MIGRATION_TEST_DATABASE_URL` naming a PostgreSQL database whose name
-differs from `OPSFLOW_DATABASE_URL`. If it is unset, those tests skip; they
-never fall back to the configured development database. CI provisions a
-separate migration-test database, and migration subprocesses and schema
-assertions use that same URL.
+Integration tests require an explicit local PostgreSQL target through
+`OPSFLOW_INTEGRATION_TEST_DATABASE_URL`; its database name must begin with
+`opsflow_integration_`. The guard verifies the connected database name and
+`public` schema before test modules can run, then directs application settings
+and migration subprocesses to that target. `make test` and `make check` require
+this variable because they collect integration tests. Direct `pytest`
+invocations load the same guard and cannot fall back to `.env`.
+
+For the local Compose PostgreSQL service, create a disposable integration
+database once and run the integration suite with:
+
+```bash
+docker compose up -d postgres
+docker compose exec -T postgres createdb -U opsflow opsflow_integration_local
+export OPSFLOW_INTEGRATION_TEST_DATABASE_URL=postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_integration_local
+uv run pytest tests/integration --collect-only -q --no-cov
+OPSFLOW_DATABASE_URL="$OPSFLOW_INTEGRATION_TEST_DATABASE_URL" uv run alembic upgrade head
+make test-integration
+```
+
+The collection command runs the integration guard's read-only connected-target
+check before the explicit migration command can change the disposable schema.
+
+Tests that downgrade Alembic revisions separately require
+`OPSFLOW_MIGRATION_TEST_DATABASE_URL` naming exactly
+`opsflow_migration_test`. If it is unset, those tests skip; they never fall
+back to the configured application database. CI provisions both disposable
+databases.
+
+An earlier integration invocation inherited `localhost:5432/opsflow` from the
+normal configuration and encountered missing-table failures before it was
+stopped. The execution trace is unavailable, so its exact statements and
+historical effects cannot be reconstructed. A later read-only catalog check
+found no public application tables; that observation does not establish the
+full history of the interrupted invocation.
 
 M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure; M0D adds only the static frontend foundation page; M0E adds only developer commands, CI, and secret scanning. M0D intentionally adds no frontend test framework because it has no meaningful application behavior yet. No business tables, review UI, or later-milestone behavior is covered here.
 
