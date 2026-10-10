@@ -34,7 +34,9 @@ _SENSITIVE_KEY = re.compile(
 )
 _SENSITIVE_VALUE = re.compile(
     r"(?:bearer\s|AIza[0-9A-Za-z_-]{8,}|https?://|postgres(?:ql)?(?:\+\w+)?://|"
-    r"(?:^|\s)/(?:Users|Volumes|home|private)/|traceback)",
+    r"(?:^|\s)/(?:Users|Volumes|home|private)/|traceback|"
+    r"gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|"
+    r"AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})",
     re.IGNORECASE,
 )
 _GATE_EXPLANATIONS = {
@@ -101,10 +103,10 @@ def validate_result_json(
         if set(raw) != _TOP_LEVEL_KEYS:
             raise ArtifactValidationError("result JSON must contain the exact v1 top-level keys")
         result = EvaluationRunResult.model_validate(raw)
-    except (UnicodeDecodeError, json.JSONDecodeError, OSError, TypeError, ValidationError) as error:
+    except (UnicodeDecodeError, json.JSONDecodeError, OSError, TypeError, ValidationError):
         raise ArtifactValidationError(
             "result JSON does not satisfy the evaluation result contract"
-        ) from error
+        ) from None
 
     serialized = result.model_dump(mode="json")
     _assert_sanitized(serialized)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from opsflow.evaluation.artifacts import (
+    ArtifactValidationError,
     render_markdown_from_json,
     validate_result_json,
     write_result_json,
@@ -32,7 +34,7 @@ from opsflow.evaluation.models import (
 def valid_result() -> EvaluationRunResult:
     return EvaluationRunResult(
         run=RunMetadata(
-            run_id="run-artifact-test",
+            run_id="8f371683-85f2-4a01-9fe7-a6b1f793b149",
             mode=EvaluationMode.PROVIDER_FREE,
             started_at_utc=datetime(2026, 10, 10, tzinfo=UTC),
             finished_at_utc=datetime(2026, 10, 10, 0, 1, tzinfo=UTC),
@@ -44,7 +46,7 @@ def valid_result() -> EvaluationRunResult:
             python_version="3.12.13",
             platform="macOS-15.0-arm64-arm-64bit",
             cpu_architecture="arm64",
-            database=DatabaseMetadata(engine="PostgreSQL 16", isolated=True),
+            database=DatabaseMetadata(engine="postgresql", isolated=True),
         ),
         corpus=CorpusComposition(
             case_count=0,
@@ -170,6 +172,30 @@ def test_result_json_rejects_raw_or_private_payloads(mutate) -> None:
         validate_result_json(payload)
 
 
+@pytest.mark.parametrize(
+    ("field", "synthetic_secret"),
+    [
+        ("run_id", "ghp_TESTONLY0000000000000000000000000000"),
+        ("gemini_model", "ghp_TESTONLY0000000000000000000000000000"),
+        ("platform", "host-AKIAAAAAAAAAAAAAAAAA"),
+    ],
+)
+def test_metadata_credentials_are_rejected_without_echoing_secret(
+    field: str, synthetic_secret: str
+) -> None:
+    base_result = valid_live_result() if field == "gemini_model" else valid_result()
+    payload = base_result.model_dump(mode="json")
+    payload["run"][field] = synthetic_secret
+
+    with pytest.raises(ArtifactValidationError) as error:
+        validate_result_json(payload)
+
+    assert synthetic_secret not in str(error.value)
+    assert synthetic_secret not in "".join(traceback.format_exception(error.value))
+    with pytest.raises(ArtifactValidationError):
+        render_markdown_from_json(json.dumps(payload))
+
+
 def test_result_json_allows_the_controlled_prompt_injection_corpus_tag() -> None:
     payload = valid_result().model_dump(mode="json")
     payload["corpus"]["tag_counts"] = {"prompt_injection": 1}
@@ -188,11 +214,11 @@ def test_markdown_does_not_invent_release_gate_results() -> None:
 
 def test_markdown_escapes_untrusted_cell_content() -> None:
     payload = valid_result().model_dump(mode="json")
-    payload["run"]["run_id"] = "run | [label](reference)"
+    payload["run"]["platform"] = "platform | [label](reference)"
 
     report = render_markdown_from_json(json.dumps(payload))
 
-    assert "| Run ID | run \\| \\[label\\]\\(reference\\) |" in report
+    assert "| Platform | platform \\| \\[label\\]\\(reference\\) |" in report
 
 
 def test_ad_hoc_artifacts_are_ignored_and_reference_path_is_explicit() -> None:

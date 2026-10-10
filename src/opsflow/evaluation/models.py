@@ -79,6 +79,11 @@ type ReceiptPreservationStatus = Literal[
 _SHA256 = re.compile(r"[0-9a-f]{64}", re.ASCII)
 _CASE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*", re.ASCII)
 _SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+", re.ASCII)
+_RUN_ID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+    re.ASCII,
+)
+_GEMINI_MODEL = re.compile(r"(?:models/)?gemini-[A-Za-z0-9][A-Za-z0-9._-]{0,95}", re.ASCII)
 
 
 class ContractModel(BaseModel):
@@ -904,7 +909,7 @@ class CaseResult(ContractModel):
 
 
 class DatabaseMetadata(ContractModel):
-    engine: StrictStr
+    engine: Literal["postgresql"]
     isolated: StrictBool
 
 
@@ -931,6 +936,20 @@ class RunMetadata(ContractModel):
     def _git_sha_format(cls, value: str) -> str:
         if re.fullmatch(r"[0-9a-f]{40}", value, flags=re.ASCII) is None:
             raise ValueError("git_sha must be a lowercase 40-character commit SHA")
+        return value
+
+    @field_validator("run_id")
+    @classmethod
+    def _run_id_is_uuid4(cls, value: str) -> str:
+        if _RUN_ID.fullmatch(value) is None:
+            raise ValueError("run_id must be a canonical UUID4 identifier")
+        return value
+
+    @field_validator("gemini_model")
+    @classmethod
+    def _gemini_model_is_identifier(cls, value: str | None) -> str | None:
+        if value is not None and _GEMINI_MODEL.fullmatch(value) is None:
+            raise ValueError("gemini_model must be a Google Gemini model identifier")
         return value
 
     _safe_environment_identity = field_validator(

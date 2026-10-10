@@ -71,7 +71,7 @@ def valid_run(
 ) -> EvaluationRunResult:
     return EvaluationRunResult(
         run=RunMetadata(
-            run_id="run-001",
+            run_id="d5d06c66-f3d0-4d16-bbf1-8fd82c894891",
             mode=mode,
             started_at_utc=datetime(2026, 10, 8, tzinfo=UTC),
             finished_at_utc=datetime(2026, 10, 8, 0, 1, tzinfo=UTC),

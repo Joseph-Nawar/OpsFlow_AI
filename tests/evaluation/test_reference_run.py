@@ -70,7 +70,7 @@ def _mock_live_result(pricing_model: str | None) -> EvaluationRunResult:
     case_id = "live-case-001"
     return EvaluationRunResult(
         run=RunMetadata(
-            run_id="mock-live-run",
+            run_id="6f39383e-5899-40cc-8a59-0d20d9472949",
             mode=EvaluationMode.LIVE_GEMINI,
             started_at_utc=datetime(2026, 10, 10, tzinfo=UTC),
             finished_at_utc=datetime(2026, 10, 10, 0, 1, tzinfo=UTC),
@@ -83,7 +83,7 @@ def _mock_live_result(pricing_model: str | None) -> EvaluationRunResult:
             python_version="3.12.13",
             platform="Darwin",
             cpu_architecture="arm64",
-            database=DatabaseMetadata(engine="PostgreSQL 16", isolated=True),
+            database=DatabaseMetadata(engine="postgresql", isolated=True),
         ),
         corpus=CorpusComposition(
             case_count=1,
