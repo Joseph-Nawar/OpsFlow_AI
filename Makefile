@@ -1,4 +1,4 @@
-.PHONY: test test-integration lint format typecheck backend-check frontend-check dependency-audit frontend-audit security-audit check up down migrate
+.PHONY: test test-integration lint format typecheck backend-check frontend-check dependency-audit frontend-audit security-audit check evaluate evaluate-live up down migrate
 
 UV ?= uv
 NPM ?= npm
@@ -39,6 +39,12 @@ frontend-audit:
 security-audit: dependency-audit frontend-audit
 
 check: backend-check frontend-check
+
+evaluate:
+	$(UV) run python -m opsflow.evaluation.commands provider-free
+
+evaluate-live:
+	OPSFLOW_EVALUATION_LIVE_GEMINI="$(OPSFLOW_EVALUATION_LIVE_GEMINI)" $(UV) run python -m opsflow.evaluation.commands live-gemini
 
 up:
 	$(COMPOSE) up -d --build

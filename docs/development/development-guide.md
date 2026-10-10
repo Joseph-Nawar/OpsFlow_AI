@@ -188,21 +188,45 @@ This scan completed successfully with no leaks found. The CI workflow is [`.gith
 
 The README’s [local development sequence](../../README.md#local-development) is the concise clean-checkout procedure. It installs the committed Python and npm dependencies, creates only the ignored local `.env`, starts PostgreSQL, applies migrations, runs the two development servers, and then runs `make check`. The sequence was verified from a fresh clone of `phase/0-foundation`.
 
-## Still planned or unverified commands
+## Phase 11 evaluation commands
 
-These commands remain planned until their later milestone introduces the corresponding workflow:
+Both evaluation commands require a one-time dedicated PostgreSQL database. The
+database guard compares its name with the normal and configured migration-test
+database names, verifies the live connection, clears only the application
+tables in the dedicated evaluation database, and preserves Alembic metadata.
+The command does not create the database.
+
+For a local Compose PostgreSQL service, create the evaluation database once and
+apply the current schema to that database:
 
 ```bash
-# Focused verification — use the project’s eventual documented test selectors
-uv run pytest tests/unit -q
-uv run pytest tests/integration -q
+docker compose up -d postgres
+docker compose exec -T postgres createdb -U opsflow opsflow_evaluation
+OPSFLOW_DATABASE_URL=postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_evaluation uv run alembic upgrade head
+export OPSFLOW_EVALUATION_DATABASE_URL=postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_evaluation
+```
 
-# Phase 11 benchmark commands — planned for M11D
+Run the complete provider-free corpus with:
+
+```bash
 make evaluate
+```
+
+This mode needs no Gemini configuration and makes no provider calls. Generated
+JSON and Markdown files are ignored under `evals/results/`.
+
+Live Gemini evaluation is a separate, potentially billable command. Configure
+the existing `OPSFLOW_GEMINI_API_KEY`, `OPSFLOW_GEMINI_MODEL`, and finite
+positive `OPSFLOW_GEMINI_TIMEOUT_SECONDS` settings, then explicitly run:
+
+```bash
 make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1
 ```
 
-Do not report any command as passing until its output has been observed in the current repository. If a command is not applicable to a documentation-only milestone, record that fact rather than fabricating a result.
+Live mode validates its opt-in and provider configuration before database
+cleanup or case execution. It uses the real Gemini adapter and fake downstream
+integrations. It is not part of normal CI. No command publishes generated
+results as references automatically.
 
 ## Testing approach
 

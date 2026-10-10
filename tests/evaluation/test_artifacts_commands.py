@@ -13,6 +13,7 @@ from opsflow.evaluation.artifacts import (
     validate_result_json,
     write_result_json,
 )
+from opsflow.evaluation.commands import run_evaluation
 from opsflow.evaluation.models import (
     CorpusComposition,
     CostMetrics,
@@ -62,6 +63,46 @@ def valid_result() -> EvaluationRunResult:
         pricing=PricingStatus(status="NOT_APPLICABLE"),
         release_gates=ReleaseGateSummary(all_passed=False),
     )
+
+
+def valid_live_result() -> EvaluationRunResult:
+    result = valid_result().model_dump(mode="python")
+    result["run"]["mode"] = EvaluationMode.LIVE_GEMINI
+    result["run"]["gemini_model"] = "gemini-3.8-flash"
+    result["metrics"]["cost"] = CostMetrics(status="ERROR").model_dump()
+    result["pricing"] = PricingStatus(
+        status="ERROR",
+        model="gemini-3.8-flash",
+        reason="No verified pricing snapshot was selected; numeric model cost may be unavailable.",
+    ).model_dump()
+    return EvaluationRunResult.model_validate(result)
+
+
+def _mock_command_environment(monkeypatch, tmp_path: Path, result: EvaluationRunResult):
+    import opsflow.evaluation.commands as commands
+
+    class FakeEngine:
+        async def dispose(self) -> None:
+            return None
+
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(commands, "create_async_engine", lambda _url: FakeEngine())
+    monkeypatch.setattr(commands, "_reset_database", lambda *_args: None)
+    monkeypatch.setattr(commands, "confirm_current_migration_head", lambda *_args: None)
+    monkeypatch.setattr(commands, "_read_server_version", lambda _engine: "PostgreSQL 16")
+    monkeypatch.setattr(commands, "_build_session_factory", lambda _engine: object())
+    monkeypatch.setattr(commands, "build_orchestration_runtime", lambda *_args, **_kwargs: object())
+
+    async def fake_run_corpus(_sessions, manifest, _runtime, mode, **kwargs):
+        observed["mode"] = mode
+        observed["case_count"] = len(manifest.cases)
+        observed.update(kwargs)
+        return result
+
+    monkeypatch.setattr(commands, "run_corpus", fake_run_corpus)
+    observed["artifacts_directory"] = tmp_path / "results"
+    return observed
 
 
 def test_markdown_is_rendered_from_saved_json_without_source_files(tmp_path: Path) -> None:
@@ -156,3 +197,60 @@ def test_ad_hoc_artifacts_are_ignored_and_reference_path_is_explicit() -> None:
 
     assert generated.returncode == 0
     assert reference.returncode == 1
+
+
+def test_provider_free_command_needs_no_gemini_settings_and_writes_json_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    observed = _mock_command_environment(monkeypatch, tmp_path, valid_result())
+
+    artifacts = run_evaluation(
+        EvaluationMode.PROVIDER_FREE,
+        environ={
+            "OPSFLOW_EVALUATION_DATABASE_URL": (
+                "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_evaluation"
+            )
+        },
+        results_directory=observed["artifacts_directory"],
+    )
+
+    assert observed["mode"] is EvaluationMode.PROVIDER_FREE
+    assert observed["case_count"] == 36
+    assert observed["gemini_provider_factory"] is None
+    assert artifacts.json_path.exists()
+    assert artifacts.markdown_path.exists()
+    assert artifacts.markdown_path.read_text(encoding="utf-8") == render_markdown_from_json(
+        artifacts.json_path
+    )
+
+
+def test_live_command_accepts_missing_pricing_without_calling_the_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import opsflow.evaluation.commands as commands
+
+    observed = _mock_command_environment(monkeypatch, tmp_path, valid_live_result())
+    monkeypatch.setattr(commands, "_load_optional_pricing_snapshot", lambda: None)
+    environment = {
+        "OPSFLOW_EVALUATION_LIVE_GEMINI": "1",
+        "OPSFLOW_GEMINI_API_KEY": "test-key-not-used",
+        "OPSFLOW_GEMINI_MODEL": "gemini-3.8-flash",
+        "OPSFLOW_GEMINI_TIMEOUT_SECONDS": "30",
+        "OPSFLOW_EVALUATION_DATABASE_URL": (
+            "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_evaluation"
+        ),
+    }
+
+    artifacts = run_evaluation(
+        EvaluationMode.LIVE_GEMINI,
+        environ=environment,
+        results_directory=observed["artifacts_directory"],
+    )
+
+    assert observed["mode"] is EvaluationMode.LIVE_GEMINI
+    assert observed["configured_model"] == "gemini-3.8-flash"
+    assert observed["pricing_snapshot"] is None
+    assert callable(observed["gemini_provider_factory"])
+    assert artifacts.result.pricing.status == "ERROR"
+    assert artifacts.result.metrics.cost.estimated_model_cost_per_initial_order is None
+    assert artifacts.json_path.exists()

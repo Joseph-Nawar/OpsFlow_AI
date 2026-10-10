@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import UUID
 
 import anyio
@@ -17,7 +18,10 @@ from opsflow.evaluation.measurements import (
     aggregate_provider_usage,
     load_pricing_snapshot,
     measure_application_stages,
+    measured_gemini_provider_factory,
 )
+from opsflow.extraction.fake import FakeProvider
+from opsflow.extraction.gemini import GeminiConfig, GeminiProvider
 from opsflow.extraction.provider import StructuredGenerationRequest, StructuredGenerationResult
 
 MODEL = "gemini-3.8-flash"
@@ -348,4 +352,71 @@ def test_provider_wrapper_records_each_attempt_tokens_failure_and_latency() -> N
     assert measurements.provider_calls[1].failed is True
     assert measurements.summary("live_gemini_call_ms").sample_count == 2
     measurements.bind_case_order("case-a", ORDER_A)
+    assert {record.initial_order_id for record in measurements.provider_calls} == {ORDER_A}
+
+
+def test_live_factory_rejects_fake_provider_instead_of_using_it_as_gemini() -> None:
+    factory = measured_gemini_provider_factory(
+        lambda: FakeProvider(()),
+        EvaluationMeasurements(),
+        case_id="case-a",
+        model=MODEL,
+        pricing_snapshot_id=SNAPSHOT_ID,
+    )
+
+    with pytest.raises(TypeError, match="configured GeminiProvider"):
+        factory()
+
+
+def test_live_factory_wraps_mocked_gemini_results_and_attributes_failed_attempts() -> None:
+    class MockInteractions:
+        def __init__(self) -> None:
+            self.results = [
+                RuntimeError("mocked Gemini transport failure"),
+                SimpleNamespace(
+                    output_text='{"purchase_order_number": "PO-101"}',
+                    usage=SimpleNamespace(
+                        total_input_tokens=11,
+                        total_output_tokens=7,
+                        total_tokens=18,
+                    ),
+                ),
+            ]
+
+        async def create(self, **_kwargs):
+            result = self.results.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+    measurements = EvaluationMeasurements()
+    gemini = GeminiProvider(
+        GeminiConfig("mock-key", MODEL, 10),
+        client=SimpleNamespace(interactions=MockInteractions()),
+    )
+    factory = measured_gemini_provider_factory(
+        lambda: gemini,
+        measurements,
+        case_id="case-a",
+        model=MODEL,
+        pricing_snapshot_id=SNAPSHOT_ID,
+    )
+    request = StructuredGenerationRequest("v1", "system", "source", {})
+
+    async def invoke() -> StructuredGenerationResult:
+        provider = factory()
+        with pytest.raises(Exception, match="Gemini provider request failed"):
+            await provider.generate_structured(request)
+        return await provider.generate_structured(request)
+
+    result = anyio.run(invoke)
+    measurements.bind_case_order("case-a", ORDER_A)
+
+    assert result.input_tokens == 11
+    assert result.output_tokens == 7
+    assert result.total_tokens == 18
+    assert [record.attempt_index for record in measurements.provider_calls] == [1, 2]
+    assert [record.failed for record in measurements.provider_calls] == [True, False]
+    assert [record.total_tokens for record in measurements.provider_calls] == [None, 18]
+    assert {record.initial_case_id for record in measurements.provider_calls} == {"case-a"}
     assert {record.initial_order_id for record in measurements.provider_calls} == {ORDER_A}

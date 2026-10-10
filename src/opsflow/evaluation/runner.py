@@ -5,6 +5,7 @@ from __future__ import annotations
 import platform as platform_module
 import subprocess
 from collections import Counter
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
@@ -37,6 +38,7 @@ from opsflow.documents.models import DocumentInput
 from opsflow.domain import OrderState, ValidationSeverity
 from opsflow.extraction.errors import ExtractionResponseError, ProviderError
 from opsflow.extraction.models import ExtractionDraft
+from opsflow.extraction.provider import LLMProvider
 from opsflow.notifications.contracts import (
     NotificationOutcome,
     NotificationOutcomeKind,
@@ -86,7 +88,15 @@ from .doubles import (
     RecoveryScriptedProviderFactory,
     ScriptedProviderFactory,
 )
-from .measurements import EvaluationMeasurements, TimingStage, measure_application_stages
+from .measurements import (
+    EvaluationMeasurements,
+    MeasuredGeminiProviderFactory,
+    PricingSnapshot,
+    TimingStage,
+    aggregate_provider_usage,
+    measure_application_stages,
+    measured_gemini_provider_factory,
+)
 from .models import (
     AuthorityEvidence,
     AuthorityProbeStatus,
@@ -104,6 +114,7 @@ from .models import (
     DurationSummary,
     EvaluationMode,
     EvaluationRunResult,
+    ExtractionQualityStatus,
     LatencyMetrics,
     MetricsBundle,
     PricingStatus,
@@ -241,6 +252,19 @@ def _provider_observation(runtime: OrchestrationRuntime) -> ProviderObservation 
     provider = getattr(factory, "provider", None)
     observation = getattr(provider, "observation", None)
     return observation if isinstance(observation, ProviderObservation) else None
+
+
+def _provider_attempt_count(
+    runtime: OrchestrationRuntime,
+    measurements: EvaluationMeasurements | None,
+    case_id: str,
+) -> int:
+    observation = _provider_observation(runtime)
+    if observation is not None:
+        return observation.calls
+    if measurements is None:
+        return 0
+    return sum(record.initial_case_id == case_id for record in measurements.provider_calls)
 
 
 def _provider_summary(observation: ProviderObservation | None) -> ProviderSummary:
@@ -399,13 +423,27 @@ def _result_from_intake(
     return result
 
 
-def _is_evaluation_provider_factory(runtime: OrchestrationRuntime) -> bool:
-    return isinstance(runtime.extraction_provider_factory, ScriptedProviderFactory)
+def _is_evaluation_provider_factory(
+    runtime: OrchestrationRuntime,
+    mode: EvaluationMode = EvaluationMode.PROVIDER_FREE,
+) -> bool:
+    if mode is EvaluationMode.PROVIDER_FREE:
+        return isinstance(runtime.extraction_provider_factory, ScriptedProviderFactory)
+    return isinstance(
+        runtime.extraction_provider_factory,
+        MeasuredGeminiProviderFactory,
+    )
 
 
-def _require_evaluation_provider_factory(runtime: OrchestrationRuntime) -> None:
-    if not _is_evaluation_provider_factory(runtime):
-        raise ValueError("provider-free execution requires the evaluation scripted provider")
+def _require_evaluation_provider_factory(
+    runtime: OrchestrationRuntime,
+    mode: EvaluationMode = EvaluationMode.PROVIDER_FREE,
+) -> None:
+    if not _is_evaluation_provider_factory(runtime, mode):
+        raise ValueError(
+            "provider-free execution requires the evaluation scripted provider; "
+            "live execution requires the configured Gemini provider"
+        )
 
 
 def _error_result(
@@ -882,12 +920,12 @@ async def _run_case_at(
 ) -> CaseResult:
     """Execute one corpus case through the existing provider-free intake seam."""
 
-    if mode is not EvaluationMode.PROVIDER_FREE:
-        raise ValueError("M11C runner supports provider_free mode only")
-    if not _is_evaluation_provider_factory(runtime):
+    if mode not in {EvaluationMode.PROVIDER_FREE, EvaluationMode.LIVE_GEMINI}:
+        raise ValueError("unsupported evaluation mode")
+    if not _is_evaluation_provider_factory(runtime, mode):
         return _error_result(
             case,
-            ValueError("provider-free execution requires the evaluation scripted provider"),
+            ValueError("evaluation extraction provider does not match the selected mode"),
             None,
         )
     source_path = resolve_manifest_source(CORPUS_ROOT, case.source.path)
@@ -910,7 +948,11 @@ async def _run_case_at(
             )
             intake_timer = (
                 measurements.measure(timing_stage, case_id=case.case_id)
-                if measurements is not None and mode is EvaluationMode.PROVIDER_FREE
+                if measurements is not None
+                and (
+                    mode is EvaluationMode.PROVIDER_FREE
+                    or timing_stage == "provider_free_replay_intake_ms"
+                )
                 else nullcontext()
             )
             with stage_observer, intake_timer:
@@ -961,7 +1003,31 @@ def _with_measurement_evidence(
     for stage in stages:
         summary = measurements.summary(stage, case_id=case.case_id)
         duration_values[stage] = summary.sum_ms
-    return result.model_copy(update={"durations_ms": DurationSummary(**duration_values)})
+    updates: dict[str, Any] = {"durations_ms": DurationSummary(**duration_values)}
+    provider_calls = tuple(
+        record for record in measurements.provider_calls if record.initial_case_id == case.case_id
+    )
+    if provider_calls:
+        updates["provider"] = ProviderSummary(
+            name="gemini",
+            calls=len(provider_calls),
+            input_tokens=_provider_token_sum(
+                tuple(record.input_tokens for record in provider_calls)
+            ),
+            output_tokens=_provider_token_sum(
+                tuple(record.output_tokens for record in provider_calls)
+            ),
+            total_tokens=_provider_token_sum(
+                tuple(record.total_tokens for record in provider_calls)
+            ),
+        )
+    return result.model_copy(update=updates)
+
+
+def _provider_token_sum(values: tuple[int | None, ...]) -> int | None:
+    if not values or any(value is None for value in values):
+        return None
+    return sum(value for value in values if value is not None)
 
 
 async def run_case(
@@ -1117,7 +1183,7 @@ async def run_recovery_scenario(
 
     if case.recovery is None:
         raise ValueError("recovery scenario is required")
-    _require_evaluation_provider_factory(runtime)
+    _require_evaluation_provider_factory(runtime, mode)
     failure = case.recovery.failure_code
     first_failure = "PROVIDER_UNAVAILABLE" if failure == "PROVIDER_UNAVAILABLE" else ""
     recovery_runtime = replace(
@@ -1302,7 +1368,7 @@ async def run_duplicate_scenario(
 
     if case.replay is None:
         raise ValueError("replay scenario is required")
-    _require_evaluation_provider_factory(runtime)
+    _require_evaluation_provider_factory(runtime, mode)
     await _seed_duplicate_validation_context(session_factory, case)
     before = await _count_orders(session_factory)
     initial = await run_case(
@@ -1317,8 +1383,7 @@ async def run_duplicate_scenario(
         session_factory, case, initial, require_creation_identity=True
     )
     await _drain_notifications(session_factory, order_id)
-    provider = _provider_observation(runtime)
-    provider_calls_before = provider.calls if provider is not None else 0
+    provider_calls_before = _provider_attempt_count(runtime, measurements, case.case_id)
     notification_before = await _count_order_rows(
         session_factory, NotificationDeliveryModel, order_id
     )
@@ -1344,7 +1409,7 @@ async def run_duplicate_scenario(
         )
     finally:
         orchestration_globals["create_order_with_disposition"] = original_create
-    provider_calls_after = provider.calls if provider is not None else provider_calls_before
+    provider_calls_after = _provider_attempt_count(runtime, measurements, case.case_id)
     notification_after = await _count_order_rows(
         session_factory, NotificationDeliveryModel, order_id
     )
@@ -1506,7 +1571,7 @@ async def run_approval_sync_scenario(
 
     if case.approval is None or case.recovery is None:
         raise ValueError("approval and recovery scenarios are required")
-    _require_evaluation_provider_factory(runtime)
+    _require_evaluation_provider_factory(runtime, mode)
     initial = await run_case(session_factory, case, runtime, mode, measurements=measurements)
     order_id = await _order_id_from_intake(session_factory, case, initial)
     async with session_factory() as session:
@@ -1825,7 +1890,12 @@ def _timing_metric(measurements: EvaluationMeasurements, stage: TimingStage) -> 
     )
 
 
-def _run_metadata(corpus: CorpusManifest, mode: EvaluationMode, started: datetime) -> RunMetadata:
+def _run_metadata(
+    corpus: CorpusManifest,
+    mode: EvaluationMode,
+    started: datetime,
+    gemini_model: str | None = None,
+) -> RunMetadata:
     return RunMetadata(
         run_id=str(uuid4()),
         mode=mode,
@@ -1833,9 +1903,14 @@ def _run_metadata(corpus: CorpusManifest, mode: EvaluationMode, started: datetim
         finished_at_utc=datetime.now(UTC),
         git_sha=_git_sha(),
         corpus_version=corpus.corpus_version,
-        command="make evaluate" if mode is EvaluationMode.PROVIDER_FREE else "make evaluate-live",
+        command=(
+            "make evaluate"
+            if mode is EvaluationMode.PROVIDER_FREE
+            else "make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1"
+        ),
         dependency_lock_identity="uv.lock",
         database_version=None,
+        gemini_model=gemini_model,
         python_version=platform_module.python_version(),
         platform=platform_module.system(),
         cpu_architecture=platform_module.machine(),
@@ -1850,11 +1925,20 @@ async def run_corpus(
     mode: EvaluationMode,
     *,
     measurements: EvaluationMeasurements | None = None,
+    gemini_provider_factory: Callable[[], LLMProvider] | None = None,
+    configured_model: str | None = None,
+    pricing_snapshot: PricingSnapshot | None = None,
 ) -> EvaluationRunResult:
-    """Run the complete corpus sequentially with deterministic provider-free composition."""
+    """Run the corpus with provider-free safety cases and optional measured Gemini extraction."""
 
-    if mode is not EvaluationMode.PROVIDER_FREE:
-        raise ValueError("M11C runner supports provider_free mode only")
+    if mode not in {EvaluationMode.PROVIDER_FREE, EvaluationMode.LIVE_GEMINI}:
+        raise ValueError("unsupported evaluation mode")
+    if mode is EvaluationMode.LIVE_GEMINI and (
+        gemini_provider_factory is None or configured_model is None or not configured_model.strip()
+    ):
+        raise ValueError("live evaluation requires a configured Gemini provider and model")
+    if mode is EvaluationMode.PROVIDER_FREE and gemini_provider_factory is not None:
+        raise ValueError("provider-free evaluation cannot receive a live Gemini provider")
     catalog_path = resolve_manifest_source(CORPUS_ROOT, corpus.trusted_catalog_path)
     catalog = load_catalog(catalog_path)
     policy = _policy(corpus.benchmark_context)
@@ -1863,7 +1947,24 @@ async def run_corpus(
     run_measurements = measurements or EvaluationMeasurements()
     started = datetime.now(UTC)
     for case in corpus.cases:
-        factory = ScriptedProviderFactory(case)
+        case_mode = (
+            EvaluationMode.PROVIDER_FREE
+            if mode is EvaluationMode.LIVE_GEMINI and case.recovery is not None
+            else mode
+        )
+        if case_mode is EvaluationMode.LIVE_GEMINI:
+            assert gemini_provider_factory is not None and configured_model is not None
+            factory: Callable[[], LLMProvider] = measured_gemini_provider_factory(
+                gemini_provider_factory,
+                run_measurements,
+                case_id=case.case_id,
+                model=configured_model,
+                pricing_snapshot_id=(
+                    pricing_snapshot.snapshot_id if pricing_snapshot is not None else None
+                ),
+            )
+        else:
+            factory = ScriptedProviderFactory(case)
         case_runtime = replace(
             runtime,
             extraction_provider_factory=factory,
@@ -1878,7 +1979,7 @@ async def run_corpus(
                         session_factory,
                         case,
                         case_runtime,
-                        mode,
+                        case_mode,
                         measurements=run_measurements,
                     )
                     if case.approval is not None
@@ -1886,7 +1987,7 @@ async def run_corpus(
                         session_factory,
                         case,
                         case_runtime,
-                        mode,
+                        case_mode,
                         measurements=run_measurements,
                     )
                 )
@@ -1908,7 +2009,7 @@ async def run_corpus(
                     session_factory,
                     case,
                     case_runtime,
-                    mode,
+                    case_mode,
                     measurements=run_measurements,
                 )
                 if not isinstance(result.actual.order_id, UUID):
@@ -1929,27 +2030,74 @@ async def run_corpus(
                         )
         except Exception as error:
             run_measurements.bind_case_order(case.case_id, None)
-            results.append(_error_result(case, error, _provider_observation(case_runtime)))
+            results.append(
+                _with_measurement_evidence(
+                    _error_result(case, error, _provider_observation(case_runtime)),
+                    case,
+                    run_measurements,
+                )
+            )
 
     result_tuple = tuple(results)
     gates = evaluate_release_gates(corpus, result_tuple)
+    if mode is EvaluationMode.PROVIDER_FREE:
+        extraction_quality = score_extraction_quality(result_tuple, mode)
+        provider_usage = ProviderUsageMetrics()
+        cost_metrics = CostMetrics(
+            initial_order_count=len(results),
+            zero_call_order_count=len(results),
+        )
+        pricing_status = PricingStatus(status="NOT_APPLICABLE")
+        limitations: tuple[str, ...] = (
+            "Provider-free timing is local diagnostic evidence, not a production SLA.",
+        )
+    else:
+        assert configured_model is not None
+        order_ids: dict[str, UUID | None] = {
+            result.case_id: result.actual.order_id
+            if isinstance(result.actual.order_id, UUID)
+            else None
+            for result in result_tuple
+        }
+        usage = aggregate_provider_usage(
+            order_ids,
+            run_measurements.provider_calls,
+            pricing_snapshot=pricing_snapshot,
+            configured_model=configured_model,
+        )
+        extraction_quality = score_extraction_quality(result_tuple, mode)
+        provider_usage = _provider_usage_metrics(usage)
+        cost_metrics = _cost_metrics(usage)
+        pricing_status = _pricing_status(configured_model, pricing_snapshot)
+        limitation_items = [
+            "Provider-free fault-injection recovery cases are labeled fake and "
+            "excluded from Gemini quality.",
+            "Live latency is a local run observation, not a production SLA.",
+        ]
+        if usage.estimated_model_cost_per_initial_order is None:
+            limitation_items.append(
+                "Estimated model cost per initial order is unavailable because required usage, "
+                "attribution, or matching pricing evidence is incomplete."
+            )
+        if extraction_quality.status is ExtractionQualityStatus.NOT_APPLICABLE:
+            limitation_items.append(extraction_quality.reason)
+        limitations = tuple(limitation_items)
     return EvaluationRunResult(
-        run=_run_metadata(corpus, mode, started),
+        run=_run_metadata(corpus, mode, started, configured_model),
         corpus=_composition(corpus),
         cases=result_tuple,
         metrics=MetricsBundle(
-            extraction_quality=score_extraction_quality(result_tuple, mode),
+            extraction_quality=extraction_quality,
             extraction_contract=ContractEvidence(
                 parser_succeeded=all(
                     case.actual.parse is CaseResultStatus.PASS for case in results
                 ),
                 source_identity_matches=True,
-                scripted_provider_call_count=sum(case.provider.calls for case in results),
+                scripted_provider_call_count=sum(
+                    case.provider.calls for case in results if case.provider.name == "fake"
+                ),
             ),
-            cost=CostMetrics(
-                initial_order_count=len(results),
-                zero_call_order_count=len(results),
-            ),
+            cost=cost_metrics,
             routing=build_routing_metrics(corpus, result_tuple, gates),
             latency=LatencyMetrics(
                 parse_ms=_timing_metric(run_measurements, "parse_ms"),
@@ -1965,11 +2113,89 @@ async def run_corpus(
                 ),
                 live_gemini_call_ms=_timing_metric(run_measurements, "live_gemini_call_ms"),
             ),
-            provider_usage=ProviderUsageMetrics(),
+            provider_usage=provider_usage,
         ),
-        pricing=PricingStatus(status="NOT_APPLICABLE"),
+        pricing=pricing_status,
         release_gates=gates,
-        limitations=("Provider-free timing is local diagnostic evidence, not a production SLA.",),
+        limitations=limitations,
+    )
+
+
+def _provider_usage_metrics(usage: Any) -> ProviderUsageMetrics:
+    def average(total: int | None, count: int) -> Decimal | None:
+        if total is None or count == 0:
+            return None
+        return Decimal(total) / Decimal(count)
+
+    return ProviderUsageMetrics(
+        status="AVAILABLE" if usage.gemini_call_count else "NOT_APPLICABLE",
+        gemini_call_count=usage.gemini_call_count,
+        calls_per_initial_order=(
+            Decimal(usage.gemini_call_count) / Decimal(usage.initial_order_count)
+            if usage.initial_order_count
+            else None
+        ),
+        input_tokens_sum=usage.input_tokens_sum,
+        available_input_token_count=usage.available_input_token_count,
+        missing_input_token_count=usage.missing_input_token_count,
+        average_input_tokens=average(usage.input_tokens_sum, usage.available_input_token_count),
+        output_tokens_sum=usage.output_tokens_sum,
+        available_output_token_count=usage.available_output_token_count,
+        missing_output_token_count=usage.missing_output_token_count,
+        average_output_tokens=average(usage.output_tokens_sum, usage.available_output_token_count),
+        total_tokens_sum=usage.total_tokens_sum,
+        available_total_token_count=usage.available_total_token_count,
+        missing_total_token_count=usage.missing_total_token_count,
+        average_total_tokens=average(usage.total_tokens_sum, usage.available_total_token_count),
+        inconsistent_reported_total_count=usage.inconsistent_reported_total_count,
+        missing_call_attribution_count=usage.missing_call_attribution_count,
+        failed_call_count=usage.failed_call_count,
+    )
+
+
+def _cost_metrics(usage: Any) -> CostMetrics:
+    return CostMetrics(
+        status=(
+            "AVAILABLE" if usage.estimated_model_cost_per_initial_order is not None else "ERROR"
+        ),
+        estimated_model_cost_per_initial_order=usage.estimated_model_cost_per_initial_order,
+        initial_order_count=usage.initial_order_count,
+        gemini_called_order_count=usage.gemini_called_order_count,
+        zero_call_order_count=usage.zero_call_order_count,
+        complete_usage_order_count=usage.complete_usage_order_count,
+        incomplete_usage_order_count=usage.incomplete_usage_order_count,
+        incomplete_usage_call_count=usage.incomplete_usage_call_count,
+        missing_call_attribution_count=usage.missing_call_attribution_count,
+        missing_input_token_count=usage.missing_input_token_count,
+        missing_output_token_count=usage.missing_output_token_count,
+        missing_total_token_count=usage.missing_total_token_count,
+        missing_pricing_snapshot_count=usage.missing_pricing_snapshot_count,
+    )
+
+
+def _pricing_status(
+    configured_model: str,
+    pricing_snapshot: PricingSnapshot | None,
+) -> PricingStatus:
+    if pricing_snapshot is None:
+        return PricingStatus(
+            status="ERROR",
+            model=configured_model,
+            reason=(
+                "No verified pricing snapshot was selected; numeric model cost may be unavailable."
+            ),
+        )
+    if pricing_snapshot.model != configured_model:
+        return PricingStatus(
+            pricing_snapshot_id=pricing_snapshot.snapshot_id,
+            model=pricing_snapshot.model,
+            status="ERROR",
+            reason="Pricing snapshot model does not match the configured Gemini model.",
+        )
+    return PricingStatus(
+        pricing_snapshot_id=pricing_snapshot.snapshot_id,
+        model=pricing_snapshot.model,
+        status="AVAILABLE",
     )
 
 

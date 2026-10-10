@@ -448,6 +448,36 @@ class MeasuredGeminiProvider:
         return result
 
 
+@dataclass(slots=True)
+class MeasuredGeminiProviderFactory:
+    """Explicit live-only factory that accepts only the real Gemini adapter."""
+
+    provider_factory: Callable[[], LLMProvider]
+    measurements: EvaluationMeasurements
+    case_id: str
+    model: str
+    pricing_snapshot_id: str | None
+    _attempt_counter: list[int] | None = None
+
+    def __post_init__(self) -> None:
+        self._attempt_counter = [0]
+
+    def __call__(self) -> LLMProvider:
+        from opsflow.extraction.gemini import GeminiProvider
+
+        provider = self.provider_factory()
+        if not isinstance(provider, GeminiProvider):
+            raise TypeError("live evaluation requires the configured GeminiProvider")
+        return MeasuredGeminiProvider(
+            provider,
+            self.measurements,
+            case_id=self.case_id,
+            model=self.model,
+            pricing_snapshot_id=self.pricing_snapshot_id,
+            attempt_counter=self._attempt_counter or [0],
+        )
+
+
 def measured_gemini_provider_factory(
     provider_factory: Callable[[], LLMProvider],
     measurements: EvaluationMeasurements,
@@ -455,27 +485,16 @@ def measured_gemini_provider_factory(
     case_id: str,
     model: str,
     pricing_snapshot_id: str | None,
-) -> Callable[[], LLMProvider]:
+) -> MeasuredGeminiProviderFactory:
     """Wrap the repository Gemini provider and reject any other provider type."""
 
-    attempt_counter = [0]
-
-    def create_provider() -> LLMProvider:
-        from opsflow.extraction.gemini import GeminiProvider
-
-        provider = provider_factory()
-        if not isinstance(provider, GeminiProvider):
-            raise TypeError("live evaluation requires the configured GeminiProvider")
-        return MeasuredGeminiProvider(
-            provider,
-            measurements,
-            case_id=case_id,
-            model=model,
-            pricing_snapshot_id=pricing_snapshot_id,
-            attempt_counter=attempt_counter,
-        )
-
-    return create_provider
+    return MeasuredGeminiProviderFactory(
+        provider_factory=provider_factory,
+        measurements=measurements,
+        case_id=case_id,
+        model=model,
+        pricing_snapshot_id=pricing_snapshot_id,
+    )
 
 
 def _sum_available(values: Sequence[int | None]) -> tuple[int | None, int, int]:
@@ -647,6 +666,7 @@ def aggregate_provider_usage(
 __all__ = [
     "EvaluationMeasurements",
     "MeasuredGeminiProvider",
+    "MeasuredGeminiProviderFactory",
     "OrderUsageSummary",
     "PricingSnapshot",
     "ProviderCallRecord",

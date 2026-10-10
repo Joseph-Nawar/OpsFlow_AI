@@ -825,7 +825,7 @@ class DurationSummary(ContractModel):
 
 
 class ProviderSummary(ContractModel):
-    """Sanitized provider reachability and authoritative usage placeholders."""
+    """Sanitized provider reachability; fake fault calls remain distinct from Gemini."""
 
     name: Literal["fake", "gemini"] | None = None
     calls: NonNegativeInt = 0
@@ -1124,10 +1124,6 @@ class EvaluationRunResult(ContractModel):
                 or cost.gemini_called_order_count != 0
             ):
                 raise ValueError("provider-free results cannot contain Gemini cost evidence")
-        if self.run.mode is EvaluationMode.LIVE_GEMINI:
-            for case in self.cases:
-                if case.provider.name == "fake" and case.provider.calls > 0:
-                    raise ValueError("live_gemini results cannot contain fake provider calls")
         return self
 
 

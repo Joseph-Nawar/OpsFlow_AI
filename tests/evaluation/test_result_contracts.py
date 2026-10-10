@@ -249,30 +249,22 @@ def test_error_is_valid_and_skipped_is_rejected() -> None:
         )
 
 
-def test_live_mode_rejects_fake_provider_calls() -> None:
-    with pytest.raises(ValidationError, match="fake"):
-        valid_run(
-            mode=EvaluationMode.LIVE_GEMINI,
-            cases=(valid_case(reached=True, provider_name="fake"),),
-            metrics=MetricsBundle(
-                extraction_quality=ExtractionQuality(
-                    status=ExtractionQualityStatus.AVAILABLE,
-                    reason="Real Gemini provider evidence is available.",
-                )
-            ),
-        )
+def test_live_mode_preserves_fake_fault_calls_without_labeling_them_as_gemini() -> None:
+    result = valid_run(
+        mode=EvaluationMode.LIVE_GEMINI,
+        cases=(valid_case(reached=True, provider_name="fake"),),
+        metrics=MetricsBundle(extraction_quality=valid_quality()),
+    )
+
+    assert result.cases[0].provider.name == "fake"
+    assert result.metrics.extraction_quality.status is ExtractionQualityStatus.NOT_APPLICABLE
 
 
 def test_live_mode_can_record_an_unreached_non_provider_scenario() -> None:
     result = valid_run(
         mode=EvaluationMode.LIVE_GEMINI,
         cases=(valid_case(reached=False, provider_name=None),),
-        metrics=MetricsBundle(
-            extraction_quality=ExtractionQuality(
-                status=ExtractionQualityStatus.AVAILABLE,
-                reason="Real Gemini provider evidence is available for reached cases.",
-            )
-        ),
+        metrics=MetricsBundle(extraction_quality=valid_quality()),
     )
     assert result.cases[0].provider.calls == 0
     assert result.cases[0].provider.name is None

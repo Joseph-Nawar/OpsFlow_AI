@@ -313,6 +313,14 @@ def score_extraction_quality(
             and result.expected_extraction is not None
         )
     ]
+    if not reached:
+        return ExtractionQuality(
+            status=ExtractionQualityStatus.NOT_APPLICABLE,
+            reason=(
+                "No real model extraction case was reached; "
+                "no real model quality score is available."
+            ),
+        )
     scores: list[PositionedExtractionScore] = []
     for result in reached:
         expected_projection = project_extraction(result.expected_extraction)  # type: ignore[arg-type]
