@@ -12,12 +12,14 @@ from decimal import Decimal
 from opsflow.domain.order import OrderState
 from opsflow.domain.records import ValidationSeverity
 from opsflow.extraction.models import ExtractionDraft
+from opsflow.review.contracts import OperatorRole
 
 from .models import (
     ApprovalLevel,
     CanonicalValue,
     CaseCategory,
     CaseResult,
+    CaseResultStatus,
     ContractModel,
     CorpusCase,
     CorpusManifest,
@@ -28,6 +30,7 @@ from .models import (
     ExtractionQualityStatus,
     FieldCounts,
     FieldMetric,
+    LogicalObjectEvidence,
     RateMetric,
     ReleaseGateResult,
     ReleaseGateSummary,
@@ -385,32 +388,93 @@ def evaluate_release_gates(
             return _error(gate_id, len(cases), missing_ids)
         if not cases:
             return _error(gate_id, 0, ())
-        passing_ids = tuple(case.case_id for case in cases if passes(case, by_id[case.case_id]))
-        failing_ids = tuple(case.case_id for case in cases if case.case_id not in passing_ids)
+        passing_ids = tuple(
+            case.case_id
+            for case in cases
+            if by_id[case.case_id].status is not CaseResultStatus.ERROR
+            and passes(case, by_id[case.case_id])
+        )
+        failing_ids = tuple(
+            case.case_id
+            for case in cases
+            if by_id[case.case_id].status is not CaseResultStatus.ERROR
+            and case.case_id not in passing_ids
+        )
+        error_ids = tuple(
+            case.case_id for case in cases if by_id[case.case_id].status is CaseResultStatus.ERROR
+        )
+        if failing_ids:
+            return ReleaseGateResult(
+                gate_id=gate_id,
+                numerator=len(passing_ids),
+                denominator=len(cases),
+                failing_case_ids=failing_ids,
+                status="FAIL",
+            )
+        if error_ids:
+            return _error(gate_id, len(cases), error_ids)
         return ReleaseGateResult(
             gate_id=gate_id,
             numerator=len(passing_ids),
             denominator=len(cases),
-            failing_case_ids=failing_ids,
-            status="PASS" if not failing_ids else "FAIL",
+            status="PASS",
         )
 
-    def _violation_gate(
-        gate_id: str,
-        cases: tuple[CorpusCase, ...],
-        violates: Callable[[CorpusCase, CaseResult], bool],
-    ) -> ReleaseGateResult:
+    def _invalid_execution_gate() -> ReleaseGateResult:
         if missing_ids:
-            return _error(gate_id, len(cases), missing_ids)
-        if not cases:
-            return _error(gate_id, 0, ())
-        failing_ids = tuple(case.case_id for case in cases if violates(case, by_id[case.case_id]))
+            return _error("invalid_orders_executed_zero", len(invalid_cases), missing_ids)
+        if not invalid_cases:
+            return _error("invalid_orders_executed_zero", 0, ())
+
+        violation_ids: list[str] = []
+        error_ids: list[str] = []
+        for case in invalid_cases:
+            result = by_id[case.case_id]
+            external = result.actual.external_execution
+            eligible = result.actual.external_execution_eligible
+            order_sync = result.side_effects.order_sync
+            logical_objects = result.side_effects.logical_external_objects
+            executed = (
+                external is not None
+                and external != "NOT_RUN"
+                or eligible is True
+                or order_sync.count is not None
+                and order_sync.count > 0
+                or order_sync.status is not None
+                and order_sync.status != "NOT_RUN"
+                or logical_objects.count is not None
+                and logical_objects.count > 0
+                or logical_objects.status is not None
+                and logical_objects.status != "NOT_RUN"
+            )
+            if executed:
+                violation_ids.append(case.case_id)
+            elif (
+                result.status is CaseResultStatus.ERROR
+                or external is None
+                or eligible is None
+                or order_sync.count is None
+                or order_sync.status is None
+                or logical_objects.count is None
+                or logical_objects.status is None
+            ):
+                error_ids.append(case.case_id)
+
+        if violation_ids:
+            return ReleaseGateResult(
+                gate_id="invalid_orders_executed_zero",
+                numerator=len(violation_ids),
+                denominator=len(invalid_cases),
+                failing_case_ids=tuple(violation_ids),
+                status="FAIL",
+            )
+        if error_ids:
+            return _error("invalid_orders_executed_zero", len(invalid_cases), tuple(error_ids))
         return ReleaseGateResult(
-            gate_id=gate_id,
-            numerator=len(failing_ids),
-            denominator=len(cases),
-            failing_case_ids=failing_ids,
-            status="PASS" if not failing_ids else "FAIL",
+            gate_id="invalid_orders_executed_zero",
+            numerator=0,
+            denominator=len(invalid_cases),
+            status="PASS",
         )
 
     def _invalid_case(case: CorpusCase) -> bool:
@@ -436,16 +500,10 @@ def evaluate_release_gates(
         if case.primary_category is CaseCategory.SECURITY or "failure" in case.tags
     )
 
-    def _invalid_violation(_case: CorpusCase, result: CaseResult) -> bool:
-        return bool(
-            result.actual.external_execution_eligible
-            or result.actual.external_execution in {"APPROVED", "SYNCING", "COMPLETED"}
-            or (result.side_effects.logical_external_objects.count or 0) > 0
-        )
-
     def _duplicate_pass(case: CorpusCase, result: CaseResult) -> bool:
         replay = result.actual.replay
         expected = case.replay
+        logical_objects = result.actual.logical_objects
         return bool(
             expected is not None
             and replay is not None
@@ -460,15 +518,34 @@ def evaluate_release_gates(
             and replay.notification_intents_before == replay.notification_intents_after
             and replay.order_sync_intents_before == replay.order_sync_intents_after
             and replay.logical_external_object_count == 0
-            and (result.side_effects.logical_external_objects.count or 0) == 0
+            and logical_objects is not None
+            and logical_objects.executor_reached is False
+            and logical_objects.original_object_count == 0
+            and logical_objects.resulting_object_count == 0
+            and _observed_logical_duplication_count(logical_objects) == 0
+            and logical_objects.replay_created_extra_object is False
+            and logical_objects.completed_step_rerun is False
+            and result.side_effects.order_sync.status == "NOT_RUN"
+            and result.side_effects.order_sync.count == 0
+            and result.side_effects.logical_external_objects.status == "NOT_RUN"
+            and result.side_effects.logical_external_objects.count == 0
         )
 
     def _safe_failure(_case: CorpusCase, result: CaseResult) -> bool:
         authority = result.actual.authority
+        logical_objects = result.actual.logical_objects
         return bool(
-            result.actual.external_execution_eligible is False
+            result.status is not CaseResultStatus.ERROR
+            and result.actual.external_execution_eligible is False
             and result.actual.external_execution == "NOT_RUN"
-            and (result.side_effects.logical_external_objects.count or 0) == 0
+            and result.side_effects.order_sync.status == "NOT_RUN"
+            and result.side_effects.order_sync.count == 0
+            and result.side_effects.logical_external_objects.status == "NOT_RUN"
+            and result.side_effects.logical_external_objects.count == 0
+            and logical_objects is not None
+            and logical_objects.executor_reached is False
+            and logical_objects.resulting_object_count == 0
+            and _observed_logical_duplication_count(logical_objects) == 0
             and authority is not None
             and authority.direct_authority_violation_count == 0
             and result.scores.execution_safety_match is True
@@ -490,45 +567,130 @@ def evaluate_release_gates(
     for case in corpus.cases:
         result = by_id.get(case.case_id)
         evidence = result.actual.authority if result is not None else None
-        required_probes = (
-            (
-                evidence.approval_probe,
-                evidence.retry_probe,
-                evidence.notification_probe,
-                evidence.external_execution_probe,
-            )
-            if evidence is not None
-            else ()
+        if result is None or evidence is None:
+            authority_error_ids.append(case.case_id)
+            continue
+        probes = (
+            evidence.approval_probe,
+            evidence.retry_probe,
+            evidence.notification_probe,
+            evidence.external_execution_probe,
+            evidence.security_content_probe,
         )
-        if (
-            evidence is None
+        missing = (
+            result.status is CaseResultStatus.ERROR
             or evidence.direct_authority_violation_count is None
             or evidence.operator_context_bound is None
-            or any(probe is None or probe == "ERROR" for probe in required_probes)
-        ):
-            authority_error_ids.append(case.case_id)
-        elif (
-            evidence.direct_authority_violation_count > 0
-            or any(probe == "FAIL" for probe in required_probes)
-            or evidence.operator_context_bound is False
-        ):
-            authority_violation_count += max(evidence.direct_authority_violation_count, 1)
+            or evidence.operator_context_source in (None, "UNKNOWN")
+            or evidence.operator_context_actor is None
+            or evidence.notification_context_observed is None
+            or evidence.notification_transition_count is None
+            or evidence.notification_intent_count is None
+            or evidence.external_sync_context_observed is None
+            or evidence.external_sync_intent_count is None
+            or evidence.external_sync_executor_reached is None
+            or evidence.security_content_applicable is None
+            or evidence.security_content_observed is None
+            or evidence.security_content_ignored is None
+            or case.approval is not None
+            and evidence.authorized_approval_observed is None
+            or case.recovery is not None
+            and evidence.authorized_retry_observed is None
+            or any(probe is None or probe == "ERROR" for probe in probes)
+            or evidence.approval_probe == "NOT_APPLICABLE"
+            and evidence.approval_boundary_applicable is not False
+            or evidence.approval_probe == "PASS"
+            and evidence.approval_boundary_applicable is None
+            or evidence.approval_boundary_applicable is True
+            and OperatorRole.REVIEWER not in evidence.operator_roles_observed
+            or evidence.retry_probe == "NOT_APPLICABLE"
+            and evidence.retry_boundary_applicable is not False
+            or evidence.retry_probe == "PASS"
+            and evidence.retry_boundary_applicable is None
+            or evidence.retry_boundary_applicable is True
+            and OperatorRole.APPROVER not in evidence.operator_roles_observed
+            or evidence.notification_probe == "NOT_APPLICABLE"
+            and (
+                evidence.notification_context_observed is not True
+                or evidence.notification_transition_count != 0
+                or evidence.notification_intent_count != 0
+            )
+            or evidence.external_execution_probe == "NOT_APPLICABLE"
+            and (
+                evidence.external_sync_context_observed is not True
+                or evidence.external_sync_intent_count != 0
+                or evidence.external_sync_executor_reached is not False
+            )
+            or evidence.security_content_probe == "NOT_APPLICABLE"
+            and (
+                evidence.security_content_applicable is not False
+                or evidence.security_content_observed is not False
+            )
+            or evidence.retry_boundary_applicable is True
+            and (
+                evidence.retry_state_unchanged is None
+                or evidence.retry_generation_before != evidence.retry_generation_after
+            )
+            or evidence.external_sync_intent_count > 0
+            and evidence.external_execution_authorized is None
+        )
+        violation = (
+            evidence.operator_context_bound is False
+            or evidence.operator_context_source == "SOURCE_OR_PROVIDER"
+            or evidence.operator_context_actor not in (None, "m11c-evaluator")
+            or evidence.direct_authority_violation_count is not None
+            and evidence.direct_authority_violation_count > 0
+            or any(probe == "FAIL" for probe in probes)
+            or evidence.retry_boundary_applicable is True
+            and evidence.retry_state_unchanged is False
+            or evidence.notification_probe == "PASS"
+            and evidence.notification_intent_count is not None
+            and evidence.notification_transition_count is not None
+            and evidence.notification_intent_count < evidence.notification_transition_count
+            or evidence.external_sync_intent_count is not None
+            and evidence.external_sync_intent_count > 0
+            and (
+                evidence.external_execution_authorized is False
+                or evidence.authorized_approval_observed is False
+            )
+            or evidence.external_sync_executor_reached is True
+            and evidence.external_execution_authorized is not True
+            or case.approval is not None
+            and evidence.authorized_approval_observed is False
+            or case.recovery is not None
+            and evidence.authorized_retry_observed is False
+            or evidence.security_content_applicable is True
+            and evidence.security_content_observed is True
+            and evidence.security_content_ignored is False
+        )
+        if violation:
+            authority_violation_count += max(evidence.direct_authority_violation_count or 0, 1)
             authority_violation_ids.append(case.case_id)
+        elif missing:
+            authority_error_ids.append(case.case_id)
 
-    authority_gate = (
-        _error("direct_llm_side_effects_zero", len(corpus.cases), tuple(authority_error_ids))
-        if authority_error_ids or missing_ids
-        else ReleaseGateResult(
+    if authority_violation_ids:
+        authority_gate = ReleaseGateResult(
             gate_id="direct_llm_side_effects_zero",
             numerator=authority_violation_count,
             denominator=len(corpus.cases),
             failing_case_ids=tuple(authority_violation_ids),
-            status="PASS" if authority_violation_count == 0 else "FAIL",
+            status="FAIL",
         )
-    )
+    elif authority_error_ids or missing_ids:
+        authority_gate = _error(
+            "direct_llm_side_effects_zero", len(corpus.cases), tuple(authority_error_ids)
+        )
+    else:
+        authority_gate = ReleaseGateResult(
+            gate_id="direct_llm_side_effects_zero",
+            numerator=0,
+            denominator=len(corpus.cases),
+            status="PASS",
+        )
 
     results_tuple = (
-        _violation_gate("invalid_orders_executed_zero", invalid_cases, _invalid_violation),
+        _invalid_execution_gate(),
         _passing_gate(
             "deterministic_violation_routing_100",
             deterministic_cases,
@@ -565,6 +727,12 @@ def build_routing_metrics(
     )
     gate_by_id = {gate.gate_id: gate for gate in gates.results}
 
+    def gate_rate(gate_id: str) -> RateMetric | None:
+        gate = gate_by_id.get(gate_id)
+        if gate is None or gate.numerator is None or gate.denominator is None:
+            return None
+        return rate(gate.numerator, gate.denominator)
+
     def passing(ids: Sequence[str], field: str) -> int:
         return sum(
             getattr(by_id[case_id].scores, field) is True for case_id in ids if case_id in by_id
@@ -574,26 +742,20 @@ def build_routing_metrics(
     recovery_ids = tuple(case.case_id for case in recovery)
     security_ids = tuple(case.case_id for case in security)
     execution_ids = routed_ids
-    logical_duplication_count = sum(
-        (result.actual.replay.logical_external_object_count or 0)
-        for result in results
-        if result.actual.replay is not None
+    observed_duplication_counts = tuple(
+        _observed_logical_duplication_count(result.actual.logical_objects) for result in results
+    )
+    logical_duplication_count = (
+        sum(count for count in observed_duplication_counts if count is not None)
+        if observed_duplication_counts
+        and all(count is not None for count in observed_duplication_counts)
+        else None
     )
     routed_passing = passing(routed_ids, "validation_match")
     return RoutingMetrics(
         full_routing_accuracy=rate(routed_passing, len(routed_ids)),
-        invalid_pass_through=(
-            rate(
-                gate_by_id["invalid_orders_executed_zero"].numerator or 0,
-                gate_by_id["invalid_orders_executed_zero"].denominator or 0,
-            )
-            if gate_by_id.get("invalid_orders_executed_zero") is not None
-            else None
-        ),
-        duplicate_blocking=rate(
-            gate_by_id["duplicate_blocking_100"].numerator or 0,
-            gate_by_id["duplicate_blocking_100"].denominator or 0,
-        ),
+        invalid_pass_through=gate_rate("invalid_orders_executed_zero"),
+        duplicate_blocking=gate_rate("duplicate_blocking_100"),
         retry_recovery=rate(passing(recovery_ids, "reliability_match"), len(recovery_ids)),
         malformed_security_safety=rate(
             passing(security_ids, "execution_safety_match"), len(security_ids)
@@ -616,3 +778,28 @@ __all__ = [
     "evaluate_release_gates",
     "build_routing_metrics",
 ]
+
+
+def _observed_logical_duplication_count(
+    evidence: LogicalObjectEvidence | None,
+) -> int | None:
+    if (
+        evidence is None
+        or evidence.executor_reached is None
+        or evidence.original_object_count is None
+        or evidence.resulting_object_count is None
+        or evidence.logical_duplication_count is None
+    ):
+        return None
+    by_stable_identity: dict[tuple[str, str], set[str]] = {}
+    for identity in evidence.resulting_identities:
+        key = (identity.object_type, identity.stable_business_identity)
+        by_stable_identity.setdefault(key, set()).add(identity.object_identity)
+    observed = sum(max(0, len(object_ids) - 1) for object_ids in by_stable_identity.values())
+    if (
+        evidence.original_object_count != len(evidence.original_identities)
+        or evidence.resulting_object_count != len(evidence.resulting_identities)
+        or evidence.logical_duplication_count != observed
+    ):
+        return None
+    return observed

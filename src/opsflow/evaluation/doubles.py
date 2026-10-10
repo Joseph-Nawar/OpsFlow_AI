@@ -14,10 +14,17 @@ from opsflow.extraction.provider import (
     StructuredGenerationRequest,
     StructuredGenerationResult,
 )
+from opsflow.order_sync.contracts import OrderSyncStep
 from opsflow.validation.business_data import BusinessDataProvider
 from opsflow.validation.models import BusinessDataLookupRequest, TrustedBusinessData
 
-from .models import CorpusCase, ExpectedExtraction
+from .models import (
+    CorpusCase,
+    ExpectedExtraction,
+    LogicalObjectEvidence,
+    LogicalObjectIdentity,
+    LogicalObjectType,
+)
 
 
 def _decimal_text(value: Decimal | None) -> str | None:
@@ -138,9 +145,83 @@ class FailOnceBusinessDataProvider:
         return await self._delegate.get_validation_data(request)
 
 
+class LogicalObjectTracker:
+    """Observe bounded synthetic objects by stable business identity."""
+
+    def __init__(self) -> None:
+        self.steps: list[OrderSyncStep] = []
+        self._objects: dict[tuple[LogicalObjectType, str], set[str]] = {}
+
+    def record_step(self, step: OrderSyncStep) -> None:
+        self.steps.append(step)
+
+    def record_object(
+        self,
+        object_type: LogicalObjectType,
+        stable_business_identity: str,
+        object_identity: str,
+    ) -> None:
+        identities = self._objects.setdefault((object_type, stable_business_identity), set())
+        identities.add(object_identity)
+
+    @property
+    def identities(self) -> tuple[LogicalObjectIdentity, ...]:
+        return tuple(
+            LogicalObjectIdentity(
+                object_type=object_type,
+                stable_business_identity=stable_identity,
+                object_identity=object_identity,
+            )
+            for (object_type, stable_identity), identities in sorted(self._objects.items())
+            for object_identity in sorted(identities)
+        )
+
+    @property
+    def logical_object_count(self) -> int:
+        return len(self.identities)
+
+    @property
+    def logical_duplication_count(self) -> int:
+        return sum(max(0, len(identities) - 1) for identities in self._objects.values())
+
+    def evidence(
+        self,
+        *,
+        original_identities: tuple[LogicalObjectIdentity, ...] = (),
+        completed_steps_before_retry: tuple[OrderSyncStep, ...] = (),
+        steps_after_retry: tuple[OrderSyncStep, ...] = (),
+    ) -> LogicalObjectEvidence:
+        resulting_identities = self.identities
+        original_duplicate_count = _identity_duplication_count(original_identities)
+        replay_created_extra_object = self.logical_duplication_count > original_duplicate_count
+        completed_steps = set(completed_steps_before_retry)
+        rerun = any(step in completed_steps for step in steps_after_retry)
+        return LogicalObjectEvidence(
+            executor_reached=bool(self.steps or resulting_identities),
+            original_identities=original_identities,
+            resulting_identities=resulting_identities,
+            original_object_count=len(original_identities),
+            resulting_object_count=len(resulting_identities),
+            logical_duplication_count=self.logical_duplication_count,
+            replay_created_extra_object=replay_created_extra_object,
+            completed_step_rerun=rerun,
+            completed_steps_before_retry=tuple(step.value for step in completed_steps_before_retry),
+            steps_after_retry=tuple(step.value for step in steps_after_retry),
+        )
+
+
+def _identity_duplication_count(identities: tuple[LogicalObjectIdentity, ...]) -> int:
+    by_stable_identity: dict[tuple[LogicalObjectType, str], set[str]] = {}
+    for identity in identities:
+        key = (identity.object_type, identity.stable_business_identity)
+        by_stable_identity.setdefault(key, set()).add(identity.object_identity)
+    return sum(max(0, len(object_ids) - 1) for object_ids in by_stable_identity.values())
+
+
 __all__ = [
     "ProviderObservation",
     "FailOnceBusinessDataProvider",
+    "LogicalObjectTracker",
     "RecoveryScriptedProviderFactory",
     "RecordingScriptedProvider",
     "ScriptedProviderFactory",

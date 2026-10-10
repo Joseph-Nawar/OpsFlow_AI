@@ -26,7 +26,14 @@ from opsflow.evaluation.models import (
     EvaluationMode,
     ExtractionQualityStatus,
 )
-from opsflow.evaluation.runner import ReliabilityEvidence, run_case, run_corpus
+from opsflow.evaluation.runner import (
+    ReliabilityEvidence,
+    run_approval_sync_scenario,
+    run_case,
+    run_corpus,
+    run_duplicate_scenario,
+    run_recovery_scenario,
+)
 from opsflow.extraction.provider import StructuredGenerationRequest
 from opsflow.orchestration.composition import OrchestrationRuntime
 from opsflow.orchestration.contracts import IntakeExecution, OrchestrationIntakeResult
@@ -349,6 +356,44 @@ def test_run_case_rejects_unknown_provider_factory_before_invocation(monkeypatch
 
     assert result.status is CaseResultStatus.ERROR
     assert intake_calls == 0
+    assert factory_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("scenario_name", "case_id"),
+    (
+        ("recovery", "retry-csv-002"),
+        ("duplicate", "duplicate-email-001"),
+        ("approval_sync", "retry-csv-002"),
+    ),
+)
+def test_scenarios_reject_unknown_provider_factory_before_work(
+    scenario_name: str, case_id: str
+) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == case_id)
+    scenarios = {
+        "recovery": run_recovery_scenario,
+        "duplicate": run_duplicate_scenario,
+        "approval_sync": run_approval_sync_scenario,
+    }
+    factory_calls = 0
+
+    def forbidden_factory() -> object:
+        nonlocal factory_calls
+        factory_calls += 1
+        raise AssertionError("forbidden provider factory was invoked")
+
+    with pytest.raises(ValueError, match="provider-free execution requires"):
+        asyncio.run(
+            scenarios[scenario_name](
+                _FakeSessionFactory(),
+                case,
+                _runtime(forbidden_factory),
+                EvaluationMode.PROVIDER_FREE,
+            )
+        )
+
     assert factory_calls == 0
 
 

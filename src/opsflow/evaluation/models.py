@@ -57,9 +57,23 @@ type BoundedReason = Annotated[
     StringConstraints(strict=True, min_length=1, max_length=512),
 ]
 type AuthorityProbeStatus = Literal["PASS", "FAIL", "ERROR", "NOT_APPLICABLE"]
+type AuthorityContextSource = Literal["EVALUATOR_CONFIGURATION", "SOURCE_OR_PROVIDER", "UNKNOWN"]
 type GateId = Annotated[
     str,
     StringConstraints(strict=True, min_length=1, max_length=64, pattern=r"^[a-z0-9_]+$"),
+]
+type LogicalObjectType = Literal[
+    "ODOO_ORDER",
+    "HUBSPOT_COMPANY",
+    "HUBSPOT_DEAL",
+    "HUBSPOT_ASSOCIATION",
+]
+type ReceiptPreservationStatus = Literal[
+    "NO_PRIOR_RECEIPTS",
+    "PRESERVED",
+    "LOST",
+    "REPLACED",
+    "UNEXPECTED_RECEIPTS",
 ]
 
 _SHA256 = re.compile(r"[0-9a-f]{64}", re.ASCII)
@@ -656,11 +670,67 @@ class AuthorityEvidence(ContractModel):
     """Deterministic evidence that document/provider content lacked authority."""
 
     operator_context_bound: StrictBool | None = None
+    operator_context_source: AuthorityContextSource | None = None
+    operator_context_actor: SafeIdentifier | None = None
+    operator_roles_observed: tuple[OperatorRole, ...] = ()
+    approval_boundary_applicable: StrictBool | None = None
     approval_probe: AuthorityProbeStatus | None = None
+    authorized_approval_observed: StrictBool | None = None
+    retry_boundary_applicable: StrictBool | None = None
     retry_probe: AuthorityProbeStatus | None = None
+    authorized_retry_observed: StrictBool | None = None
+    notification_context_observed: StrictBool | None = None
+    notification_transition_count: NonNegativeInt | None = None
+    notification_intent_count: NonNegativeInt | None = None
     notification_probe: AuthorityProbeStatus | None = None
+    external_sync_context_observed: StrictBool | None = None
+    external_sync_intent_count: NonNegativeInt | None = None
+    external_sync_executor_reached: StrictBool | None = None
+    external_execution_authorized: StrictBool | None = None
     external_execution_probe: AuthorityProbeStatus | None = None
+    security_content_applicable: StrictBool | None = None
+    security_content_observed: StrictBool | None = None
+    security_content_ignored: StrictBool | None = None
+    security_content_probe: AuthorityProbeStatus | None = None
+    retry_generation_before: NonNegativeInt | None = None
+    retry_generation_after: NonNegativeInt | None = None
+    retry_state_unchanged: StrictBool | None = None
     direct_authority_violation_count: NonNegativeInt | None = None
+
+
+class LogicalObjectIdentity(ContractModel):
+    """One observed external object tied to its stable OpsFlow business identity."""
+
+    object_type: LogicalObjectType
+    stable_business_identity: SafeIdentifier
+    object_identity: SafeIdentifier
+
+
+class LogicalObjectEvidence(ContractModel):
+    """Bounded provider-free observations of logical external object creation."""
+
+    executor_reached: StrictBool | None = None
+    original_identities: tuple[LogicalObjectIdentity, ...] = ()
+    resulting_identities: tuple[LogicalObjectIdentity, ...] = ()
+    original_object_count: NonNegativeInt | None = None
+    resulting_object_count: NonNegativeInt | None = None
+    logical_duplication_count: NonNegativeInt | None = None
+    replay_created_extra_object: StrictBool | None = None
+    completed_step_rerun: StrictBool | None = None
+    completed_steps_before_retry: tuple[SafeIdentifier, ...] = ()
+    steps_after_retry: tuple[SafeIdentifier, ...] = ()
+
+    @model_validator(mode="after")
+    def _identity_counts_match(self) -> LogicalObjectEvidence:
+        if self.original_object_count is not None and self.original_object_count != len(
+            self.original_identities
+        ):
+            raise ValueError("original_object_count must match observed original identities")
+        if self.resulting_object_count is not None and self.resulting_object_count != len(
+            self.resulting_identities
+        ):
+            raise ValueError("resulting_object_count must match observed resulting identities")
+        return self
 
 
 class ReplayEvidence(ContractModel):
@@ -689,12 +759,16 @@ class RecoveryEvidence(ContractModel):
     failed_state: OrderState | None = None
     failure_origin: OrderState | None = None
     retry_used: StrictBool | None = None
+    retry_generation_before: NonNegativeInt | None = None
     retry_generation: NonNegativeInt | None = None
     final_state: OrderState | None = None
     receipt_count: NonNegativeInt | None = None
+    prior_receipt_ids: tuple[SafeIdentifier, ...] = ()
+    receipt_ids_at_retry: tuple[SafeIdentifier, ...] = ()
     receipt_ids: tuple[SafeIdentifier, ...] = ()
     resumed_sync_steps: tuple[SafeFailureCode, ...] = ()
     prior_receipts_preserved: StrictBool | None = None
+    receipt_preservation_status: ReceiptPreservationStatus | None = None
 
 
 class CaseActual(ContractModel):
@@ -714,6 +788,7 @@ class CaseActual(ContractModel):
     external_execution_eligible: StrictBool | None = None
     failure_code: SafeFailureCode | None = None
     authority: AuthorityEvidence | None = None
+    logical_objects: LogicalObjectEvidence | None = None
     replay: ReplayEvidence | None = None
     recovery: RecoveryEvidence | None = None
 
