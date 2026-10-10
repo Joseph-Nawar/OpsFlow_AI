@@ -110,6 +110,30 @@ def test_migration_database_cannot_be_omitted_when_configured() -> None:
         )
 
 
+def test_evaluation_config_rejects_production_like_distinct_database_name() -> None:
+    with pytest.raises(EvaluationDatabaseSafetyError):
+        config_for("postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_prod")
+
+
+def test_reset_rejects_unapproved_database_before_opening_transaction() -> None:
+    unsafe_url = "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_prod"
+    config = EvaluationDatabaseConfig(
+        evaluation_url=unsafe_url,
+        normal_url=NORMAL_URL,
+        migration_test_url=MIGRATION_URL,
+        evaluation_database_name="opsflow_prod",
+    )
+
+    class NeverConnectEngine:
+        url: URL = make_url(unsafe_url)
+
+        def begin(self):
+            pytest.fail("unapproved target must be rejected before opening a transaction")
+
+    with pytest.raises(EvaluationDatabaseSafetyError):
+        asyncio.run(reset_evaluation_application_data(config, NeverConnectEngine()))  # type: ignore[arg-type]
+
+
 def test_reset_rejects_engine_identity_mismatch_before_connecting() -> None:
     class NeverConnectEngine:
         url: URL = make_url(NORMAL_URL)

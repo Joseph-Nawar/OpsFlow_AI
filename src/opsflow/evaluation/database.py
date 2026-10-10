@@ -21,6 +21,7 @@ from opsflow.persistence.models import Base
 from opsflow.settings import Settings
 
 _EVALUATION_DATABASE_ENV = "OPSFLOW_EVALUATION_DATABASE_URL"
+_APPROVED_EVALUATION_DATABASE_NAME = "opsflow_evaluation"
 _DATABASE_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,62}\Z", re.ASCII)
 
 # Explicit child-before-parent deletion order. alembic_version is intentionally absent.
@@ -89,6 +90,10 @@ class EvaluationDatabaseConfig:
             ) from error
 
         target_name = _required_database_name(target, label="evaluation")
+        if target_name != _APPROVED_EVALUATION_DATABASE_NAME:
+            raise EvaluationDatabaseSafetyError(
+                "evaluation database name must be the approved opsflow_evaluation database"
+            )
         normal_name = _required_database_name(normal, label="normal")
         migration_name = (
             _required_database_name(migration, label="migration-test")
@@ -150,7 +155,7 @@ def _url_identity(url: URL) -> tuple[object, ...]:
 
 
 def assert_evaluation_database_isolated(config: EvaluationDatabaseConfig) -> None:
-    """Revalidate strict URL shape and distinct database names before any cleanup."""
+    """Require the approved evaluation name and distinct normal/migration names."""
 
     try:
         evaluation = _strict_postgresql_url(config.evaluation_url, label="evaluation")
@@ -175,6 +180,10 @@ def assert_evaluation_database_isolated(config: EvaluationDatabaseConfig) -> Non
     if config.evaluation_database_name != evaluation_name:
         raise EvaluationDatabaseSafetyError(
             "configured evaluation database name does not match its URL"
+        )
+    if evaluation_name != _APPROVED_EVALUATION_DATABASE_NAME:
+        raise EvaluationDatabaseSafetyError(
+            "evaluation database name must be the approved opsflow_evaluation database"
         )
     if evaluation_name in (normal_name, migration_name):
         raise EvaluationDatabaseSafetyError(
