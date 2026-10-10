@@ -39,7 +39,13 @@ from .measurements import (
     PricingSnapshot,
     load_pricing_snapshot,
 )
-from .models import CorpusManifest, EvaluationMode, EvaluationRunResult
+from .models import (
+    CaseResultStatus,
+    CorpusManifest,
+    EvaluationMode,
+    EvaluationRunResult,
+    ExtractionQualityStatus,
+)
 from .runner import run_corpus
 
 CORPUS_ROOT = Path("evals/corpus/v1")
@@ -48,6 +54,15 @@ EXPECTED_MIGRATION_HEAD = "0007_phase7_intake_ownership"
 EXPECTED_CORPUS_VERSION = "3.0.0"
 EXPECTED_CASE_COUNT = 36
 RESULTS_DIRECTORY = Path("evals/results")
+REQUIRED_RELEASE_GATE_IDS = frozenset(
+    {
+        "invalid_orders_executed_zero",
+        "deterministic_violation_routing_100",
+        "duplicate_blocking_100",
+        "malformed_security_safe_100",
+        "direct_llm_side_effects_zero",
+    }
+)
 
 
 class LivePreflightError(ValueError):
@@ -59,6 +74,7 @@ class EvaluationArtifacts:
     result: EvaluationRunResult
     json_path: Path
     markdown_path: Path
+    expected_case_ids: frozenset[str]
 
 
 def validate_live_preflight(environ: Mapping[str, str]) -> GeminiConfig:
@@ -251,22 +267,46 @@ def run_evaluation(
         report_path = results_directory / f"{mode.value}-{result.run.run_id}.md"
         write_result_json(result, result_path)
         write_markdown_from_json(result_path, report_path)
-        return EvaluationArtifacts(result, result_path, report_path)
+        return EvaluationArtifacts(
+            result,
+            result_path,
+            report_path,
+            frozenset(case.case_id for case in manifest.cases),
+        )
     finally:
         asyncio.run(engine.dispose())
 
 
 def _successful_result(artifacts: EvaluationArtifacts) -> bool:
     result = artifacts.result
+    case_ids = tuple(case.case_id for case in result.cases)
+    if (
+        len(artifacts.expected_case_ids) != EXPECTED_CASE_COUNT
+        or len(case_ids) != EXPECTED_CASE_COUNT
+        or set(case_ids) != artifacts.expected_case_ids
+        or any(case.status is not CaseResultStatus.PASS for case in result.cases)
+    ):
+        return False
+    gate_results = result.release_gates.results
+    if (
+        result.release_gates.all_passed is not True
+        or len(gate_results) != len(REQUIRED_RELEASE_GATE_IDS)
+        or {gate.gate_id for gate in gate_results} != REQUIRED_RELEASE_GATE_IDS
+        or any(gate.status != "PASS" for gate in gate_results)
+    ):
+        return False
+    if result.corpus.case_count != EXPECTED_CASE_COUNT:
+        return False
     if result.run.mode is EvaluationMode.PROVIDER_FREE:
         return (
-            result.corpus.case_count == EXPECTED_CASE_COUNT
-            and result.release_gates.all_passed is True
+            result.metrics.provider_usage.gemini_call_count == 0
+            and result.metrics.extraction_quality.status is ExtractionQualityStatus.NOT_APPLICABLE
         )
     return (
-        result.metrics.provider_usage.gemini_call_count > 0
+        result.run.gemini_model is not None
+        and bool(result.run.gemini_model.strip())
+        and result.metrics.provider_usage.gemini_call_count > 0
         and result.metrics.provider_usage.failed_call_count == 0
-        and all(case.status.value != "ERROR" for case in result.cases)
     )
 
 

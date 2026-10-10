@@ -80,6 +80,20 @@ def valid_live_result() -> EvaluationRunResult:
     return EvaluationRunResult.model_validate(result)
 
 
+def _reference_result_for_mode(mode: EvaluationMode) -> EvaluationRunResult:
+    reference_path = (
+        Path(__file__).resolve().parents[2]
+        / "docs/evaluation/reference/phase-11-provider-free-baseline.json"
+    )
+    result = validate_result_json(reference_path)
+    if mode is EvaluationMode.LIVE_GEMINI:
+        run = result.run.model_copy(update={"mode": mode, "gemini_model": "gemini-3.8-flash"})
+        provider_usage = result.metrics.provider_usage.model_copy(update={"gemini_call_count": 1})
+        metrics = result.metrics.model_copy(update={"provider_usage": provider_usage})
+        result = result.model_copy(update={"run": run, "metrics": metrics})
+    return result
+
+
 def _mock_command_environment(monkeypatch, tmp_path: Path, result: EvaluationRunResult):
     from sqlalchemy.pool import NullPool
 
@@ -268,6 +282,78 @@ def test_provider_free_command_needs_no_gemini_settings_and_writes_json_first(
     assert artifacts.markdown_path.read_text(encoding="utf-8") == render_markdown_from_json(
         artifacts.json_path
     )
+
+
+@pytest.mark.parametrize("mode", [EvaluationMode.PROVIDER_FREE, EvaluationMode.LIVE_GEMINI])
+def test_successful_baseline_is_accepted_in_both_modes(
+    mode: EvaluationMode,
+    tmp_path: Path,
+) -> None:
+    from opsflow.evaluation.commands import EvaluationArtifacts, _successful_result
+
+    result = _reference_result_for_mode(mode)
+    expected_case_ids = frozenset(case.case_id for case in result.cases)
+    artifacts = EvaluationArtifacts(
+        result, tmp_path / "result.json", tmp_path / "result.md", expected_case_ids
+    )
+
+    assert _successful_result(artifacts)
+
+
+@pytest.mark.parametrize("mode", [EvaluationMode.PROVIDER_FREE, EvaluationMode.LIVE_GEMINI])
+@pytest.mark.parametrize("failed_status", ["FAIL", "ERROR"])
+def test_failed_case_prevents_command_success_even_when_gates_pass(
+    mode: EvaluationMode,
+    failed_status: str,
+    tmp_path: Path,
+) -> None:
+    from opsflow.evaluation.commands import EvaluationArtifacts, _successful_result
+    from opsflow.evaluation.models import CaseResultStatus
+
+    result = _reference_result_for_mode(mode)
+    expected_case_ids = frozenset(case.case_id for case in result.cases)
+    failed_case = result.cases[0].model_copy(update={"status": CaseResultStatus(failed_status)})
+    result = result.model_copy(update={"cases": (failed_case, *result.cases[1:])})
+    artifacts = EvaluationArtifacts(
+        result, tmp_path / "result.json", tmp_path / "result.md", expected_case_ids
+    )
+
+    assert result.release_gates.all_passed is True
+    assert not _successful_result(artifacts)
+
+
+@pytest.mark.parametrize("mode", [EvaluationMode.PROVIDER_FREE, EvaluationMode.LIVE_GEMINI])
+@pytest.mark.parametrize("case_shape", ["missing", "duplicate"])
+def test_case_set_must_match_the_corpus_without_duplicates(
+    mode: EvaluationMode, case_shape: str, tmp_path: Path
+) -> None:
+    from opsflow.evaluation.commands import EvaluationArtifacts, _successful_result
+
+    result = _reference_result_for_mode(mode)
+    expected_case_ids = frozenset(case.case_id for case in result.cases)
+    cases = result.cases[:-1] if case_shape == "missing" else (*result.cases[:-1], result.cases[0])
+    result = result.model_copy(update={"cases": cases})
+    artifacts = EvaluationArtifacts(
+        result, tmp_path / "result.json", tmp_path / "result.md", expected_case_ids
+    )
+
+    assert result.corpus.case_count == 36
+    assert not _successful_result(artifacts)
+
+
+def test_all_five_release_gates_are_required_for_command_success(tmp_path: Path) -> None:
+    from opsflow.evaluation.commands import EvaluationArtifacts, _successful_result
+
+    result = _reference_result_for_mode(EvaluationMode.PROVIDER_FREE)
+    expected_case_ids = frozenset(case.case_id for case in result.cases)
+    gates = result.release_gates.model_copy(update={"results": result.release_gates.results[:-1]})
+    result = result.model_copy(update={"release_gates": gates})
+    artifacts = EvaluationArtifacts(
+        result, tmp_path / "result.json", tmp_path / "result.md", expected_case_ids
+    )
+
+    assert result.release_gates.all_passed is True
+    assert not _successful_result(artifacts)
 
 
 def test_live_command_accepts_missing_pricing_without_calling_the_provider(
