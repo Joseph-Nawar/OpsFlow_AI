@@ -311,21 +311,25 @@ def _result_from_intake(
     validation_score = score_validation_outcome(case.expected_validation, result)
     expected_eligible = (
         case.expected_validation.external_execution_eligible
-        if case.expected_validation is not None
+        if case.expected_validation is not None and case.approval is None
         else False
     )
     execution_safe = (
         result.actual.external_execution_eligible is expected_eligible
         and (result.side_effects.logical_external_objects.count or 0) == 0
     )
+    validation_match = validation_score.overall_match if validation_score is not None else None
     result = result.model_copy(
         update={
+            "status": (
+                CaseResultStatus.FAIL
+                if validation_match is False or execution_safe is False
+                else CaseResultStatus.PASS
+            ),
             "scores": CaseScores(
-                validation_match=(
-                    validation_score.overall_match if validation_score is not None else None
-                ),
+                validation_match=validation_match,
                 execution_safety_match=execution_safe,
-            )
+            ),
         }
     )
     return result
@@ -367,7 +371,10 @@ def _benchmark_failure(
             else result.scores.execution_safety_match,
         }
     )
-    return result.model_copy(update={"status": CaseResultStatus.FAIL, "scores": scores})
+    status = (
+        CaseResultStatus.ERROR if result.status is CaseResultStatus.ERROR else CaseResultStatus.FAIL
+    )
+    return result.model_copy(update={"status": status, "scores": scores})
 
 
 async def _authority_evidence(
@@ -752,7 +759,13 @@ async def run_duplicate_scenario(
     )
     replay = replay.model_copy(
         update={
-            "status": CaseResultStatus.PASS if replay_match else CaseResultStatus.FAIL,
+            "status": (
+                CaseResultStatus.ERROR
+                if replay.status is CaseResultStatus.ERROR
+                else CaseResultStatus.FAIL
+                if not replay_match or replay.status is CaseResultStatus.FAIL
+                else CaseResultStatus.PASS
+            ),
             "actual": replay.actual.model_copy(
                 update={
                     "creation_disposition": creation_disposition,

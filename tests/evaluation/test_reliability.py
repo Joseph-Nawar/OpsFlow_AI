@@ -155,6 +155,9 @@ def test_approved_sync_recovery_uses_real_review_and_phase9_receipts(
     assert "ODOO_BRIDGE" not in outcome.resumed_steps
     assert outcome.logical_external_object_count == 4
     assert outcome.case_result.actual.pre_approval_state is OrderState.READY_FOR_APPROVAL
+    assert outcome.case_result.status.value == "PASS"
+    assert outcome.case_result.scores.validation_match is True
+    assert outcome.case_result.scores.execution_safety_match is True
     assert outcome.case_result.actual.recovery is not None
     assert outcome.case_result.actual.recovery.final_state is OrderState.COMPLETED
     assert outcome.case_result.actual.recovery.prior_receipts_preserved is True

@@ -225,6 +225,8 @@ def test_real_postgresql_path_records_bounded_processing_failure(
     assert result.actual.parse is CaseResultStatus.ERROR
     assert result.actual.extraction_contract is CaseResultStatus.ERROR
     assert result.actual.external_execution_eligible is False
+    assert result.actual.route is None
+    assert result.status is CaseResultStatus.PASS
     assert persisted.order.state is OrderState.FAILED_FINAL
     assert persisted.order.failure_origin is OrderState.PROCESSING
     assert audits[-1].event_type == "ORDER_PROCESSING_FAILED"
@@ -348,6 +350,60 @@ def test_run_case_rejects_unknown_provider_factory_before_invocation(monkeypatch
     assert result.status is CaseResultStatus.ERROR
     assert intake_calls == 0
     assert factory_calls == 0
+
+
+@pytest.mark.parametrize("actual_state", (OrderState.READY_FOR_APPROVAL, OrderState.SYNCING))
+def test_run_case_fails_when_observed_route_and_execution_safety_mismatch(
+    monkeypatch, actual_state: OrderState
+) -> None:
+    import opsflow.evaluation.runner as runner
+
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "deterministic-email-001")
+
+    async def fake_intake(*_args, **_kwargs):
+        return OrchestrationIntakeResult(
+            order_id=uuid4(),
+            state=actual_state,
+            failure_origin=None,
+            idempotent_replay=False,
+            execution=IntakeExecution.COMPLETED,
+        )
+
+    async def no_persisted_observation(_session, _order_id):
+        return None, None
+
+    monkeypatch.setattr(runner, "execute_orchestration_intake", fake_intake)
+    monkeypatch.setattr(runner, "_load_persisted_observation", no_persisted_observation)
+
+    result = asyncio.run(
+        run_case(
+            _FakeSessionFactory(),
+            case,
+            _runtime(ScriptedProviderFactory(case)),
+            EvaluationMode.PROVIDER_FREE,
+        )
+    )
+
+    assert result.actual.route is not case.expected_validation.route
+    assert result.scores.validation_match is False
+    assert result.scores.execution_safety_match is (actual_state is OrderState.READY_FOR_APPROVAL)
+    assert result.status is CaseResultStatus.FAIL
+
+
+def test_scenario_mismatch_does_not_downgrade_infrastructure_error() -> None:
+    import opsflow.evaluation.runner as runner
+    from opsflow.evaluation.models import CaseActual
+
+    result = CaseResult(
+        case_id="infrastructure-error",
+        status=CaseResultStatus.ERROR,
+        actual=CaseActual(failure_code="EVALUATION_EXECUTION_ERROR"),
+    )
+
+    observed = runner._benchmark_failure(result, reliability_match=False)
+
+    assert observed.status is CaseResultStatus.ERROR
 
 
 def test_run_corpus_is_provider_free_and_accounts_for_all_manifest_cases(monkeypatch) -> None:
