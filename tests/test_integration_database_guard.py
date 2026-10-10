@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -13,8 +12,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 def _collect_integration_tests(environment: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
-            sys.executable,
-            "-m",
+            "uv",
+            "run",
             "pytest",
             "tests/integration",
             "--collect-only",
@@ -38,6 +37,20 @@ def test_direct_integration_invocation_requires_explicit_disposable_target() -> 
 
     assert result.returncode != 0
     assert "OPSFLOW_INTEGRATION_TEST_DATABASE_URL" in result.stdout + result.stderr
+
+
+def test_direct_integration_invocation_loads_guard_before_checking_target_identity() -> None:
+    environment = os.environ.copy()
+    environment["OPSFLOW_INTEGRATION_TEST_DATABASE_URL"] = (
+        "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:59998/opsflow_integration_probe"
+    )
+
+    result = _collect_integration_tests(environment)
+    output = result.stdout + result.stderr
+
+    assert result.returncode != 0
+    assert "dedicated integration-test database identity could not be verified" in output
+    assert "ModuleNotFoundError" not in output
 
 
 @pytest.mark.parametrize(
