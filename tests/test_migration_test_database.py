@@ -45,3 +45,23 @@ def test_migration_database_rejects_same_database_name_with_another_role(
 
     with pytest.raises(pytest.fail.Exception, match="development database"):
         request.getfixturevalue("migration_test_database_url")
+
+
+def test_migration_database_rejects_unapproved_production_like_name(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    monkeypatch.setenv(
+        "OPSFLOW_DATABASE_URL",
+        "postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow",
+    )
+    monkeypatch.setenv(
+        "OPSFLOW_MIGRATION_TEST_DATABASE_URL",
+        "postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_prod",
+    )
+
+    with pytest.raises(
+        pytest.fail.Exception,
+        match="approved opsflow_migration_test identity",
+    ):
+        request.getfixturevalue("migration_test_database_url")

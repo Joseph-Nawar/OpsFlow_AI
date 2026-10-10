@@ -3,13 +3,15 @@
 UV ?= uv
 NPM ?= npm
 COMPOSE ?= docker compose
+OPSFLOW_INTEGRATION_TEST_DATABASE_URL ?=
 
 # PostgreSQL must already be available for the full suite and integration tests.
 test:
-	$(UV) run pytest
+	OPSFLOW_INTEGRATION_TEST_DATABASE_URL="$(OPSFLOW_INTEGRATION_TEST_DATABASE_URL)" $(UV) run pytest
 
 test-integration:
-	$(UV) run pytest tests/integration -q --no-cov
+	@test -n "$(OPSFLOW_INTEGRATION_TEST_DATABASE_URL)" || { echo "Set OPSFLOW_INTEGRATION_TEST_DATABASE_URL to a disposable opsflow_integration_* PostgreSQL database."; exit 2; }
+	OPSFLOW_INTEGRATION_TEST_DATABASE_URL="$(OPSFLOW_INTEGRATION_TEST_DATABASE_URL)" $(UV) run pytest tests/integration -q --no-cov
 
 lint:
 	$(UV) run ruff check .

@@ -28,5 +28,7 @@ def migration_test_database_url() -> str:
         pytest.fail("isolated migration database must name a database")
     if migration_url.database == development_url.database:
         pytest.fail("migration test database must differ from development database")
+    if migration_url.database != "opsflow_migration_test":
+        pytest.fail("migration database must use the approved opsflow_migration_test identity")
 
     return configured_url

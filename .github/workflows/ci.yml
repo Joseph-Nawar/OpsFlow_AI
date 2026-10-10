@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OPSFLOW_DATABASE_URL: postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow
+      OPSFLOW_INTEGRATION_TEST_DATABASE_URL: postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_integration_ci
       OPSFLOW_MIGRATION_TEST_DATABASE_URL: postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_migration_test
     services:
       postgres:
@@ -60,6 +61,27 @@ jobs:
               )
               try:
                   await connection.execute("CREATE DATABASE opsflow_migration_test")
+              finally:
+                  await connection.close()
+
+          asyncio.run(main())
+          PY
+
+      - name: Create isolated integration-test database
+        run: |
+          uv run python - <<'PY'
+          import asyncio
+          import asyncpg
+
+          async def main() -> None:
+              connection = await asyncpg.connect(
+                  user="opsflow",
+                  password="opsflow",
+                  database="postgres",
+                  host="localhost",
+              )
+              try:
+                  await connection.execute("CREATE DATABASE opsflow_integration_ci")
               finally:
                   await connection.close()
 
