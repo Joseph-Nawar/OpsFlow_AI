@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -20,11 +21,13 @@ import opsflow.evaluation.runner as runner_module
 from opsflow.domain import OrderState
 from opsflow.evaluation.corpus import EvaluationBusinessDataProvider, load_catalog, load_manifest
 from opsflow.evaluation.doubles import ScriptedProviderFactory
+from opsflow.evaluation.measurements import EvaluationMeasurements, MeasuredGeminiProviderFactory
 from opsflow.evaluation.models import (
     CaseResult,
     CaseResultStatus,
     EvaluationMode,
     ExtractionQualityStatus,
+    ProviderSummary,
 )
 from opsflow.evaluation.runner import (
     ReliabilityEvidence,
@@ -642,3 +645,69 @@ def test_run_corpus_keeps_benchmark_mismatch_as_structured_failure(
     )
     assert duplicate_gate.status == "FAIL"
     assert duplicate_case.case_id in duplicate_gate.failing_case_ids
+
+
+def test_live_runner_keeps_fault_scenarios_provider_free_and_never_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    observed: dict[str, tuple[EvaluationMode, object]] = {}
+    provider_factory_calls = 0
+
+    def record_case(case, mode: EvaluationMode, supplied_runtime):
+        observed[case.case_id] = (mode, supplied_runtime.extraction_provider_factory)
+        provider = (
+            ProviderSummary(name="fake", calls=1)
+            if case.recovery is not None
+            else ProviderSummary()
+        )
+        return CaseResult(case_id=case.case_id, status=CaseResultStatus.PASS, provider=provider)
+
+    async def fake_run_case(_sessions, case, supplied_runtime, mode, **_kwargs):
+        return record_case(case, mode, supplied_runtime)
+
+    async def fake_scenario(_sessions, case, supplied_runtime, mode, **_kwargs):
+        return SimpleNamespace(case_result=record_case(case, mode, supplied_runtime))
+
+    monkeypatch.setattr(runner_module, "run_case", fake_run_case)
+    monkeypatch.setattr(runner_module, "run_recovery_scenario", fake_scenario)
+    monkeypatch.setattr(runner_module, "run_duplicate_scenario", fake_scenario)
+    monkeypatch.setattr(runner_module, "run_approval_sync_scenario", fake_scenario)
+
+    def forbidden_gemini_factory():
+        nonlocal provider_factory_calls
+        provider_factory_calls += 1
+        raise AssertionError("mocked routing must not make a Gemini provider call")
+
+    result = asyncio.run(
+        run_corpus(
+            _FakeSessionFactory(),
+            manifest,
+            _runtime(),
+            EvaluationMode.LIVE_GEMINI,
+            measurements=EvaluationMeasurements(),
+            gemini_provider_factory=forbidden_gemini_factory,
+            configured_model="gemini-3.8-flash",
+        )
+    )
+
+    recovery_cases = {case.case_id for case in manifest.cases if case.recovery is not None}
+    duplicate_cases = {case.case_id for case in manifest.cases if case.replay is not None}
+    assert len(observed) == len(manifest.cases) == 36
+    assert provider_factory_calls == 0
+    assert all(
+        observed[case_id][0] is EvaluationMode.PROVIDER_FREE
+        and isinstance(observed[case_id][1], ScriptedProviderFactory)
+        for case_id in recovery_cases
+    )
+    assert all(
+        observed[case_id][0] is EvaluationMode.LIVE_GEMINI
+        and isinstance(observed[case_id][1], MeasuredGeminiProviderFactory)
+        for case_id in duplicate_cases
+    )
+    assert result.metrics.extraction_quality.status is ExtractionQualityStatus.NOT_APPLICABLE
+    assert all(
+        case.provider.name == "fake" and case.provider.calls == 1
+        for case in result.cases
+        if case.case_id in recovery_cases
+    )
