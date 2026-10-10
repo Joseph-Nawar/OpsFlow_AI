@@ -16,11 +16,12 @@ it did not implement the full evaluation runner, application-level reliability
 execution, release-gate execution, evaluation database lifecycle, latency
 benchmark execution, live Gemini evaluation, token/cost calculation, reference
 result generation, optimization, or the Phase 11 audit. M11C — Correctness,
-Routing & Reliability Evaluation is `IN PROGRESS` and is limited to Tasks 5–7
-in the approved implementation plan; it must stop for independent review and
-human approval before M11D. M11D–M11F remain `NOT STARTED`. Phase 11 remains
-`IN PROGRESS` and Phase 12 remains `NOT STARTED`. It defines the evaluation contract and
-implementation boundary; it does not implement the evaluator.
+Routing & Reliability Evaluation is `COMPLETE` at independently reviewed
+technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; M11C delivered
+Tasks 5–7 on active corpus `3.0.0`. M11D–M11F remain `NOT STARTED`. Phase 11
+remains `IN PROGRESS` and Phase 12 remains `NOT STARTED`. This document defines
+the evaluation contract and implementation boundary; it does not implement
+the evaluator.
 
 The design is grounded in the repository at starting SHA
 `712aa04312cf1e2ebba85f60f2319765057bc211`, the exact `main` and
@@ -51,8 +52,11 @@ Corpus `2.0.0` encoded those layers in one ambiguous field. Corpus `3.0.0`
 splits the expectations without changing production behavior, source documents,
 or source SHA-256 values. The corpus `3.0.0` amendment is approved at
 `7184efb9589445d16e354decd486f28bc90ac09b`; all further Phase 11 evaluation
-execution uses corpus `3.0.0`. M11C is `IN PROGRESS`; M11D–M11F remain
-`NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
+execution uses corpus `3.0.0`. At that amendment, M11C remained `IN PROGRESS`;
+M11D–M11F remained `NOT STARTED`; Phase 11 remained `IN PROGRESS`; Phase 12
+remained `NOT STARTED`. M11C was subsequently completed at approved technical
+baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; see the implementation
+plan for the closeout evidence.
 
 Normative words such as **MUST**, **MUST NOT**, **SHOULD**, and **MAY** state
 the implementation contract for M11B–M11F.

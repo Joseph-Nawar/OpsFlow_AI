@@ -27,19 +27,59 @@
 
 ## Current execution status
 
-M11B is `COMPLETE` at its independently reviewed technical baseline, while its
-historical approved corpus remains `1.0.0`. M11C Task 5 exposed an authority
-contradiction in two intake-recovery final-state expectations; the approved
-corpus correction was `2.0.0` at amendment SHA
-`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C is `IN PROGRESS`, and further
-M11C execution uses the approved duplicate replay-contract amendment. Real-path
-duplicate execution showed that Phase 2 creation replay and Phase 7 intake
-execution expose distinct dispositions; corpus `3.0.0` splits those
-expectations without changing production behavior or source bytes. Corpus
-`3.0.0` is approved at amendment SHA
-`7184efb9589445d16e354decd486f28bc90ac09b`, and all further Phase 11 evaluation
-execution uses corpus `3.0.0`. M11C is `IN PROGRESS`; M11D–M11F remain
-`NOT STARTED`.
+M11B is `COMPLETE` at its independently reviewed technical baseline; its
+historical approved corpus remains `1.0.0`. The recovery-authority correction
+was corpus `2.0.0` at amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. The duplicate replay-contract
+correction was corpus `3.0.0` at amendment SHA
+`7184efb9589445d16e354decd486f28bc90ac09b`; it is the active executable
+corpus. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at
+independently reviewed technical baseline
+`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D–M11F remain `NOT STARTED`;
+Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
+
+### M11C closeout — local milestone verification
+
+M11C delivered Tasks 5–7:
+
+1. Provider-free evaluation runner through real OpsFlow application seams.
+2. Durable correctness and deterministic routing evaluation.
+3. Duplicate replay and idempotency evidence.
+4. Explicit Phase 6 approval and authorized retry evidence.
+5. Notification persistence and authority observations.
+6. Phase 9 synchronization, recovery, and durable receipt-preservation evidence.
+7. Five hard release gates and structured correctness/reliability metrics.
+8. Guarded PostgreSQL integration-test evidence.
+
+The independently reviewed technical baseline is
+`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11C-FINAL-01 was independently
+reviewed and resolved at this baseline. The active executable corpus remains
+`3.0.0`; chronology remains `1.0.0` (original M11B approval), `2.0.0`
+(recovery-authority correction), and `3.0.0` (duplicate two-layer replay
+contract). No live provider calls were made.
+
+**Local milestone verification (not GitHub PR-head CI):** the full provider-free
+corpus passed and accounted for 36/36 cases; full routing accuracy was
+14/14; invalid execution was 0/13;
+deterministic routing was 7/7; duplicate blocking was 4/4; retry recovery was
+3/3; malformed/security handling was 4/4; direct authority violations were
+0/36; execution safety was 14/14; logical duplication was 0; provider-free
+extraction quality was `NOT_APPLICABLE`. All five hard release gates passed.
+The M11C PostgreSQL suite passed 143 tests twice consecutively against the same
+guarded disposable database. The integration suite passed 367 tests. Full
+`make check` passed 1,907 tests with 6 skipped and 91.25% coverage. Frontend
+tests passed 68 tests. Ruff, formatting, mypy, package build, frontend lint and
+build, pinned Gitleaks v8.28.0 committed-range scan, Markdown links, and
+`git diff --check` passed. The frontend install reported two high-severity npm
+audit advisories; these were recorded as non-blocking and are not represented
+as resolved.
+
+M11C did not implement M11D Tasks 8–12: run-scoped latency and percentile
+aggregation, authoritative token usage or model-cost evaluation, dated pricing
+snapshots, evaluation-database runtime guard/reset lifecycle, public
+`make evaluate`, live Gemini evaluation, reference JSON/Markdown result
+artifacts, performance optimization, or the Phase 11 final audit. M11D–M11F
+remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`.
 
 ### M11C-FINAL-01 — duplicate order identity evidence
 
@@ -61,9 +101,10 @@ also fails. All four unmodified duplicate scenarios pass with
 `REPLAYED_EXISTING + STANDING_DOWN` and unchanged durable intent counts. The
 real corpus `3.0.0` run passes all 36 cases and all five hard gates, with zero
 notification or sync intent deltas across duplicate replays. Corpus sources and
-production behavior are unchanged. This finding is remediated and ready for
-independent review; M11C remains `IN PROGRESS` and M11D–M11F remain
-`NOT STARTED`.
+production behavior are unchanged. Independent technical review accepted the
+remediation. M11C-FINAL-01 is resolved at the approved M11C technical baseline
+`ce456f2928ed9773f26ec65dfa5776d29dd4e915`; M11C is `COMPLETE`. M11D–M11F
+remain `NOT STARTED` and Phase 11 remains `IN PROGRESS`.
 
 ## Milestone Execution Gates
 
@@ -78,8 +119,10 @@ sequential; subagents and multi-agent workflows are prohibited.
   branch/worktree state. M11C cannot begin until M11B has independent review,
   all findings have been remediated and re-reviewed, human approval is
   recorded, and M11B status closeout is durable.
-- **M11C:** execute Tasks 5–7 only, then stop with the same evidence report and
-  independent-review/human-approval gate before M11D.
+- **M11C:** Tasks 5–7 are complete at approved technical baseline
+  `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; independent technical review and
+  the documentation status closeout are recorded above. M11D remains a separate
+  gated milestone and must not be started by this M11C closeout.
 - **M11D:** execute Tasks 8–12 only, including the actual mandatory reference
   run described in Task 12, then stop with the same evidence report and
   independent-review/human-approval gate before M11E.

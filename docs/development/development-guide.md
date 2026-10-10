@@ -17,7 +17,7 @@ is `COMPLETE` (M9A–M9F `COMPLETE`; M9F and Phase 9 technical approval at
 M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`,
 M10B `COMPLETE` at human-approved technical SHA
 `765c5030659d6c4d0aebe325b7d35d577766dbfd`, M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`, M10D `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`, M10E `COMPLETE` at human-approved technical SHA `b73d7add25c273b5efac10f86bdd3ebef952d6da`, and M10F `COMPLETE` after final audit disposition on technical remediation SHA `3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; Phase 10 is `COMPLETE`.
-Phase 11 is `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts. It did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `IN PROGRESS` and executes Tasks 5–7 only; it must stop for independent review and human approval before M11D. M11D–M11F remain `NOT STARTED`. Phase 12 is `NOT STARTED`. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
+Phase 11 is `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts. It did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at independently reviewed technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; it delivered Tasks 5–7 using active corpus `3.0.0`. M11D–M11F remain `NOT STARTED`. Phase 11 remains `IN PROGRESS`; Phase 12 is `NOT STARTED`. The [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md) records M11C scope and local milestone verification. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
 Independent local M11B milestone verification recorded: corpus version `1.0.0`, 36 cases with category split 10/8/4/7/4/3 (normal/edge/security/deterministic violation/duplicate/retry-recovery), format split 9/9/9/9 (EMAIL_BODY/CSV/XLSX/PDF), all 14 routed cases mechanically verified against the real deterministic validation engine, all 36 source artifacts verified through the production document processor, provider-free extraction quality `NOT_APPLICABLE`, no live provider called, and no existing production behavior modified. Evaluation tests: 83 passed; focused regressions: 673 passed; integration: 367 passed; local `make check`: 1,847 passed, 6 skipped, 91.11% coverage; Ruff, format, mypy, Gitleaks, Markdown links, and `git diff --check`: PASS. These are local milestone verification results, not GitHub PR-head CI.
 The [Phase 0 audit record](../audits/phase-0-audit.md) through the [Phase 9
 audit record](../audits/phase-9-audit.md) preserve closeout evidence.
@@ -32,10 +32,10 @@ Task 5 exposed an authority contradiction in two intake-recovery expectations;
 the corrected corpus was `2.0.0`, approved at amendment SHA
 `1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`; only the expected final state of
 `retry-email-001` and `retry-csv-001` changed to `READY_FOR_APPROVAL`. No
-source bytes changed. M11C is `IN PROGRESS`, and evaluation execution used
-corpus `2.0.0` until the pending amendment below.
-M11D–M11F remain `NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12
-remains `NOT STARTED`.
+source bytes changed. At that amendment, M11C remained `IN PROGRESS`, and
+evaluation execution used corpus `2.0.0` until the approved amendment below.
+M11D–M11F remained `NOT STARTED`; Phase 11 remained `IN PROGRESS`; Phase 12
+remained `NOT STARTED`.
 
 ### Phase 11 duplicate replay-contract amendment
 
@@ -47,8 +47,9 @@ dispositions. Corpus `2.0.0` encoded them in one ambiguous field; approved corpu
 `3.0.0` splits those expectations without changing production behavior, source
 documents, or source SHA-256 values. The corpus `3.0.0` amendment is approved at
 `7184efb9589445d16e354decd486f28bc90ac09b`; all further Phase 11 evaluation
-execution uses corpus `3.0.0`. M11C is `IN PROGRESS`; M11D–M11F remain
-`NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
+execution uses corpus `3.0.0`. At that amendment, M11C remained
+`IN PROGRESS`; M11D–M11F remained `NOT STARTED`; Phase 11 remained
+`IN PROGRESS`; Phase 12 remained `NOT STARTED`.
 
 ## Working principles
 
