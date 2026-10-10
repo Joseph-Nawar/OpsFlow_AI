@@ -427,6 +427,12 @@ async def _run_case_at(
 
     if mode is not EvaluationMode.PROVIDER_FREE:
         raise ValueError("M11C runner supports provider_free mode only")
+    if not isinstance(runtime.extraction_provider_factory, ScriptedProviderFactory):
+        return _error_result(
+            case,
+            ValueError("provider-free execution requires the evaluation scripted provider"),
+            None,
+        )
     source_path = resolve_manifest_source(CORPUS_ROOT, case.source.path)
     command = OrchestrationIntakeCommand(
         content=source_path.read_bytes(),

@@ -305,6 +305,51 @@ def test_run_case_uses_the_orchestration_intake_seam_and_serializes_actuals(monk
     assert result.model_dump(mode="json")["provider"]["name"] == "fake"
 
 
+def test_run_case_rejects_unknown_provider_factory_before_invocation(monkeypatch) -> None:
+    import opsflow.evaluation.runner as runner
+
+    manifest = load_manifest(Path("evals/corpus/v1"))
+    case = next(item for item in manifest.cases if item.case_id == "normal-email-001")
+    factory_calls = 0
+    intake_calls = 0
+
+    def forbidden_factory() -> object:
+        nonlocal factory_calls
+        factory_calls += 1
+        return object()
+
+    async def fake_intake(_session, _command, supplied_runtime, *_args):
+        nonlocal intake_calls
+        intake_calls += 1
+        supplied_runtime.extraction_provider_factory()
+        return OrchestrationIntakeResult(
+            order_id=uuid4(),
+            state=OrderState.NEEDS_REVIEW,
+            failure_origin=None,
+            idempotent_replay=False,
+            execution=IntakeExecution.COMPLETED,
+        )
+
+    async def no_persisted_observation(_session, _order_id):
+        return None, None
+
+    monkeypatch.setattr(runner, "execute_orchestration_intake", fake_intake)
+    monkeypatch.setattr(runner, "_load_persisted_observation", no_persisted_observation)
+
+    result = asyncio.run(
+        run_case(
+            _FakeSessionFactory(),
+            case,
+            _runtime(forbidden_factory),
+            EvaluationMode.PROVIDER_FREE,
+        )
+    )
+
+    assert result.status is CaseResultStatus.ERROR
+    assert intake_calls == 0
+    assert factory_calls == 0
+
+
 def test_run_corpus_is_provider_free_and_accounts_for_all_manifest_cases(monkeypatch) -> None:
     import opsflow.evaluation.runner as runner
 
