@@ -947,6 +947,74 @@ class MetricExtension(ContractModel):
     value: Decimal | None = None
 
 
+class TimingMetric(ContractModel):
+    """Summary of samples measured at one named monotonic boundary."""
+
+    sample_count: NonNegativeInt = 0
+    minimum_ms: Decimal | None = None
+    maximum_ms: Decimal | None = None
+    sum_ms: Decimal | None = None
+    p50_ms: Decimal | None = None
+    p95_ms: Decimal | None = None
+    percentile_method: Literal["nearest_rank_no_interpolation"] = "nearest_rank_no_interpolation"
+
+    @field_validator("minimum_ms", "maximum_ms", "sum_ms", "p50_ms", "p95_ms")
+    @classmethod
+    def _finite_nonnegative_timing(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and (not value.is_finite() or value < 0):
+            raise ValueError("timing metrics must be finite and non-negative")
+        return value
+
+    @model_validator(mode="after")
+    def _sample_values_match_count(self) -> TimingMetric:
+        values = (self.minimum_ms, self.maximum_ms, self.sum_ms, self.p50_ms, self.p95_ms)
+        if self.sample_count == 0 and any(value is not None for value in values):
+            raise ValueError("missing timing samples must remain unavailable")
+        if self.sample_count > 0 and any(value is None for value in values):
+            raise ValueError("measured timing samples require a complete summary")
+        if (
+            self.minimum_ms is not None
+            and self.maximum_ms is not None
+            and self.minimum_ms > self.maximum_ms
+        ):
+            raise ValueError("timing minimum cannot exceed maximum")
+        return self
+
+
+class LatencyMetrics(ContractModel):
+    """Separate stage summaries; replay and recovery do not dilute intake."""
+
+    parse_ms: TimingMetric = Field(default_factory=TimingMetric)
+    deterministic_validation_ms: TimingMetric = Field(default_factory=TimingMetric)
+    provider_free_intake_ms: TimingMetric = Field(default_factory=TimingMetric)
+    provider_free_replay_intake_ms: TimingMetric = Field(default_factory=TimingMetric)
+    provider_free_recovery_intake_ms: TimingMetric = Field(default_factory=TimingMetric)
+    live_gemini_call_ms: TimingMetric = Field(default_factory=TimingMetric)
+
+
+class ProviderUsageMetrics(ContractModel):
+    """Authoritative Gemini usage counts and availability per token field."""
+
+    status: Literal["NOT_APPLICABLE", "AVAILABLE", "ERROR"] = "NOT_APPLICABLE"
+    gemini_call_count: NonNegativeInt = 0
+    calls_per_initial_order: Decimal | None = None
+    input_tokens_sum: NonNegativeInt | None = None
+    available_input_token_count: NonNegativeInt = 0
+    missing_input_token_count: NonNegativeInt = 0
+    average_input_tokens: Decimal | None = None
+    output_tokens_sum: NonNegativeInt | None = None
+    available_output_token_count: NonNegativeInt = 0
+    missing_output_token_count: NonNegativeInt = 0
+    average_output_tokens: Decimal | None = None
+    total_tokens_sum: NonNegativeInt | None = None
+    available_total_token_count: NonNegativeInt = 0
+    missing_total_token_count: NonNegativeInt = 0
+    average_total_tokens: Decimal | None = None
+    inconsistent_reported_total_count: NonNegativeInt = 0
+    missing_call_attribution_count: NonNegativeInt = 0
+    failed_call_count: NonNegativeInt = 0
+
+
 class CostMetrics(ContractModel):
     status: Literal["NOT_APPLICABLE", "AVAILABLE", "ERROR"] = "NOT_APPLICABLE"
     estimated_model_cost_per_initial_order: Decimal | None = None
@@ -980,8 +1048,8 @@ class MetricsBundle(ContractModel):
     extraction_contract: ContractEvidence = Field(default_factory=ContractEvidence)
     routing: RoutingMetrics = Field(default_factory=RoutingMetrics)
     safety: MetricExtension = Field(default_factory=MetricExtension)
-    latency: MetricExtension = Field(default_factory=MetricExtension)
-    provider_usage: MetricExtension = Field(default_factory=MetricExtension)
+    latency: LatencyMetrics = Field(default_factory=LatencyMetrics)
+    provider_usage: ProviderUsageMetrics = Field(default_factory=ProviderUsageMetrics)
     cost: CostMetrics = Field(default_factory=CostMetrics)
 
 
@@ -1091,10 +1159,12 @@ __all__ = [
     "ExtractionQualityStatus",
     "FieldCounts",
     "FieldMetric",
+    "LatencyMetrics",
     "MetricsBundle",
     "OrderState",
     "PricingStatus",
     "ProviderSummary",
+    "ProviderUsageMetrics",
     "RateMetric",
     "RecoveryEvidence",
     "RecoveryScenario",
@@ -1108,6 +1178,7 @@ __all__ = [
     "SideEffectSummary",
     "SourceDocumentType",
     "SourceSpec",
+    "TimingMetric",
     "TrustedBusinessData",
     "TrustedBusinessDataExpectation",
     "TrustedCatalog",

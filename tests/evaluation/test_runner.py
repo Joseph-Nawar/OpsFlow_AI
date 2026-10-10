@@ -470,7 +470,7 @@ def test_run_corpus_is_provider_free_and_accounts_for_all_manifest_cases(monkeyp
 
     monkeypatch.setattr(runner, "execute_orchestration_intake", fake_intake)
 
-    async def fake_reliability(session_factory, case, runtime, mode):
+    async def fake_reliability(session_factory, case, runtime, mode, **_kwargs):
         return ReliabilityEvidence(
             case_result=await run_case(session_factory, case, runtime, mode),
             order_id=uuid4(),
@@ -492,7 +492,7 @@ def test_run_corpus_is_provider_free_and_accounts_for_all_manifest_cases(monkeyp
     assert result.metrics.extraction_quality.status is ExtractionQualityStatus.NOT_APPLICABLE
     assert result.metrics.extraction_quality.complete_exact_match is None
     assert result.metrics.extraction_quality.field_micro_f1 is None
-    assert result.run.command == "m11c-provider-free"
+    assert result.run.command == "make evaluate"
     assert "expected_extraction" not in result.model_dump(mode="json")["cases"][0]
 
 
@@ -520,7 +520,7 @@ def test_provider_free_runner_does_not_construct_a_live_gemini_provider(monkeypa
 
     monkeypatch.setattr(runner, "execute_orchestration_intake", fake_intake)
 
-    async def fake_reliability(session_factory, case, runtime, mode):
+    async def fake_reliability(session_factory, case, runtime, mode, **_kwargs):
         return ReliabilityEvidence(
             case_result=await run_case(session_factory, case, runtime, mode),
             order_id=uuid4(),
@@ -571,7 +571,7 @@ def test_provider_free_runner_has_fail_closed_remote_adapter_guard(
 
     monkeypatch.setattr(runner, "execute_orchestration_intake", fake_intake)
 
-    async def fake_reliability(session_factory, case, runtime, mode):
+    async def fake_reliability(session_factory, case, runtime, mode, **_kwargs):
         return ReliabilityEvidence(
             case_result=await run_case(session_factory, case, runtime, mode),
             order_id=uuid4(),
@@ -603,7 +603,7 @@ def test_run_corpus_keeps_benchmark_mismatch_as_structured_failure(
     async def fake_case(_session_factory, case, _runtime, _mode):
         return result_for(case, CaseResultStatus.PASS)
 
-    async def fake_duplicate(_session_factory, case, _runtime, _mode):
+    async def fake_duplicate(_session_factory, case, _runtime, _mode, **_kwargs):
         return ReliabilityEvidence(
             case_result=result_for(
                 case,
@@ -617,7 +617,7 @@ def test_run_corpus_keeps_benchmark_mismatch_as_structured_failure(
             final_state=None,
         )
 
-    async def fake_recovery(_session_factory, case, _runtime, _mode):
+    async def fake_recovery(_session_factory, case, _runtime, _mode, **_kwargs):
         return ReliabilityEvidence(
             case_result=result_for(case, CaseResultStatus.PASS),
             order_id=uuid4(),

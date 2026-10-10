@@ -35,7 +35,7 @@ correction was corpus `3.0.0` at amendment SHA
 `7184efb9589445d16e354decd486f28bc90ac09b`; it is the active executable
 corpus. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at
 independently reviewed technical baseline
-`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D–M11F remain `NOT STARTED`;
+`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `IN PROGRESS`; M11E–M11F remain `NOT STARTED`;
 Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
 
 ### M11C closeout — local milestone verification

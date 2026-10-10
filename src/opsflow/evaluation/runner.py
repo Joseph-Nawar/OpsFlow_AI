@@ -5,8 +5,10 @@ from __future__ import annotations
 import platform as platform_module
 import subprocess
 from collections import Counter
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -84,6 +86,7 @@ from .doubles import (
     RecoveryScriptedProviderFactory,
     ScriptedProviderFactory,
 )
+from .measurements import EvaluationMeasurements, TimingStage, measure_application_stages
 from .models import (
     AuthorityEvidence,
     AuthorityProbeStatus,
@@ -98,17 +101,21 @@ from .models import (
     CorpusManifest,
     CostMetrics,
     DatabaseMetadata,
+    DurationSummary,
     EvaluationMode,
     EvaluationRunResult,
+    LatencyMetrics,
     MetricsBundle,
     PricingStatus,
     ProviderSummary,
+    ProviderUsageMetrics,
     ReceiptPreservationStatus,
     RecoveryEvidence,
     ReplayEvidence,
     RunMetadata,
     SideEffectDetail,
     SideEffectSummary,
+    TimingMetric,
 )
 from .scoring import (
     build_routing_metrics,
@@ -870,6 +877,8 @@ async def _run_case_at(
     runtime: OrchestrationRuntime,
     mode: EvaluationMode,
     recorded_at: datetime,
+    measurements: EvaluationMeasurements | None = None,
+    timing_stage: TimingStage = "provider_free_intake_ms",
 ) -> CaseResult:
     """Execute one corpus case through the existing provider-free intake seam."""
 
@@ -894,25 +903,65 @@ async def _run_case_at(
     observation = _provider_observation(runtime)
     async with session_factory() as session:
         try:
-            intake = await execute_orchestration_intake(
-                session,
-                command,
-                runtime,
-                _EVALUATION_INTAKE_ACTOR,
-                recorded_at,
+            stage_observer = (
+                measure_application_stages(measurements, case_id=case.case_id)
+                if measurements is not None
+                else nullcontext()
             )
+            intake_timer = (
+                measurements.measure(timing_stage, case_id=case.case_id)
+                if measurements is not None and mode is EvaluationMode.PROVIDER_FREE
+                else nullcontext()
+            )
+            with stage_observer, intake_timer:
+                intake = await execute_orchestration_intake(
+                    session,
+                    command,
+                    runtime,
+                    _EVALUATION_INTAKE_ACTOR,
+                    recorded_at,
+                )
             persisted, predicted = await _load_persisted_observation(session, intake.order_id)
         except _KNOWN_EXECUTION_ERRORS as error:
             result = _error_result(case, error, observation)
             authority = await _authority_evidence(session_factory, case, result, runtime)
-            return result.model_copy(
-                update={"actual": result.actual.model_copy(update={"authority": authority})}
+            return _with_measurement_evidence(
+                result.model_copy(
+                    update={"actual": result.actual.model_copy(update={"authority": authority})}
+                ),
+                case,
+                measurements,
             )
     result = _result_from_intake(case, intake, persisted, predicted, observation)
     authority = await _authority_evidence(session_factory, case, result, runtime)
-    return result.model_copy(
-        update={"actual": result.actual.model_copy(update={"authority": authority})}
+    return _with_measurement_evidence(
+        result.model_copy(
+            update={"actual": result.actual.model_copy(update={"authority": authority})}
+        ),
+        case,
+        measurements,
     )
+
+
+def _with_measurement_evidence(
+    result: CaseResult,
+    case: CorpusCase,
+    measurements: EvaluationMeasurements | None,
+) -> CaseResult:
+    if measurements is None:
+        return result
+    measurements.bind_case_order(case.case_id, result.actual.order_id)
+    duration_values: dict[str, Decimal | None] = {}
+    stages: tuple[TimingStage, ...] = (
+        "parse_ms",
+        "deterministic_validation_ms",
+        "provider_free_intake_ms",
+        "live_gemini_call_ms",
+    )
+    for stage in stages:
+        summary = measurements.summary(stage, case_id=case.case_id)
+        duration_values[stage] = summary.sum_ms
+    return result.model_copy(update={"durations_ms": DurationSummary(**duration_values)})
 
 
 async def run_case(
@@ -920,6 +969,9 @@ async def run_case(
     case: CorpusCase,
     runtime: OrchestrationRuntime,
     mode: EvaluationMode,
+    *,
+    measurements: EvaluationMeasurements | None = None,
+    timing_stage: TimingStage = "provider_free_intake_ms",
 ) -> CaseResult:
     """Execute one corpus case with the deterministic benchmark event time."""
 
@@ -929,6 +981,8 @@ async def run_case(
         runtime,
         mode,
         datetime(2026, 10, 10, tzinfo=UTC),
+        measurements,
+        timing_stage,
     )
 
 
@@ -1056,6 +1110,8 @@ async def run_recovery_scenario(
     case: CorpusCase,
     runtime: OrchestrationRuntime,
     mode: EvaluationMode,
+    *,
+    measurements: EvaluationMeasurements | None = None,
 ) -> ReliabilityEvidence:
     """Drive one bounded human-retry scenario through the production commands."""
 
@@ -1075,7 +1131,14 @@ async def run_recovery_scenario(
             else runtime.business_data_provider
         ),
     )
-    initial = await run_case(session_factory, case, recovery_runtime, mode)
+    initial = await run_case(
+        session_factory,
+        case,
+        recovery_runtime,
+        mode,
+        measurements=measurements,
+        timing_stage="provider_free_recovery_intake_ms",
+    )
     order_id = await _order_id_from_intake(session_factory, case, initial)
     async with session_factory() as session:
         failed = await get_order(session, order_id)
@@ -1119,6 +1182,8 @@ async def run_recovery_scenario(
         recovery_runtime,
         mode,
         datetime(2026, 10, 10, 12, 0, 1, tzinfo=UTC),
+        measurements,
+        "provider_free_recovery_intake_ms",
     )
     notifications = await _drain_notifications(session_factory, order_id)
     async with session_factory() as session:
@@ -1230,6 +1295,8 @@ async def run_duplicate_scenario(
     case: CorpusCase,
     runtime: OrchestrationRuntime,
     mode: EvaluationMode,
+    *,
+    measurements: EvaluationMeasurements | None = None,
 ) -> ReliabilityEvidence:
     """Replay one manifest identity and observe the durable idempotency boundary."""
 
@@ -1238,7 +1305,14 @@ async def run_duplicate_scenario(
     _require_evaluation_provider_factory(runtime)
     await _seed_duplicate_validation_context(session_factory, case)
     before = await _count_orders(session_factory)
-    initial = await run_case(session_factory, case, runtime, mode)
+    initial = await run_case(
+        session_factory,
+        case,
+        runtime,
+        mode,
+        measurements=measurements,
+        timing_stage="provider_free_replay_intake_ms",
+    )
     order_id = await _order_id_from_intake(
         session_factory, case, initial, require_creation_identity=True
     )
@@ -1260,7 +1334,14 @@ async def run_duplicate_scenario(
 
     orchestration_globals["create_order_with_disposition"] = observing_create
     try:
-        replay = await run_case(session_factory, case, runtime, mode)
+        replay = await run_case(
+            session_factory,
+            case,
+            runtime,
+            mode,
+            measurements=measurements,
+            timing_stage="provider_free_replay_intake_ms",
+        )
     finally:
         orchestration_globals["create_order_with_disposition"] = original_create
     provider_calls_after = provider.calls if provider is not None else provider_calls_before
@@ -1418,13 +1499,15 @@ async def run_approval_sync_scenario(
     case: CorpusCase,
     runtime: OrchestrationRuntime,
     mode: EvaluationMode,
+    *,
+    measurements: EvaluationMeasurements | None = None,
 ) -> ReliabilityEvidence:
     """Exercise explicit human approval and fenced Phase 9 recovery."""
 
     if case.approval is None or case.recovery is None:
         raise ValueError("approval and recovery scenarios are required")
     _require_evaluation_provider_factory(runtime)
-    initial = await run_case(session_factory, case, runtime, mode)
+    initial = await run_case(session_factory, case, runtime, mode, measurements=measurements)
     order_id = await _order_id_from_intake(session_factory, case, initial)
     async with session_factory() as session:
         before_approval = await get_order(session, order_id)
@@ -1729,6 +1812,19 @@ def _composition(corpus: CorpusManifest) -> CorpusComposition:
     )
 
 
+def _timing_metric(measurements: EvaluationMeasurements, stage: TimingStage) -> TimingMetric:
+    summary = measurements.summary(stage)
+    return TimingMetric(
+        sample_count=summary.sample_count,
+        minimum_ms=summary.minimum_ms,
+        maximum_ms=summary.maximum_ms,
+        sum_ms=summary.sum_ms,
+        p50_ms=summary.p50_ms,
+        p95_ms=summary.p95_ms,
+        percentile_method="nearest_rank_no_interpolation",
+    )
+
+
 def _run_metadata(corpus: CorpusManifest, mode: EvaluationMode, started: datetime) -> RunMetadata:
     return RunMetadata(
         run_id=str(uuid4()),
@@ -1737,7 +1833,7 @@ def _run_metadata(corpus: CorpusManifest, mode: EvaluationMode, started: datetim
         finished_at_utc=datetime.now(UTC),
         git_sha=_git_sha(),
         corpus_version=corpus.corpus_version,
-        command="m11c-provider-free",
+        command="make evaluate" if mode is EvaluationMode.PROVIDER_FREE else "make evaluate-live",
         dependency_lock_identity="uv.lock",
         database_version=None,
         python_version=platform_module.python_version(),
@@ -1752,6 +1848,8 @@ async def run_corpus(
     corpus: CorpusManifest,
     runtime: OrchestrationRuntime,
     mode: EvaluationMode,
+    *,
+    measurements: EvaluationMeasurements | None = None,
 ) -> EvaluationRunResult:
     """Run the complete corpus sequentially with deterministic provider-free composition."""
 
@@ -1762,6 +1860,7 @@ async def run_corpus(
     policy = _policy(corpus.benchmark_context)
     fixed_date = _FixedBenchmarkDateProvider(corpus.benchmark_context.evaluation_date)
     results: list[CaseResult] = []
+    run_measurements = measurements or EvaluationMeasurements()
     started = datetime.now(UTC)
     for case in corpus.cases:
         factory = ScriptedProviderFactory(case)
@@ -1775,19 +1874,43 @@ async def run_corpus(
         try:
             if case.recovery is not None:
                 evidence = (
-                    await run_approval_sync_scenario(session_factory, case, case_runtime, mode)
+                    await run_approval_sync_scenario(
+                        session_factory,
+                        case,
+                        case_runtime,
+                        mode,
+                        measurements=run_measurements,
+                    )
                     if case.approval is not None
-                    else await run_recovery_scenario(session_factory, case, case_runtime, mode)
+                    else await run_recovery_scenario(
+                        session_factory,
+                        case,
+                        case_runtime,
+                        mode,
+                        measurements=run_measurements,
+                    )
                 )
                 results.append(evidence.case_result)
             elif case.replay is not None:
                 results.append(
                     (
-                        await run_duplicate_scenario(session_factory, case, case_runtime, mode)
+                        await run_duplicate_scenario(
+                            session_factory,
+                            case,
+                            case_runtime,
+                            mode,
+                            measurements=run_measurements,
+                        )
                     ).case_result
                 )
             else:
-                result = await run_case(session_factory, case, case_runtime, mode)
+                result = await run_case(
+                    session_factory,
+                    case,
+                    case_runtime,
+                    mode,
+                    measurements=run_measurements,
+                )
                 if not isinstance(result.actual.order_id, UUID):
                     results.append(result)
                 else:
@@ -1805,6 +1928,7 @@ async def run_corpus(
                             )
                         )
         except Exception as error:
+            run_measurements.bind_case_order(case.case_id, None)
             results.append(_error_result(case, error, _provider_observation(case_runtime)))
 
     result_tuple = tuple(results)
@@ -1824,15 +1948,28 @@ async def run_corpus(
             ),
             cost=CostMetrics(
                 initial_order_count=len(results),
-                zero_call_order_count=sum(case.provider.calls == 0 for case in results),
+                zero_call_order_count=len(results),
             ),
             routing=build_routing_metrics(corpus, result_tuple, gates),
+            latency=LatencyMetrics(
+                parse_ms=_timing_metric(run_measurements, "parse_ms"),
+                deterministic_validation_ms=_timing_metric(
+                    run_measurements, "deterministic_validation_ms"
+                ),
+                provider_free_intake_ms=_timing_metric(run_measurements, "provider_free_intake_ms"),
+                provider_free_replay_intake_ms=_timing_metric(
+                    run_measurements, "provider_free_replay_intake_ms"
+                ),
+                provider_free_recovery_intake_ms=_timing_metric(
+                    run_measurements, "provider_free_recovery_intake_ms"
+                ),
+                live_gemini_call_ms=_timing_metric(run_measurements, "live_gemini_call_ms"),
+            ),
+            provider_usage=ProviderUsageMetrics(),
         ),
         pricing=PricingStatus(status="NOT_APPLICABLE"),
         release_gates=gates,
-        limitations=(
-            "M11C does not collect aggregate timing, pricing, token-cost, or live-model evidence.",
-        ),
+        limitations=("Provider-free timing is local diagnostic evidence, not a production SLA.",),
     )
 
 
