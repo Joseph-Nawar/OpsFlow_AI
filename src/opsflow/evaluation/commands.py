@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from opsflow.extraction.fake import FakeProvider
 from opsflow.extraction.gemini import GeminiConfig, GeminiProvider
@@ -203,7 +204,9 @@ def run_evaluation(
         process_environment.get("OPSFLOW_MIGRATION_TEST_DATABASE_URL"),
     )
     assert_evaluation_database_isolated(database_config)
-    engine = create_async_engine(database_config.evaluation_url)
+    # Database helpers run their short async units with separate event loops.
+    # Do not return an asyncpg connection from one loop to another.
+    engine = create_async_engine(database_config.evaluation_url, poolclass=NullPool)
     try:
         _reset_database(database_config, engine)
         confirm_current_migration_head(Config("alembic.ini"), EXPECTED_MIGRATION_HEAD)

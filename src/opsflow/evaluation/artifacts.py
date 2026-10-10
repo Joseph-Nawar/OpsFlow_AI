@@ -64,7 +64,13 @@ def _assert_sanitized(value: object, *, path: str = "result") -> None:
     if isinstance(value, Mapping):
         for key, item in value.items():
             key_text = str(key)
-            if _SENSITIVE_KEY.search(key_text):
+            safe_corpus_tag_count = (
+                path == "result.corpus.tag_counts"
+                and key_text == "prompt_injection"
+                and type(item) is int
+                and item >= 0
+            )
+            if _SENSITIVE_KEY.search(key_text) and not safe_corpus_tag_count:
                 raise ArtifactValidationError(f"unsupported sensitive field at {path}.{key_text}")
             _assert_sanitized(item, path=f"{path}.{key_text}")
     elif isinstance(value, (list, tuple)):

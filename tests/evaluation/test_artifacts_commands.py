@@ -79,6 +79,8 @@ def valid_live_result() -> EvaluationRunResult:
 
 
 def _mock_command_environment(monkeypatch, tmp_path: Path, result: EvaluationRunResult):
+    from sqlalchemy.pool import NullPool
+
     import opsflow.evaluation.commands as commands
 
     class FakeEngine:
@@ -87,7 +89,13 @@ def _mock_command_environment(monkeypatch, tmp_path: Path, result: EvaluationRun
 
     observed: dict[str, object] = {}
 
-    monkeypatch.setattr(commands, "create_async_engine", lambda _url: FakeEngine())
+    engine_options: dict[str, object] = {}
+
+    def fake_create_async_engine(_url, **kwargs):
+        engine_options.update(kwargs)
+        return FakeEngine()
+
+    monkeypatch.setattr(commands, "create_async_engine", fake_create_async_engine)
     monkeypatch.setattr(commands, "_reset_database", lambda *_args: None)
     monkeypatch.setattr(commands, "confirm_current_migration_head", lambda *_args: None)
     monkeypatch.setattr(commands, "_read_server_version", lambda _engine: "PostgreSQL 16")
@@ -102,6 +110,8 @@ def _mock_command_environment(monkeypatch, tmp_path: Path, result: EvaluationRun
 
     monkeypatch.setattr(commands, "run_corpus", fake_run_corpus)
     observed["artifacts_directory"] = tmp_path / "results"
+    observed["expected_pool_class"] = NullPool
+    observed["engine_options"] = engine_options
     return observed
 
 
@@ -158,6 +168,15 @@ def test_result_json_rejects_raw_or_private_payloads(mutate) -> None:
 
     with pytest.raises((ValidationError, ValueError)):
         validate_result_json(payload)
+
+
+def test_result_json_allows_the_controlled_prompt_injection_corpus_tag() -> None:
+    payload = valid_result().model_dump(mode="json")
+    payload["corpus"]["tag_counts"] = {"prompt_injection": 1}
+
+    result = validate_result_json(payload)
+
+    assert result.corpus.tag_counts == {"prompt_injection": 1}
 
 
 def test_markdown_does_not_invent_release_gate_results() -> None:
@@ -217,6 +236,7 @@ def test_provider_free_command_needs_no_gemini_settings_and_writes_json_first(
     assert observed["mode"] is EvaluationMode.PROVIDER_FREE
     assert observed["case_count"] == 36
     assert observed["gemini_provider_factory"] is None
+    assert observed["engine_options"] == {"poolclass": observed["expected_pool_class"]}
     assert artifacts.json_path.exists()
     assert artifacts.markdown_path.exists()
     assert artifacts.markdown_path.read_text(encoding="utf-8") == render_markdown_from_json(
@@ -251,6 +271,7 @@ def test_live_command_accepts_missing_pricing_without_calling_the_provider(
     assert observed["configured_model"] == "gemini-3.8-flash"
     assert observed["pricing_snapshot"] is None
     assert callable(observed["gemini_provider_factory"])
+    assert observed["engine_options"] == {"poolclass": observed["expected_pool_class"]}
     assert artifacts.result.pricing.status == "ERROR"
     assert artifacts.result.metrics.cost.estimated_model_cost_per_initial_order is None
     assert artifacts.json_path.exists()
