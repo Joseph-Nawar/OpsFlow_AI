@@ -24,7 +24,15 @@ from .models import (
     RoutingMetrics,
     TimingMetric,
 )
-from .scoring import build_routing_metrics, evaluate_release_gates, score_validation_outcome
+from .scoring import (
+    build_routing_metrics,
+    evaluate_release_gates,
+    logical_object_observation_facts,
+    score_execution_safety_outcome,
+    score_reliability_outcome,
+    score_replay_outcome,
+    score_validation_outcome,
+)
 
 _PYTHON_VERSION = re.compile(r"^(\d+)\.(\d+)(?:\.\d+)?$")
 _POSTGRES_VERSION = re.compile(r"^PostgreSQL\s+(\d+)(?:\.\d+)?\b", re.IGNORECASE)
@@ -141,14 +149,13 @@ def _valid_timing(metric: TimingMetric) -> bool:
     if not minimum <= p50 <= p95 <= maximum:
         return False
     count = Decimal(value.sample_count)
-    tolerance = max(_TIMING_TOLERANCE_MS, abs(total) * Decimal("1e-12"))
-    if total + tolerance < count * minimum or total - tolerance > count * maximum:
-        return False
     if value.sample_count == 1:
         return minimum == maximum == total == p50 == p95
-    if total + tolerance < minimum + maximum:
-        return False
-    return total - tolerance <= minimum + (count - 1) * maximum
+    lower_bound = maximum + (count - 1) * minimum
+    upper_bound = minimum + (count - 1) * maximum
+    return (
+        total + _TIMING_TOLERANCE_MS >= lower_bound and total - _TIMING_TOLERANCE_MS <= upper_bound
+    )
 
 
 def _case_evidence_issues(run: EvaluationRunResult, manifest: CorpusManifest) -> list[str]:
@@ -193,19 +200,61 @@ def _case_evidence_issues(run: EvaluationRunResult, manifest: CorpusManifest) ->
         result = by_id.get(corpus_case.case_id)
         if result is None:
             continue
-        score_values = tuple(result.scores.model_dump().values())
-        has_failed_score = any(value is False for value in score_values)
+        actual = result.actual
+        if corpus_case.expected_validation is None or (
+            result.status is CaseResultStatus.ERROR
+            and (actual.route is None or actual.pre_approval_state is None)
+        ):
+            expected_validation_match = None
+        else:
+            validation_score = score_validation_outcome(corpus_case.expected_validation, result)
+            expected_validation_match = (
+                validation_score.overall_match if validation_score is not None else None
+            )
+        expected_replay_match = score_replay_outcome(corpus_case, result)
+        expected_reliability_match = score_reliability_outcome(corpus_case, result)
+        expected_execution_safety_match = score_execution_safety_outcome(corpus_case, result)
+        expected_scores = {
+            "extraction_exact_match": None,
+            "validation_match": expected_validation_match,
+            "reliability_match": expected_reliability_match,
+            "replay_match": expected_replay_match,
+            "execution_safety_match": expected_execution_safety_match,
+        }
+        required_scores = {
+            "validation_match": corpus_case.expected_validation is not None,
+            "reliability_match": corpus_case.recovery is not None,
+            "replay_match": corpus_case.replay is not None,
+            "execution_safety_match": True,
+        }
+        for field, expected_score in expected_scores.items():
+            if getattr(result.scores, field) is not expected_score:
+                issues.append(f"{field}_disagrees_with_observation:{result.case_id}")
+            if (
+                field in required_scores
+                and required_scores[field]
+                and expected_score is None
+                and result.status is not CaseResultStatus.ERROR
+            ):
+                issues.append(f"{field}_evidence_unavailable:{result.case_id}")
+
+        logical_facts = logical_object_observation_facts(actual.logical_objects)
+        if actual.logical_objects is not None and logical_facts is None:
+            issues.append(f"logical_object_observations_incomplete:{result.case_id}")
+        elif logical_facts is not None:
+            _duplication_count, extra_object, completed_step_rerun, executor_reached = logical_facts
+            if actual.logical_objects is not None and (
+                actual.logical_objects.replay_created_extra_object is not extra_object
+                or actual.logical_objects.completed_step_rerun is not completed_step_rerun
+                or actual.logical_objects.executor_reached is not executor_reached
+            ):
+                issues.append(f"logical_object_flags_disagree_with_observations:{result.case_id}")
+
+        has_failed_score = any(value is False for value in expected_scores.values())
         if result.status == CaseResultStatus.PASS and has_failed_score:
             issues.append(f"pass_case_has_failed_score:{result.case_id}")
         if result.status == CaseResultStatus.FAIL and not has_failed_score:
             issues.append(f"failed_case_has_no_failed_score:{result.case_id}")
-
-        validation_score = score_validation_outcome(corpus_case.expected_validation, result)
-        expected_validation_match = (
-            validation_score.overall_match if validation_score is not None else None
-        )
-        if result.scores.validation_match is not expected_validation_match:
-            issues.append(f"validation_score_disagrees_with_observation:{result.case_id}")
 
     gates = evaluate_release_gates(manifest, cases)
     if gates != run.release_gates:

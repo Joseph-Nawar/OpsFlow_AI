@@ -31,7 +31,9 @@ from .models import (
     FieldCounts,
     FieldMetric,
     LogicalObjectEvidence,
+    LogicalObjectIdentity,
     RateMetric,
+    RecoveryEvidence,
     ReleaseGateResult,
     ReleaseGateSummary,
     RoutingMetrics,
@@ -783,6 +785,10 @@ __all__ = [
     "score_extraction_quality",
     "score_positioned_extraction",
     "score_validation_outcome",
+    "score_replay_outcome",
+    "score_reliability_outcome",
+    "score_execution_safety_outcome",
+    "logical_object_observation_facts",
     "evaluate_release_gates",
     "build_routing_metrics",
 ]
@@ -811,3 +817,306 @@ def _observed_logical_duplication_count(
     ):
         return None
     return observed
+
+
+def _identity_duplication_count(
+    identities: Sequence[LogicalObjectIdentity],
+) -> int:
+    by_stable_identity: dict[tuple[str, str], set[str]] = {}
+    for identity in identities:
+        key = (identity.object_type, identity.stable_business_identity)
+        by_stable_identity.setdefault(key, set()).add(identity.object_identity)
+    return sum(max(0, len(object_ids) - 1) for object_ids in by_stable_identity.values())
+
+
+def logical_object_observation_facts(
+    evidence: LogicalObjectEvidence | None,
+) -> tuple[int, bool, bool, bool] | None:
+    """Derive duplication and replay flags from the retained bounded observations."""
+
+    required_fields = {
+        "executor_reached",
+        "original_identities",
+        "resulting_identities",
+        "original_object_count",
+        "resulting_object_count",
+        "logical_duplication_count",
+        "replay_created_extra_object",
+        "completed_step_rerun",
+        "completed_steps_before_retry",
+        "steps_after_retry",
+    }
+    if evidence is None or not required_fields.issubset(evidence.model_fields_set):
+        return None
+    duplication_count = _observed_logical_duplication_count(evidence)
+    if duplication_count is None:
+        return None
+    original_duplication_count = _identity_duplication_count(evidence.original_identities)
+    created_extra_object = duplication_count > original_duplication_count
+    completed_step_rerun = bool(
+        set(evidence.completed_steps_before_retry).intersection(evidence.steps_after_retry)
+    )
+    executor_reached = bool(
+        evidence.original_identities
+        or evidence.resulting_identities
+        or evidence.completed_steps_before_retry
+        or evidence.steps_after_retry
+    )
+    return duplication_count, created_extra_object, completed_step_rerun, executor_reached
+
+
+def score_replay_outcome(case: CorpusCase, result: CaseResult) -> bool | None:
+    """Score duplicate replay from its manifest contract and retained observations."""
+
+    expected = case.replay
+    replay = result.actual.replay
+    logical = result.actual.logical_objects
+    facts = logical_object_observation_facts(logical)
+    if expected is None:
+        return None
+    if replay is None or facts is None or logical is None:
+        return None
+    required_replay_fields = {
+        "creation_disposition",
+        "intake_execution",
+        "seed_order_id",
+        "replay_order_id",
+        "authoritative_order_count",
+        "provider_calls_before",
+        "provider_calls_after",
+        "notification_intents_before",
+        "notification_intents_after",
+        "order_sync_intents_before",
+        "order_sync_intents_after",
+        "logical_external_object_count",
+        "provider_work_stood_down",
+    }
+    if not required_replay_fields.issubset(replay.model_fields_set):
+        return None
+    required_actual_fields = {"order_id"}
+    if not required_actual_fields.issubset(result.actual.model_fields_set):
+        return None
+    if not {"status", "count"}.issubset(result.side_effects.order_sync.model_fields_set):
+        return None
+    if not {"status", "count"}.issubset(
+        result.side_effects.logical_external_objects.model_fields_set
+    ):
+        return None
+
+    duplication_count, extra_object, completed_step_rerun, executor_reached = facts
+    return bool(
+        replay.creation_disposition is expected.expected_creation_disposition
+        and replay.intake_execution is expected.expected_intake_execution
+        and result.actual.order_id is not None
+        and replay.seed_order_id == result.actual.order_id
+        and replay.replay_order_id == result.actual.order_id
+        and replay.authoritative_order_count == 1
+        and replay.provider_work_stood_down is True
+        and replay.provider_calls_before == replay.provider_calls_after
+        and replay.notification_intents_before == replay.notification_intents_after
+        and replay.order_sync_intents_before == replay.order_sync_intents_after
+        and replay.logical_external_object_count == logical.resulting_object_count
+        and logical.executor_reached is False
+        and executor_reached is False
+        and logical.original_object_count == 0
+        and logical.resulting_object_count == 0
+        and duplication_count == 0
+        and extra_object is False
+        and completed_step_rerun is False
+        and result.side_effects.order_sync.status == "NOT_RUN"
+        and result.side_effects.order_sync.count == 0
+        and result.side_effects.logical_external_objects.status == "NOT_RUN"
+        and result.side_effects.logical_external_objects.count == 0
+    )
+
+
+def _receipt_preserved(recovery: RecoveryEvidence) -> bool | None:
+    required_fields = {
+        "receipt_count",
+        "prior_receipt_ids",
+        "receipt_ids_at_retry",
+        "receipt_ids",
+        "prior_receipts_preserved",
+        "receipt_preservation_status",
+    }
+    if not required_fields.issubset(recovery.model_fields_set):
+        return None
+    if recovery.receipt_count != len(recovery.receipt_ids):
+        return False
+    if recovery.prior_receipt_ids:
+        return bool(
+            recovery.receipt_preservation_status == "PRESERVED"
+            and recovery.prior_receipts_preserved is True
+            and recovery.receipt_ids_at_retry == recovery.prior_receipt_ids
+            and recovery.receipt_ids == recovery.prior_receipt_ids
+        )
+    return bool(
+        recovery.receipt_preservation_status == "NO_PRIOR_RECEIPTS"
+        and recovery.prior_receipts_preserved is None
+        and not recovery.receipt_ids_at_retry
+        and not recovery.receipt_ids
+    )
+
+
+def score_reliability_outcome(case: CorpusCase, result: CaseResult) -> bool | None:
+    """Score retry/recovery against canonical expectations and durable observations.
+
+    The result contract does not retain the immediate retry-command state. For
+    pre-sync recovery, the repeated intake disposition and final durable state
+    verify the resumed path; for sync recovery, the persisted generation and
+    resumed-step evidence do so. If the runner reports a retry mismatch that
+    these observations cannot support, comparison treats that result as invalid
+    evidence rather than accepting it as a genuine failure.
+    """
+
+    expected = case.recovery
+    recovery = result.actual.recovery
+    if expected is None:
+        return None
+    if recovery is None:
+        return None
+    required_fields = {
+        "injected_stage",
+        "failure_code",
+        "failed_state",
+        "failure_origin",
+        "retry_used",
+        "retry_generation_before",
+        "retry_generation",
+        "final_state",
+        "receipt_count",
+        "prior_receipt_ids",
+        "receipt_ids_at_retry",
+        "receipt_ids",
+        "resumed_sync_steps",
+        "prior_receipts_preserved",
+        "receipt_preservation_status",
+    }
+    if not required_fields.issubset(recovery.model_fields_set):
+        return None
+    receipts_match = _receipt_preserved(recovery)
+    if receipts_match is None:
+        return None
+
+    retry_generation_match: bool
+    retry_observed: bool
+    if expected.injected_stage.value == "SYNCING":
+        if recovery.retry_generation_before is None or recovery.retry_generation is None:
+            return None
+        logical = result.actual.logical_objects
+        facts = logical_object_observation_facts(logical)
+        if logical is None or facts is None:
+            return None
+        order_sync = result.side_effects.order_sync
+        logical_side_effects = result.side_effects.logical_external_objects
+        if not {"status", "count"}.issubset(order_sync.model_fields_set) or not {
+            "status",
+            "count",
+        }.issubset(logical_side_effects.model_fields_set):
+            return None
+        if not {"external_execution", "external_execution_eligible"}.issubset(
+            result.actual.model_fields_set
+        ):
+            return None
+        duplication_count, extra_object, completed_step_rerun, executor_reached = facts
+        steps_match = recovery.resumed_sync_steps == logical.steps_after_retry
+        steps_count = len(logical.completed_steps_before_retry) + len(logical.steps_after_retry)
+        retry_generation_match = recovery.retry_generation == recovery.retry_generation_before + 1
+        retry_observed = (
+            recovery.retry_used is True
+            and retry_generation_match
+            and steps_match
+            and bool(logical.steps_after_retry)
+        )
+        completion_match = (
+            recovery.final_state is expected.expected_final_state
+            and result.actual.external_execution == "COMPLETED"
+            and result.actual.external_execution_eligible is True
+            and logical.executor_reached is True
+            and executor_reached is True
+            and order_sync.status == "COMPLETED"
+            and order_sync.count == steps_count
+            and logical_side_effects.status == "COMPLETED"
+            and logical_side_effects.count == logical.resulting_object_count
+        )
+        return bool(
+            recovery.injected_stage is expected.injected_stage
+            and recovery.failure_code == expected.failure_code
+            and recovery.failed_state is expected.expected_durable_outcome
+            and recovery.failure_origin is expected.expected_resume_origin
+            and retry_observed
+            and completion_match
+            and receipts_match
+            and duplication_count == 0
+            and extra_object is False
+            and completed_step_rerun is False
+        )
+
+    if not {"idempotent_replay", "pre_approval_state"}.issubset(result.actual.model_fields_set):
+        return None
+    if recovery.retry_generation_before is not None or recovery.retry_generation is not None:
+        retry_generation_match = False
+    else:
+        retry_generation_match = True
+    retry_observed = recovery.retry_used is True and result.actual.idempotent_replay is True
+    return bool(
+        recovery.injected_stage is expected.injected_stage
+        and recovery.failure_code == expected.failure_code
+        and recovery.failed_state is expected.expected_durable_outcome
+        and recovery.failure_origin is expected.expected_resume_origin
+        and retry_observed
+        and retry_generation_match
+        and recovery.final_state is expected.expected_final_state
+        and result.actual.pre_approval_state is expected.expected_final_state
+        and receipts_match
+    )
+
+
+def score_execution_safety_outcome(case: CorpusCase, result: CaseResult) -> bool | None:
+    """Score the intake boundary, or the coupled SYNCING recovery boundary."""
+
+    if (
+        case.recovery is not None
+        and case.recovery.injected_stage.value == "SYNCING"
+        and result.actual.recovery is not None
+    ):
+        return score_reliability_outcome(case, result)
+    if not {
+        "external_execution",
+        "external_execution_eligible",
+        "logical_objects",
+    }.issubset(result.actual.model_fields_set):
+        return None
+    logical = result.actual.logical_objects
+    if logical is None or "executor_reached" not in logical.model_fields_set:
+        return None
+    facts = logical_object_observation_facts(logical)
+    if facts is None:
+        return None
+    if not {"status", "count"}.issubset(result.side_effects.order_sync.model_fields_set):
+        return None
+    if not {"status", "count"}.issubset(
+        result.side_effects.logical_external_objects.model_fields_set
+    ):
+        return None
+    expected_eligible = (
+        case.expected_validation.external_execution_eligible
+        if case.expected_validation is not None and case.approval is None
+        else False
+    )
+    duplication_count, extra_object, completed_step_rerun, executor_reached = facts
+    return bool(
+        result.actual.external_execution_eligible is expected_eligible
+        and result.actual.external_execution == "NOT_RUN"
+        and result.side_effects.order_sync.status == "NOT_RUN"
+        and result.side_effects.order_sync.count == 0
+        and result.side_effects.logical_external_objects.status == "NOT_RUN"
+        and result.side_effects.logical_external_objects.count == 0
+        and logical.executor_reached is False
+        and executor_reached is False
+        and logical.original_object_count == 0
+        and logical.resulting_object_count == 0
+        and duplication_count == 0
+        and extra_object is False
+        and completed_step_rerun is False
+    )

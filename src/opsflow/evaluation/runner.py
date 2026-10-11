@@ -131,7 +131,9 @@ from .models import (
 from .scoring import (
     build_routing_metrics,
     evaluate_release_gates,
+    score_execution_safety_outcome,
     score_extraction_quality,
+    score_replay_outcome,
     score_validation_outcome,
 )
 
@@ -392,20 +394,9 @@ def _result_from_intake(
         predicted_extraction=predicted,
     )
     validation_score = score_validation_outcome(case.expected_validation, result)
-    expected_eligible = (
-        case.expected_validation.external_execution_eligible
-        if case.expected_validation is not None and case.approval is None
-        else False
-    )
-    execution_safe = (
-        result.actual.external_execution_eligible is expected_eligible
-        and result.actual.external_execution == "NOT_RUN"
-        and result.side_effects.order_sync.status == "NOT_RUN"
-        and result.side_effects.order_sync.count == 0
-        and result.side_effects.logical_external_objects.status == "NOT_RUN"
-        and result.side_effects.logical_external_objects.count == 0
-        and logical_objects.executor_reached is False
-    )
+    execution_safe = score_execution_safety_outcome(case, result)
+    if execution_safe is None:
+        raise RuntimeError("intake result lacks execution-safety observations")
     validation_match = validation_score.overall_match if validation_score is not None else None
     result = result.model_copy(
         update={
@@ -1336,12 +1327,13 @@ async def run_recovery_scenario(
             ),
         }
     )
+    reliability_match = origin_match and retry_match and final_match and receipt_match
     final = (
         _benchmark_failure(
             final,
-            reliability_match=origin_match and retry_match and final_match and receipt_match,
+            reliability_match=reliability_match,
         )
-        if not (origin_match and retry_match and final_match and receipt_match)
+        if not reliability_match
         else final.model_copy(
             update={"scores": final.scores.model_copy(update={"reliability_match": True})}
         )
@@ -1436,23 +1428,19 @@ async def run_duplicate_scenario(
         logical_external_object_count=replay_object_count,
         provider_work_stood_down=provider_calls_after == provider_calls_before,
     )
-    replay_match = (
-        creation_disposition is case.replay.expected_creation_disposition
-        and replay.actual.intake_execution is case.replay.expected_intake_execution
-        and replay.actual.order_id == order_id
-        and replay_evidence.seed_order_id == replay_evidence.replay_order_id
-        and replay_evidence.authoritative_order_count == 1
-        and replay_evidence.provider_work_stood_down is True
-        and notification_before == notification_after
-        and sync_before == sync_after
-        and logical_objects is not None
-        and logical_objects.executor_reached is False
-        and logical_objects.original_object_count == 0
-        and logical_objects.resulting_object_count == 0
-        and logical_objects.logical_duplication_count == 0
-        and logical_objects.replay_created_extra_object is False
-        and logical_objects.completed_step_rerun is False
+    replay = replay.model_copy(
+        update={
+            "actual": replay.actual.model_copy(
+                update={
+                    "creation_disposition": creation_disposition,
+                    "replay": replay_evidence,
+                }
+            ),
+        }
     )
+    replay_match = score_replay_outcome(case, replay)
+    if replay_match is None:
+        raise RuntimeError("duplicate replay lacks scoring observations")
     replay = replay.model_copy(
         update={
             "status": (
@@ -1461,12 +1449,6 @@ async def run_duplicate_scenario(
                 else CaseResultStatus.FAIL
                 if not replay_match or replay.status is CaseResultStatus.FAIL
                 else CaseResultStatus.PASS
-            ),
-            "actual": replay.actual.model_copy(
-                update={
-                    "creation_disposition": creation_disposition,
-                    "replay": replay_evidence,
-                }
             ),
             "scores": replay.scores.model_copy(update={"replay_match": replay_match}),
             "side_effects": SideEffectSummary(
