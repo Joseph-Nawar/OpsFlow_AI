@@ -18,7 +18,7 @@ benchmark execution, live Gemini evaluation, token/cost calculation, reference
 result generation, optimization, or the Phase 11 audit. M11C — Correctness,
 Routing & Reliability Evaluation is `COMPLETE` at independently reviewed
 technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; M11C delivered
-Tasks 5–7 on active corpus `3.0.0`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E–M11F remain `NOT STARTED`. Phase 11
+Tasks 5–7 on active corpus `3.0.0`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `IN PROGRESS`; M11F remains `NOT STARTED`. Phase 11
 remains `IN PROGRESS` and Phase 12 remains `NOT STARTED`. This document defines
 the evaluation contract and implementation boundary; it does not implement
 the evaluator.

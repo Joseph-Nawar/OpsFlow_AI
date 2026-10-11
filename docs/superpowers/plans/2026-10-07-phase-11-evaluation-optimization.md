@@ -35,8 +35,17 @@ correction was corpus `3.0.0` at amendment SHA
 `7184efb9589445d16e354decd486f28bc90ac09b`; it is the active executable
 corpus. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at
 independently reviewed technical baseline
-`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E–M11F remain `NOT STARTED`;
+`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `IN PROGRESS`; M11F remains `NOT STARTED`;
 Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
+
+### M11E execution authorization — Tasks 13–14
+
+M11E Tasks 13–14 are authorized from approved M11D closeout SHA
+`1306070bf2da93d2f8f773851d1bcd5a70ca5ca3`. M11E is `IN PROGRESS` while
+comparison invariants and the measured baseline decision are implemented.
+M11A–M11D remain `COMPLETE`; M11F remains `NOT STARTED`; Phase 11 remains
+`IN PROGRESS`; Phase 12 remains `NOT STARTED`. This execution stops for
+independent review and human approval before M11F.
 
 ### M11C closeout — local milestone verification
 
