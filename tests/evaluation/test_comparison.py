@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from opsflow.domain.order import OrderState
 from opsflow.evaluation.artifacts import validate_result_json
 from opsflow.evaluation.comparison import ComparisonResult, compare_runs
 from opsflow.evaluation.corpus import load_manifest
@@ -978,7 +979,12 @@ def test_genuine_execution_safety_failure_remains_sound_evidence() -> None:
     failed = case.model_copy(
         update={
             "status": CaseResultStatus.FAIL,
-            "actual": case.actual.model_copy(update={"external_execution_eligible": True}),
+            "actual": case.actual.model_copy(
+                update={
+                    "pre_approval_state": OrderState.APPROVED,
+                    "external_execution_eligible": True,
+                }
+            ),
             "scores": case.scores.model_copy(update={"execution_safety_match": False}),
         }
     )
@@ -1105,6 +1111,345 @@ def test_timing_sum_extreme_bounds_and_rounding_tolerance(
             comparison.require_optimization_claim(
                 stage="provider_free_intake_ms", percentile="p95_ms"
             )
+
+
+@pytest.mark.parametrize(
+    ("counts_delta", "reported_stood_down"),
+    [(0, False), (1, True)],
+)
+def test_replay_provider_work_flag_must_match_observed_call_counts(
+    counts_delta: int, reported_stood_down: bool
+) -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "duplicate-email-001")
+    replay = case.actual.replay
+    assert replay is not None and replay.provider_calls_after is not None
+    inconsistent_replay = replay.model_copy(
+        update={
+            "provider_calls_after": replay.provider_calls_after + counts_delta,
+            "provider_work_stood_down": reported_stood_down,
+        }
+    )
+    fabricated = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": case.actual.model_copy(update={"replay": inconsistent_replay}),
+            "scores": case.scores.model_copy(update={"replay_match": False}),
+        }
+    )
+    cases = tuple(
+        fabricated if current.case_id == case.case_id else current for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+    assert comparison.correctness_comparable is False
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_matching_recovery_receipts_cannot_be_reported_lost() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "retry-csv-002")
+    recovery = case.actual.recovery
+    assert recovery is not None
+    assert recovery.prior_receipt_ids == recovery.receipt_ids_at_retry == recovery.receipt_ids
+    contradictory_receipts = recovery.model_copy(
+        update={"receipt_preservation_status": "LOST", "prior_receipts_preserved": False}
+    )
+    fabricated = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": case.actual.model_copy(update={"recovery": contradictory_receipts}),
+            "scores": case.scores.model_copy(
+                update={"reliability_match": False, "execution_safety_match": False}
+            ),
+        }
+    )
+    cases = tuple(
+        fabricated if current.case_id == case.case_id else current for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+    assert comparison.correctness_comparable is False
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_recovery_receipt_count_must_match_retained_receipt_identities() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "retry-csv-002")
+    recovery = case.actual.recovery
+    assert recovery is not None and recovery.receipt_ids
+    inconsistent = recovery.model_copy(update={"receipt_count": 0})
+    fabricated = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": case.actual.model_copy(update={"recovery": inconsistent}),
+            "scores": case.scores.model_copy(
+                update={"reliability_match": False, "execution_safety_match": False}
+            ),
+        }
+    )
+    cases = tuple(
+        fabricated if current.case_id == case.case_id else current for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+@pytest.mark.parametrize("observation", ["route", "pre_approval_state"])
+def test_missing_applicable_validation_observation_is_not_a_genuine_failure(
+    observation: str,
+) -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "deterministic-email-001")
+    incomplete_actual = case.actual.model_copy(update={observation: None})
+    fabricated = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": incomplete_actual,
+            "scores": case.scores.model_copy(update={"validation_match": False}),
+        }
+    )
+    cases = tuple(
+        fabricated if current.case_id == case.case_id else current for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+    assert comparison.correctness_comparable is False
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_missing_recovery_final_state_is_not_a_genuine_failure() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "retry-email-001")
+    recovery = case.actual.recovery
+    assert recovery is not None
+    incomplete_recovery = recovery.model_copy(update={"final_state": None})
+    fabricated = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": case.actual.model_copy(update={"recovery": incomplete_recovery}),
+            "scores": case.scores.model_copy(update={"reliability_match": False}),
+        }
+    )
+    cases = tuple(
+        fabricated if current.case_id == case.case_id else current for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_missing_execution_eligibility_is_not_a_genuine_failure() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "normal-email-001")
+    incomplete_actual = case.actual.model_copy(update={"external_execution_eligible": None})
+    fabricated = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": incomplete_actual,
+            "scores": case.scores.model_copy(update={"execution_safety_match": False}),
+        }
+    )
+    cases = tuple(
+        fabricated if current.case_id == case.case_id else current for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_execution_eligibility_must_agree_with_observed_order_state() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "normal-email-001")
+    assert case.actual.pre_approval_state is not None
+    assert case.actual.pre_approval_state.value == "READY_FOR_APPROVAL"
+    inconsistent = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": case.actual.model_copy(update={"external_execution_eligible": True}),
+            "scores": case.scores.model_copy(update={"execution_safety_match": False}),
+        }
+    )
+    cases = tuple(
+        inconsistent if current.case_id == case.case_id else current for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_error_with_unavailable_execution_observation_remains_valid_error_evidence() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "normal-email-001")
+    incomplete_error = case.model_copy(
+        update={
+            "status": CaseResultStatus.ERROR,
+            "actual": case.actual.model_copy(
+                update={
+                    "external_execution_eligible": None,
+                    "failure_code": "PROVIDER_UNAVAILABLE",
+                }
+            ),
+            "scores": case.scores.model_copy(update={"execution_safety_match": None}),
+        }
+    )
+    cases = tuple(
+        incomplete_error if current.case_id == case.case_id else current
+        for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.candidate_correctness_passed is False
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="candidate correctness"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_error_with_unavailable_validation_observations_remains_valid_error_evidence() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "deterministic-email-001")
+    incomplete_error = case.model_copy(
+        update={
+            "status": CaseResultStatus.ERROR,
+            "actual": case.actual.model_copy(
+                update={
+                    "route": None,
+                    "pre_approval_state": None,
+                    "failure_code": "PROVIDER_UNAVAILABLE",
+                }
+            ),
+            "scores": case.scores.model_copy(
+                update={"validation_match": None, "execution_safety_match": None}
+            ),
+        }
+    )
+    cases = tuple(
+        incomplete_error if current.case_id == case.case_id else current
+        for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.candidate_correctness_passed is False
+    assert comparison.optimization_eligible is False
+
+
+def test_error_with_unavailable_receipt_summary_remains_valid_error_evidence() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "retry-csv-002")
+    recovery = case.actual.recovery
+    assert recovery is not None
+    incomplete_recovery = recovery.model_copy(update={"prior_receipts_preserved": None})
+    incomplete_error = case.model_copy(
+        update={
+            "status": CaseResultStatus.ERROR,
+            "actual": case.actual.model_copy(
+                update={
+                    "recovery": incomplete_recovery,
+                    "failure_code": "PROVIDER_UNAVAILABLE",
+                }
+            ),
+            "scores": case.scores.model_copy(
+                update={"reliability_match": None, "execution_safety_match": None}
+            ),
+        }
+    )
+    cases = tuple(
+        incomplete_error if current.case_id == case.case_id else current
+        for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.candidate_correctness_passed is False
+    assert comparison.optimization_eligible is False
+
+
+def test_coherent_recovery_receipt_loss_remains_a_comparable_regression() -> None:
+    baseline = baseline_result()
+    case = next(case for case in baseline.cases if case.case_id == "retry-csv-002")
+    recovery = case.actual.recovery
+    assert recovery is not None and recovery.prior_receipt_ids
+    lost_receipts = recovery.model_copy(
+        update={
+            "receipt_ids_at_retry": (),
+            "receipt_ids": (),
+            "receipt_count": 0,
+            "receipt_preservation_status": "LOST",
+            "prior_receipts_preserved": False,
+        }
+    )
+    failed = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": case.actual.model_copy(update={"recovery": lost_receipts}),
+            "scores": case.scores.model_copy(
+                update={"reliability_match": False, "execution_safety_match": False}
+            ),
+        }
+    )
+    cases = tuple(
+        failed if current.case_id == case.case_id else current for current in baseline.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.candidate_correctness_passed is False
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="candidate correctness"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
 
 
 @pytest.mark.parametrize("stage", list(LatencyMetrics.model_fields))

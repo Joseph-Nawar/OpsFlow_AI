@@ -11,10 +11,13 @@ from typing import Literal
 
 from pydantic import ValidationError
 
+from opsflow.domain.order import OrderState
+
 from .corpus import load_manifest
 from .models import (
     CaseResult,
     CaseResultStatus,
+    CorpusCase,
     CorpusComposition,
     CorpusManifest,
     EvaluationMode,
@@ -158,6 +161,225 @@ def _valid_timing(metric: TimingMetric) -> bool:
     )
 
 
+def _side_effects_are_observed(result: CaseResult) -> bool:
+    return all(
+        detail.status is not None and detail.count is not None
+        for detail in (
+            result.side_effects.order_sync,
+            result.side_effects.logical_external_objects,
+        )
+    )
+
+
+def _replay_observations_complete(result: CaseResult) -> bool:
+    replay = result.actual.replay
+    required_values = (
+        None if replay is None else replay.creation_disposition,
+        None if replay is None else replay.intake_execution,
+        None if replay is None else replay.seed_order_id,
+        None if replay is None else replay.replay_order_id,
+        None if replay is None else replay.authoritative_order_count,
+        None if replay is None else replay.provider_calls_before,
+        None if replay is None else replay.provider_calls_after,
+        None if replay is None else replay.notification_intents_before,
+        None if replay is None else replay.notification_intents_after,
+        None if replay is None else replay.order_sync_intents_before,
+        None if replay is None else replay.order_sync_intents_after,
+        None if replay is None else replay.logical_external_object_count,
+        None if replay is None else replay.provider_work_stood_down,
+        result.actual.order_id,
+    )
+    return (
+        all(value is not None for value in required_values)
+        and logical_object_observation_facts(result.actual.logical_objects) is not None
+        and _side_effects_are_observed(result)
+    )
+
+
+def _recovery_observations_complete(case: CorpusCase, result: CaseResult) -> bool:
+    recovery = result.actual.recovery
+    required_fields = {
+        "injected_stage",
+        "failure_code",
+        "failed_state",
+        "failure_origin",
+        "retry_used",
+        "retry_generation_before",
+        "retry_generation",
+        "final_state",
+        "receipt_count",
+        "prior_receipt_ids",
+        "receipt_ids_at_retry",
+        "receipt_ids",
+        "resumed_sync_steps",
+        "prior_receipts_preserved",
+        "receipt_preservation_status",
+    }
+    if recovery is None or not required_fields.issubset(recovery.model_fields_set):
+        return False
+    if any(
+        value is None
+        for value in (
+            recovery.injected_stage,
+            recovery.failure_code,
+            recovery.failed_state,
+            recovery.failure_origin,
+            recovery.retry_used,
+            recovery.final_state,
+            recovery.receipt_count,
+            recovery.receipt_preservation_status,
+        )
+    ):
+        return False
+    injected_stage = case.recovery.injected_stage if case.recovery is not None else None
+    if injected_stage is None:
+        return False
+    if injected_stage.value == "SYNCING":
+        return (
+            recovery.retry_generation_before is not None
+            and recovery.retry_generation is not None
+            and result.actual.external_execution is not None
+            and result.actual.external_execution_eligible is not None
+            and logical_object_observation_facts(result.actual.logical_objects) is not None
+            and _side_effects_are_observed(result)
+            and recovery.prior_receipts_preserved is not None
+        )
+    return (
+        result.actual.idempotent_replay is not None
+        and result.actual.pre_approval_state is not None
+        and (
+            recovery.prior_receipts_preserved is not None
+            or (
+                not recovery.prior_receipt_ids
+                and recovery.receipt_preservation_status == "NO_PRIOR_RECEIPTS"
+                and recovery.prior_receipts_preserved is None
+            )
+        )
+    )
+
+
+def _recovery_observation_issues(case: CorpusCase, result: CaseResult) -> list[str]:
+    recovery = result.actual.recovery
+    if recovery is None or case.recovery is None:
+        return []
+
+    issues: list[str] = []
+    receipt_ids_observed = {
+        "prior_receipt_ids",
+        "receipt_ids_at_retry",
+        "receipt_ids",
+    }.issubset(recovery.model_fields_set)
+    if (
+        recovery.receipt_count is not None
+        and "receipt_ids" in recovery.model_fields_set
+        and recovery.receipt_count != len(recovery.receipt_ids)
+    ):
+        issues.append(f"recovery_receipt_count_disagrees_with_identities:{result.case_id}")
+
+    if receipt_ids_observed:
+        prior = recovery.prior_receipt_ids
+        at_retry = recovery.receipt_ids_at_retry
+        final = recovery.receipt_ids
+        if case.recovery is not None:
+            if case.recovery.injected_stage.value == "SYNCING":
+                if not prior:
+                    expected_status = "NO_PRIOR_RECEIPTS"
+                elif not at_retry or not final:
+                    expected_status = "LOST"
+                elif prior != at_retry or prior != final:
+                    expected_status = "REPLACED"
+                else:
+                    expected_status = "PRESERVED"
+                expected_preserved = expected_status == "PRESERVED"
+            else:
+                if at_retry != final:
+                    issues.append(f"recovery_receipt_snapshots_disagree:{result.case_id}")
+                if not prior and not final:
+                    expected_status = "NO_PRIOR_RECEIPTS"
+                    expected_preserved = None
+                elif not prior:
+                    expected_status = "UNEXPECTED_RECEIPTS"
+                    expected_preserved = False
+                elif not final:
+                    expected_status = "LOST"
+                    expected_preserved = False
+                elif prior != final:
+                    expected_status = "REPLACED"
+                    expected_preserved = False
+                else:
+                    expected_status = "PRESERVED"
+                    expected_preserved = True
+
+            if (
+                recovery.receipt_preservation_status is not None
+                and recovery.receipt_preservation_status != expected_status
+            ):
+                issues.append(f"recovery_receipt_status_disagrees_with_identities:{result.case_id}")
+            if (
+                recovery.prior_receipts_preserved is not None
+                and recovery.prior_receipts_preserved is not expected_preserved
+            ):
+                issues.append(f"recovery_receipt_flag_disagrees_with_identities:{result.case_id}")
+    elif result.status is not CaseResultStatus.ERROR:
+        issues.append(f"recovery_receipt_identities_unavailable:{result.case_id}")
+
+    if result.status is not CaseResultStatus.ERROR and not _recovery_observations_complete(
+        case, result
+    ):
+        issues.append(f"recovery_observations_incomplete:{result.case_id}")
+    return issues
+
+
+def _execution_observations_complete(case: CorpusCase, result: CaseResult) -> bool:
+    if case.recovery is not None and case.recovery.injected_stage.value == "SYNCING":
+        return _recovery_observations_complete(case, result)
+    return (
+        result.actual.pre_approval_state is not None
+        and result.actual.external_execution is not None
+        and result.actual.external_execution_eligible is not None
+        and logical_object_observation_facts(result.actual.logical_objects) is not None
+        and _side_effects_are_observed(result)
+    )
+
+
+def _replay_observation_issues(case: CorpusCase, result: CaseResult) -> list[str]:
+    replay = result.actual.replay
+    if replay is None:
+        return []
+    issues: list[str] = []
+    if replay.provider_calls_before is not None and replay.provider_calls_after is not None:
+        derived_stood_down = replay.provider_calls_before == replay.provider_calls_after
+        if (
+            replay.provider_work_stood_down is not None
+            and replay.provider_work_stood_down is not derived_stood_down
+        ):
+            issues.append(f"replay_provider_work_flag_disagrees_with_counts:{result.case_id}")
+    if (
+        case.replay is not None
+        and result.status is not CaseResultStatus.ERROR
+        and not _replay_observations_complete(result)
+    ):
+        issues.append(f"replay_observations_incomplete:{result.case_id}")
+    return issues
+
+
+def _execution_eligibility_issues(case: CorpusCase, result: CaseResult) -> list[str]:
+    if case.recovery is not None and case.recovery.injected_stage.value == "SYNCING":
+        return []
+    state = result.actual.pre_approval_state
+    eligible = result.actual.external_execution_eligible
+    if state is None or eligible is None:
+        return []
+    derived_eligibility = state in {
+        OrderState.APPROVED,
+        OrderState.SYNCING,
+        OrderState.COMPLETED,
+    }
+    if eligible is derived_eligibility:
+        return []
+    return [f"execution_eligibility_disagrees_with_order_state:{result.case_id}"]
+
+
 def _case_evidence_issues(run: EvaluationRunResult, manifest: CorpusManifest) -> list[str]:
     issues: list[str] = []
     try:
@@ -201,19 +423,39 @@ def _case_evidence_issues(run: EvaluationRunResult, manifest: CorpusManifest) ->
         if result is None:
             continue
         actual = result.actual
-        if corpus_case.expected_validation is None or (
-            result.status is CaseResultStatus.ERROR
-            and (actual.route is None or actual.pre_approval_state is None)
-        ):
+        validation_observations_complete = corpus_case.expected_validation is None or (
+            actual.route is not None and actual.pre_approval_state is not None
+        )
+        if not validation_observations_complete:
+            if result.status is not CaseResultStatus.ERROR:
+                issues.append(f"validation_observations_incomplete:{result.case_id}")
             expected_validation_match = None
         else:
             validation_score = score_validation_outcome(corpus_case.expected_validation, result)
             expected_validation_match = (
                 validation_score.overall_match if validation_score is not None else None
             )
-        expected_replay_match = score_replay_outcome(corpus_case, result)
-        expected_reliability_match = score_reliability_outcome(corpus_case, result)
-        expected_execution_safety_match = score_execution_safety_outcome(corpus_case, result)
+        issues.extend(_replay_observation_issues(corpus_case, result))
+        expected_replay_match = (
+            score_replay_outcome(corpus_case, result)
+            if corpus_case.replay is None or _replay_observations_complete(result)
+            else None
+        )
+        issues.extend(_recovery_observation_issues(corpus_case, result))
+        expected_reliability_match = (
+            score_reliability_outcome(corpus_case, result)
+            if corpus_case.recovery is None or _recovery_observations_complete(corpus_case, result)
+            else None
+        )
+        execution_observations_complete = _execution_observations_complete(corpus_case, result)
+        issues.extend(_execution_eligibility_issues(corpus_case, result))
+        if not execution_observations_complete and result.status is not CaseResultStatus.ERROR:
+            issues.append(f"execution_safety_observations_incomplete:{result.case_id}")
+        expected_execution_safety_match = (
+            score_execution_safety_outcome(corpus_case, result)
+            if execution_observations_complete
+            else None
+        )
         expected_scores = {
             "extraction_exact_match": None,
             "validation_match": expected_validation_match,
