@@ -267,7 +267,7 @@ def test_provider_free_command_needs_no_gemini_settings_and_writes_json_first(
         EvaluationMode.PROVIDER_FREE,
         environ={
             "OPSFLOW_EVALUATION_DATABASE_URL": (
-                "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_evaluation"
+                "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow_evaluation"
             )
         },
         results_directory=observed["artifacts_directory"],
@@ -369,7 +369,7 @@ def test_live_command_accepts_missing_pricing_without_calling_the_provider(
         "OPSFLOW_GEMINI_MODEL": "gemini-3.8-flash",
         "OPSFLOW_GEMINI_TIMEOUT_SECONDS": "30",
         "OPSFLOW_EVALUATION_DATABASE_URL": (
-            "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_evaluation"
+            "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow_evaluation"
         ),
     }
 
