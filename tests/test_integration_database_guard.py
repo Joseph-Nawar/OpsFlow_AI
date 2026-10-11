@@ -6,6 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration_database_guard import (
+    IntegrationDatabaseSafetyError,
+    configure_integration_database,
+)
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -39,7 +44,7 @@ def test_direct_integration_invocation_requires_explicit_disposable_target() -> 
     assert "OPSFLOW_INTEGRATION_TEST_DATABASE_URL" in result.stdout + result.stderr
 
 
-def test_direct_integration_invocation_loads_guard_before_checking_target_identity() -> None:
+def test_direct_integration_invocation_rejects_unapproved_port_before_test_collection() -> None:
     environment = os.environ.copy()
     environment["OPSFLOW_INTEGRATION_TEST_DATABASE_URL"] = (
         "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:59998/opsflow_integration_probe"
@@ -49,8 +54,45 @@ def test_direct_integration_invocation_loads_guard_before_checking_target_identi
     output = result.stdout + result.stderr
 
     assert result.returncode != 0
-    assert "dedicated integration-test database identity could not be verified" in output
+    assert "approved local PostgreSQL endpoint at port 5432" in output
     assert "ModuleNotFoundError" not in output
+
+
+def test_integration_config_rejects_same_name_on_unapproved_port_before_override() -> None:
+    environment = {
+        "OPSFLOW_INTEGRATION_TEST_DATABASE_URL": (
+            "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_integration_probe"
+        ),
+        "OPSFLOW_DATABASE_URL": "unchanged-normal-setting",
+    }
+
+    with pytest.raises(IntegrationDatabaseSafetyError, match="port 5432"):
+        configure_integration_database(
+            environment,
+            "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow",
+        )
+
+    assert environment["OPSFLOW_DATABASE_URL"] == "unchanged-normal-setting"
+
+
+def test_integration_config_rejects_migration_target_on_unapproved_port() -> None:
+    environment = {
+        "OPSFLOW_INTEGRATION_TEST_DATABASE_URL": (
+            "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow_integration_probe"
+        ),
+        "OPSFLOW_MIGRATION_TEST_DATABASE_URL": (
+            "postgresql+asyncpg://opsflow:opsflow@localhost:55432/opsflow_migration_test"
+        ),
+        "OPSFLOW_DATABASE_URL": "unchanged-normal-setting",
+    }
+
+    with pytest.raises(IntegrationDatabaseSafetyError, match="port 5432"):
+        configure_integration_database(
+            environment,
+            "postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow",
+        )
+
+    assert environment["OPSFLOW_DATABASE_URL"] == "unchanged-normal-setting"
 
 
 @pytest.mark.parametrize(
@@ -58,6 +100,7 @@ def test_direct_integration_invocation_loads_guard_before_checking_target_identi
     [
         "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_prod",
         "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow",
+        "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_integration_ci",
         "postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_migration_test",
         "postgresql+asyncpg://opsflow:opsflow@db.example.invalid:5432/opsflow_integration_ci",
         "postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_integration_ci?options=-csearch_path=public",

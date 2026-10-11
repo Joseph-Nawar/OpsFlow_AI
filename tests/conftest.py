@@ -6,6 +6,10 @@ import pytest
 from sqlalchemy.engine import make_url
 
 from opsflow.settings import Settings
+from tests.integration_database_guard import (
+    IntegrationDatabaseSafetyError,
+    verify_migration_test_database_identity,
+)
 
 
 @pytest.fixture
@@ -30,5 +34,10 @@ def migration_test_database_url() -> str:
         pytest.fail("migration test database must differ from development database")
     if migration_url.database != "opsflow_migration_test":
         pytest.fail("migration database must use the approved opsflow_migration_test identity")
+
+    try:
+        verify_migration_test_database_identity(configured_url)
+    except IntegrationDatabaseSafetyError as error:
+        pytest.fail(str(error))
 
     return configured_url

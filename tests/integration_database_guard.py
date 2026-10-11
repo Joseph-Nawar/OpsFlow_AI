@@ -14,6 +14,7 @@ from sqlalchemy.pool import NullPool
 INTEGRATION_DATABASE_ENV = "OPSFLOW_INTEGRATION_TEST_DATABASE_URL"
 INTEGRATION_DATABASE_PREFIX = "opsflow_integration_"
 MIGRATION_DATABASE_NAME = "opsflow_migration_test"
+APPROVED_POSTGRESQL_PORT = 5432
 _DATABASE_NAME = re.compile(r"[a-z][a-z0-9_]{0,62}\Z", re.ASCII)
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
@@ -46,6 +47,14 @@ def _parse_local_postgresql_url(value: str | None, *, label: str) -> URL:
     return url
 
 
+def _require_approved_test_endpoint(url: URL, *, label: str) -> None:
+    if url.port != APPROVED_POSTGRESQL_PORT:
+        raise IntegrationDatabaseSafetyError(
+            f"{label} must identify a dedicated integration-test database on the "
+            "approved local PostgreSQL endpoint at port 5432"
+        )
+
+
 def configure_integration_database(environ: MutableMapping[str, str], normal_url: str) -> str:
     """Validate the disposable target and override app settings before tests import."""
 
@@ -58,6 +67,9 @@ def configure_integration_database(environ: MutableMapping[str, str], normal_url
         if migration_value is not None
         else None
     )
+    _require_approved_test_endpoint(target, label=INTEGRATION_DATABASE_ENV)
+    if migration is not None:
+        _require_approved_test_endpoint(migration, label="OPSFLOW_MIGRATION_TEST_DATABASE_URL")
 
     if not target.database.startswith(INTEGRATION_DATABASE_PREFIX):
         raise IntegrationDatabaseSafetyError(
@@ -80,28 +92,60 @@ def verify_integration_database_identity(database_url: str) -> None:
     """Read connected identity before pytest can run migrations or test writes."""
 
     target = _parse_local_postgresql_url(database_url, label=INTEGRATION_DATABASE_ENV)
+    _require_approved_test_endpoint(target, label=INTEGRATION_DATABASE_ENV)
     if target.database is None or not target.database.startswith(INTEGRATION_DATABASE_PREFIX):
         raise IntegrationDatabaseSafetyError(
             "target must be a dedicated integration-test database named opsflow_integration_*"
         )
+    _verify_connected_database_identity(
+        database_url,
+        expected_name=target.database,
+        label="dedicated integration-test",
+    )
+
+
+def verify_migration_test_database_identity(database_url: str) -> None:
+    """Verify the destructive migration-test target before Alembic can use it."""
+
+    target = _parse_local_postgresql_url(database_url, label="OPSFLOW_MIGRATION_TEST_DATABASE_URL")
+    _require_approved_test_endpoint(target, label="OPSFLOW_MIGRATION_TEST_DATABASE_URL")
+    if target.database != MIGRATION_DATABASE_NAME:
+        raise IntegrationDatabaseSafetyError(
+            "migration target must be the approved opsflow_migration_test database"
+        )
+    _verify_connected_database_identity(
+        database_url,
+        expected_name=MIGRATION_DATABASE_NAME,
+        label="migration-test",
+    )
+
+
+def _verify_connected_database_identity(
+    database_url: str,
+    *,
+    expected_name: str,
+    label: str,
+) -> None:
     engine = create_async_engine(database_url, poolclass=NullPool)
 
-    async def read_identity() -> tuple[str | None, str | None]:
+    async def read_identity() -> tuple[str | None, str | None, int | None]:
         async with engine.connect() as connection:
             row = (
-                await connection.execute(text("SELECT current_database(), current_schema()"))
+                await connection.execute(
+                    text("SELECT current_database(), current_schema(), inet_server_port()")
+                )
             ).one()
-            return row[0], row[1]
+            return row[0], row[1], row[2]
 
     try:
         identity = asyncio.run(read_identity())
     except Exception as error:
         raise IntegrationDatabaseSafetyError(
-            "dedicated integration-test database identity could not be verified"
+            f"{label} database identity could not be verified"
         ) from error
     finally:
         asyncio.run(engine.dispose())
-    if identity != (target.database, "public"):
+    if identity != (expected_name, "public", APPROVED_POSTGRESQL_PORT):
         raise IntegrationDatabaseSafetyError(
-            "connected database is not the dedicated integration-test target"
+            f"connected database is not the approved {label} target"
         )
