@@ -72,3 +72,34 @@ def test_direct_integration_invocation_rejects_unapproved_targets(target_url: st
 
     assert result.returncode != 0
     assert "dedicated integration-test database" in result.stdout + result.stderr
+
+
+def test_ci_preflights_and_migrates_the_explicit_integration_database() -> None:
+    workflow = (REPOSITORY_ROOT / ".github/workflows/ci.yml").read_text()
+    preflight = "      - name: Verify integration database before migrations"
+    migration = "      - name: Apply migrations"
+    current = "      - name: Check migration state"
+    tests = "      - name: Run backend tests"
+
+    assert preflight in workflow
+    assert migration in workflow
+    assert current in workflow
+    assert tests in workflow
+    preflight_start = workflow.index(preflight)
+    migration_start = workflow.index(migration)
+    current_start = workflow.index(current)
+    tests_start = workflow.index(tests)
+    assert preflight_start < migration_start < current_start < tests_start
+
+    preflight_step = workflow[preflight_start:migration_start]
+    migration_step = workflow[migration_start:current_start]
+    current_step = workflow[current_start:tests_start]
+    assert "uv run pytest tests/integration --collect-only -q --no-cov" in preflight_step
+    assert (
+        "OPSFLOW_DATABASE_URL: ${{ env.OPSFLOW_INTEGRATION_TEST_DATABASE_URL }}" in migration_step
+    )
+    assert "uv run alembic upgrade head" in migration_step
+    assert "OPSFLOW_DATABASE_URL: ${{ env.OPSFLOW_INTEGRATION_TEST_DATABASE_URL }}" in current_step
+    assert "uv run alembic current" in current_step
+    assert "OPSFLOW_INTEGRATION_TEST_DATABASE_URL:" in workflow
+    assert "run: uv run pytest" in workflow[tests_start:]

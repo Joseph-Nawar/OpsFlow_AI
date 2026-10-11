@@ -88,10 +88,17 @@ jobs:
           asyncio.run(main())
           PY
 
+      - name: Verify integration database before migrations
+        run: uv run pytest tests/integration --collect-only -q --no-cov
+
       - name: Apply migrations
+        env:
+          OPSFLOW_DATABASE_URL: ${{ env.OPSFLOW_INTEGRATION_TEST_DATABASE_URL }}
         run: uv run alembic upgrade head
 
       - name: Check migration state
+        env:
+          OPSFLOW_DATABASE_URL: ${{ env.OPSFLOW_INTEGRATION_TEST_DATABASE_URL }}
         run: uv run alembic current
 
       - name: Run Ruff lint
