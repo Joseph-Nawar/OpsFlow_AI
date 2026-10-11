@@ -35,7 +35,7 @@ correction was corpus `3.0.0` at amendment SHA
 `7184efb9589445d16e354decd486f28bc90ac09b`; it is the active executable
 corpus. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at
 independently reviewed technical baseline
-`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `IN PROGRESS`; M11E–M11F remain `NOT STARTED`;
+`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E–M11F remain `NOT STARTED`;
 Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
 
 ### M11C closeout — local milestone verification
@@ -106,6 +106,55 @@ remediation. M11C-FINAL-01 is resolved at the approved M11C technical baseline
 `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; M11C is `COMPLETE`. M11D–M11F
 remain `NOT STARTED` and Phase 11 remains `IN PROGRESS`.
 
+### M11D closeout — independently reviewed and human-approved
+
+M11D Tasks 8–12 are complete at the approved implementation baseline
+`9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`. The independent final safety
+re-review returned PASS, including verification that the four original M11D
+correctness/safety findings, the related integration-test safety correction,
+and the final three database-safety findings were resolved. Human approval was
+granted for this documentation-only closeout; no blocking implementation
+findings remain. M11D did not change production application behavior.
+
+The active executable corpus remains `3.0.0`, with 36 cases and unchanged
+source SHA-256 values. Two provider-free runs at the approved implementation
+SHA each accounted for and passed 36/36 cases, with zero Gemini calls. All five
+hard gates passed in both runs: invalid execution 0/13, deterministic routing
+7/7, duplicate blocking 4/4, malformed/security handling 4/4, and direct
+authority violations 0/36. The existing committed provider-free reference
+JSON/Markdown pair is unchanged. Its measured-run SHA is
+`7b67e6e32a2c7f7c44894dcf38eb68968ce1195b`; this historical artifact SHA is
+distinct from the approved implementation SHA above. Provider-free extraction
+quality is `NOT_APPLICABLE`; local diagnostic p50/p95 values are not production
+SLAs.
+
+**Local milestone verification (not GitHub-hosted CI):** the isolated full
+`make check` passed 2,007 tests, with 23 skipped and 87.56% coverage; the
+standalone integration suite passed 367 tests. The final independent review
+ran focused database-safety tests (46 passed, 3 skipped) and the full
+evaluation suite (220 passed, 20 skipped); the latter skips included
+database-dependent tests because database configuration was unavailable in
+that review environment. Ruff, formatting, mypy, package build, frontend tests
+(68 passed), frontend lint/build, `git diff --check`, Markdown links, and the
+pinned Gitleaks v8.28.0 committed-range scan were reported passing. Python
+production dependencies had no known vulnerabilities and npm production audit
+reported zero vulnerabilities. Hosted GitHub CI and live Gemini behavior were not independently executed. The
+provider-free baseline is reproducible evidence, not live model-quality,
+token, latency, or cost evidence.
+
+Real Gemini extraction quality, authoritative token usage, provider latency,
+and estimated live model cost remain unmeasured; no live Gemini request was
+made. Production dependency checks passed, while the frontend installation
+reported two high-severity development-dependency advisories that remain
+unresolved. The historical effects of the earlier accidental integration
+invocation remain unverified; later read-only catalog inspection found no
+public application tables in the normal database. The database endpoint guard
+protects against accidental wrong-target configuration under the documented
+local/CI assumptions, not malicious database-server impersonation.
+
+M11A–M11D are `COMPLETE`; M11E–M11F remain `NOT STARTED`. Phase 11 remains
+`IN PROGRESS`; Phase 12 remains `NOT STARTED`.
+
 ## Milestone Execution Gates
 
 The execution unit is one milestone, not the whole Phase 11 plan. A single
@@ -123,9 +172,10 @@ sequential; subagents and multi-agent workflows are prohibited.
   `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; independent technical review and
   the documentation status closeout are recorded above. M11D remains a separate
   gated milestone and must not be started by this M11C closeout.
-- **M11D:** execute Tasks 8–12 only, including the actual mandatory reference
-  run described in Task 12, then stop with the same evidence report and
-  independent-review/human-approval gate before M11E.
+- **M11D:** Tasks 8–12 are complete at approved implementation baseline
+  `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`, with independent final-review
+  PASS and human approval recorded above. M11E remains a separate milestone
+  and requires its own authorization.
 - **M11E:** execute Tasks 13–14 only, including the baseline decision and only
   a conditionally justified optimization, then stop with the same evidence
   report and independent-review/human-approval gate before M11F. Freeze the
