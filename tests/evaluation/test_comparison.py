@@ -8,7 +8,9 @@ import pytest
 
 from opsflow.evaluation.artifacts import validate_result_json
 from opsflow.evaluation.comparison import ComparisonResult, compare_runs
+from opsflow.evaluation.corpus import load_manifest
 from opsflow.evaluation.models import (
+    CaseResultStatus,
     CostMetrics,
     EvaluationMode,
     EvaluationRunResult,
@@ -20,7 +22,9 @@ from opsflow.evaluation.models import (
     RateMetric,
     ReleaseGateSummary,
     TimingMetric,
+    ValidationRoute,
 )
+from opsflow.evaluation.scoring import build_routing_metrics, evaluate_release_gates
 
 REFERENCE = (
     Path(__file__).resolve().parents[2]
@@ -73,6 +77,7 @@ def _as_live(result, *, model: str = "gemini-3.8-flash", snapshot: str = "gemini
             ),
             "latency": result.metrics.latency.model_copy(
                 update={
+                    "provider_free_intake_ms": TimingMetric(),
                     "live_gemini_call_ms": TimingMetric(
                         sample_count=1,
                         minimum_ms=Decimal("4.5"),
@@ -80,7 +85,7 @@ def _as_live(result, *, model: str = "gemini-3.8-flash", snapshot: str = "gemini
                         sum_ms=Decimal("4.5"),
                         p50_ms=Decimal("4.5"),
                         p95_ms=Decimal("4.5"),
-                    )
+                    ),
                 }
             ),
             "provider_usage": ProviderUsageMetrics(
@@ -294,7 +299,7 @@ def test_missing_latency_metadata_is_not_assumed_compatible() -> None:
     assert comparison.correctness_comparable is True
     assert comparison.latency_comparable is False
     with pytest.raises(ValueError, match="latency"):
-        comparison.require_optimization_claim()
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
 
 
 @pytest.mark.parametrize("field", ["gemini_model", "pricing_snapshot_id"])
@@ -312,6 +317,30 @@ def test_live_model_or_cost_pricing_mismatch_prevents_live_comparison(field: str
     assert comparison.latency_comparable is False
 
 
+def test_live_attempt_timing_population_must_match_attributed_provider_calls() -> None:
+    baseline = _as_live(baseline_result())
+    live_timing = baseline.metrics.latency.live_gemini_call_ms.model_copy(
+        update={"sample_count": 2, "sum_ms": Decimal("9")}
+    )
+    candidate = baseline.model_copy(
+        update={
+            "metrics": baseline.metrics.model_copy(
+                update={
+                    "latency": baseline.metrics.latency.model_copy(
+                        update={"live_gemini_call_ms": live_timing}
+                    )
+                }
+            )
+        }
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.correctness_comparable is True
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.latency_comparable is False
+
+
 def test_provider_free_cost_not_applicable_does_not_require_pricing_metadata() -> None:
     baseline = baseline_result()
     candidate = _with_run(baseline, git_sha="d" * 40)
@@ -324,15 +353,15 @@ def test_provider_free_cost_not_applicable_does_not_require_pricing_metadata() -
 
 def test_failed_case_or_release_gate_cannot_be_used_as_optimization_baseline() -> None:
     baseline = baseline_result()
-    failed_case = baseline.cases[0].model_copy(update={"status": "FAIL"})
+    failed_case = baseline.cases[0].model_copy(update={"status": CaseResultStatus.FAIL})
     candidate = baseline.model_copy(update={"cases": (failed_case, *baseline.cases[1:])})
 
     comparison = compare_runs(baseline, candidate)
 
     assert comparison.correctness_comparable is False
     assert comparison.latency_comparable is False
-    with pytest.raises(ValueError, match="correctness"):
-        comparison.require_optimization_claim()
+    with pytest.raises(ValueError, match="valid baseline and candidate evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
 
 
 def test_missing_or_failed_release_gate_is_not_a_safe_comparison() -> None:
@@ -373,4 +402,397 @@ def test_optimization_claim_is_rejected_when_latency_is_incomparable() -> None:
     comparison = compare_runs(baseline, candidate)
 
     with pytest.raises(ValueError, match="latency"):
-        comparison.require_optimization_claim()
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def _corpus():
+    return load_manifest(Path(__file__).resolve().parents[2] / "evals/corpus/v1")
+
+
+def _with_cases_and_recomputed_scores(result, cases):
+    corpus = _corpus()
+    gates = evaluate_release_gates(corpus, cases)
+    metrics = result.metrics.model_copy(
+        update={"routing": build_routing_metrics(corpus, cases, gates)}
+    )
+    return result.model_copy(
+        update={
+            "cases": cases,
+            "release_gates": gates,
+            "metrics": metrics,
+        }
+    )
+
+
+def test_pass_case_with_false_validation_score_is_invalid_evidence() -> None:
+    baseline = baseline_result()
+    first = baseline.cases[0]
+    contradictory = first.model_copy(
+        update={"scores": first.scores.model_copy(update={"validation_match": False})}
+    )
+    candidate = baseline.model_copy(update={"cases": (contradictory, *baseline.cases[1:])})
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.correctness_comparable is False
+    assert comparison.candidate_correctness_passed is None
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_failed_validation_score_without_observation_is_not_a_real_regression() -> None:
+    baseline = baseline_result()
+    first = baseline.cases[0]
+    fabricated_failure = first.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "scores": first.scores.model_copy(update={"validation_match": False}),
+        }
+    )
+    candidate = baseline.model_copy(update={"cases": (fabricated_failure, *baseline.cases[1:])})
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.correctness_comparable is False
+
+
+def test_provider_free_comparison_rejects_real_gemini_call_evidence() -> None:
+    baseline = baseline_result()
+    first = baseline.cases[0]
+    called_gemini = first.model_copy(update={"provider": ProviderSummary(name="gemini", calls=1)})
+    candidate = baseline.model_copy(update={"cases": (called_gemini, *baseline.cases[1:])})
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.correctness_comparable is False
+
+
+@pytest.mark.parametrize(
+    ("status", "score_updates"),
+    [
+        (CaseResultStatus.PASS, {"replay_match": False}),
+        (CaseResultStatus.FAIL, {"validation_match": True}),
+        (CaseResultStatus.FAIL, {}),
+    ],
+)
+def test_case_status_and_applicable_scores_must_agree(status, score_updates) -> None:
+    baseline = baseline_result()
+    case_index = next(
+        index for index, case in enumerate(baseline.cases) if case.actual.replay is not None
+    )
+    cases = list(baseline.cases)
+    case = cases[case_index]
+    scores = case.scores.model_copy(update=score_updates)
+    cases[case_index] = case.model_copy(update={"status": status, "scores": scores})
+    candidate = _with_cases_and_recomputed_scores(baseline, tuple(cases))
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.correctness_comparable is False
+
+
+def test_same_wrong_gate_populations_are_rejected_against_canonical_corpus() -> None:
+    baseline = baseline_result()
+    invalid_gates = ReleaseGateSummary(
+        all_passed=True,
+        results=tuple(
+            gate.model_copy(
+                update={
+                    "numerator": numerator,
+                    "denominator": denominator,
+                    "status": "PASS",
+                    "failing_case_ids": (),
+                }
+            )
+            for gate, numerator, denominator in zip(
+                baseline.release_gates.results,
+                (0, 1, 1, 1, 0),
+                (1, 1, 1, 1, 36),
+                strict=True,
+            )
+        ),
+    )
+    candidate = baseline.model_copy(update={"release_gates": invalid_gates})
+
+    comparison = compare_runs(candidate, candidate)
+
+    assert comparison.baseline_evidence_valid is False
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.correctness_comparable is False
+
+
+def test_gate_numerator_and_status_must_match_case_observations() -> None:
+    baseline = baseline_result()
+    failed_gate = baseline.release_gates.results[1].model_copy(
+        update={"numerator": 6, "status": "FAIL", "failing_case_ids": ("fabricated",)}
+    )
+    gates = baseline.release_gates.model_copy(
+        update={
+            "all_passed": False,
+            "results": (
+                baseline.release_gates.results[0],
+                failed_gate,
+                *baseline.release_gates.results[2:],
+            ),
+        }
+    )
+    candidate = baseline.model_copy(update={"release_gates": gates})
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_required_case_identity_evidence_must_be_complete_and_unique(mutation: str) -> None:
+    baseline = baseline_result()
+    if mutation == "missing":
+        cases = baseline.cases[:-1]
+    else:
+        cases = (*baseline.cases[:-1], baseline.cases[0])
+    candidate = baseline.model_copy(update={"cases": cases})
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.correctness_comparable is False
+
+
+def test_sound_failed_candidate_remains_comparable_but_not_optimization_eligible() -> None:
+    baseline = baseline_result()
+    failing_case = next(
+        case for case in baseline.cases if case.case_id == "deterministic-email-001"
+    )
+    failed = failing_case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "actual": failing_case.actual.model_copy(
+                update={"route": ValidationRoute.READY_FOR_APPROVAL}
+            ),
+            "scores": failing_case.scores.model_copy(update={"validation_match": False}),
+        }
+    )
+    cases = tuple(failed if case.case_id == failed.case_id else case for case in baseline.cases)
+    candidate = _with_cases_and_recomputed_scores(baseline, cases)
+    faster_intake = candidate.metrics.latency.provider_free_intake_ms.model_copy(
+        update={"p95_ms": Decimal("100")}
+    )
+    candidate = candidate.model_copy(
+        update={
+            "metrics": candidate.metrics.model_copy(
+                update={
+                    "latency": candidate.metrics.latency.model_copy(
+                        update={"provider_free_intake_ms": faster_intake}
+                    )
+                }
+            )
+        }
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert candidate.release_gates.results[1].numerator == 6
+    assert candidate.release_gates.results[1].denominator == 7
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.latency_comparable is True
+    assert comparison.baseline_correctness_passed is True
+    assert comparison.candidate_correctness_passed is False
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="candidate correctness"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_identical_comparable_metrics_do_not_establish_an_optimization_claim() -> None:
+    baseline = baseline_result()
+    candidate = _with_run(baseline, git_sha="f" * 40)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.correctness_comparable is True
+    assert comparison.latency_comparable is True
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="observed latency improvement"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_matching_passing_runs_need_an_observed_metric_improvement_for_claim() -> None:
+    baseline = baseline_result()
+    metric = baseline.metrics.latency.provider_free_intake_ms
+    improved = metric.model_copy(update={"p95_ms": Decimal("104.5")})
+    candidate_latency = baseline.metrics.latency.model_copy(
+        update={"provider_free_intake_ms": improved}
+    )
+    candidate = baseline.model_copy(
+        update={"metrics": baseline.metrics.model_copy(update={"latency": candidate_latency})}
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.correctness_comparable is True
+    assert comparison.latency_comparable is True
+    assert comparison.baseline_correctness_passed is True
+    assert comparison.candidate_correctness_passed is True
+    assert comparison.optimization_eligible is True
+    comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+    with pytest.raises(ValueError, match="no observed latency improvement"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p50_ms")
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"p95_ms": Decimal("200")},
+        {"p50_ms": Decimal("105"), "p95_ms": Decimal("104")},
+        {"minimum_ms": Decimal("100"), "maximum_ms": Decimal("50")},
+        {"sum_ms": Decimal("1")},
+    ],
+)
+def test_impossible_timing_summary_is_not_latency_evidence(updates) -> None:
+    baseline = baseline_result()
+    metric = baseline.metrics.latency.provider_free_intake_ms.model_copy(update=updates)
+    candidate = baseline.model_copy(
+        update={
+            "metrics": baseline.metrics.model_copy(
+                update={
+                    "latency": baseline.metrics.latency.model_copy(
+                        update={"provider_free_intake_ms": metric}
+                    )
+                }
+            )
+        }
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.correctness_comparable is True
+    assert comparison.latency_comparable is False
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_single_sample_timing_summary_requires_equal_extrema_and_aggregates() -> None:
+    baseline = baseline_result()
+    metric = TimingMetric(
+        sample_count=1,
+        minimum_ms=Decimal("1"),
+        maximum_ms=Decimal("1"),
+        sum_ms=Decimal("1"),
+        p50_ms=Decimal("1"),
+        p95_ms=Decimal("1"),
+    )
+    impossible = metric.model_copy(update={"p95_ms": Decimal("2")})
+    candidate = baseline.model_copy(
+        update={
+            "metrics": baseline.metrics.model_copy(
+                update={
+                    "latency": baseline.metrics.latency.model_copy(
+                        update={"provider_free_intake_ms": impossible}
+                    )
+                }
+            )
+        }
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.latency_comparable is False
+
+
+def test_provider_free_normal_intake_requires_complete_contract_population() -> None:
+    baseline = baseline_result()
+    timing = baseline.metrics.latency.provider_free_intake_ms
+    incomplete = timing.model_copy(
+        update={
+            "sample_count": 1,
+            "minimum_ms": Decimal("1"),
+            "maximum_ms": Decimal("1"),
+            "sum_ms": Decimal("1"),
+            "p50_ms": Decimal("1"),
+            "p95_ms": Decimal("1"),
+        }
+    )
+    candidate = baseline.model_copy(
+        update={
+            "metrics": baseline.metrics.model_copy(
+                update={
+                    "latency": baseline.metrics.latency.model_copy(
+                        update={"provider_free_intake_ms": incomplete}
+                    )
+                }
+            )
+        }
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.correctness_comparable is True
+    assert comparison.latency_comparable is False
+    assert comparison.optimization_eligible is False
+
+
+def test_valid_unavailable_live_stage_remains_comparable_for_provider_free_runs() -> None:
+    baseline = baseline_result()
+
+    comparison = compare_runs(baseline, _with_run(baseline, git_sha="e" * 40))
+
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.latency_comparable is True
+    assert comparison.baseline_correctness_passed is True
+    assert comparison.candidate_correctness_passed is True
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="observed latency improvement"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_sound_timing_with_a_different_method_preserves_correctness_comparison() -> None:
+    baseline = baseline_result()
+    baseline_latency = baseline.metrics.latency
+    candidate_latency = baseline_latency.model_copy(
+        update={
+            "provider_free_intake_ms": baseline_latency.provider_free_intake_ms.model_copy(
+                update={"percentile_method": "linear_interpolation"}
+            )
+        }
+    )
+    candidate = baseline.model_copy(
+        update={"metrics": baseline.metrics.model_copy(update={"latency": candidate_latency})}
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.correctness_comparable is True
+    assert comparison.latency_comparable is False
+
+
+def test_zero_sample_timing_with_reported_values_is_invalid() -> None:
+    baseline = baseline_result()
+    reported_without_samples = baseline.metrics.latency.provider_free_intake_ms.model_copy(
+        update={
+            "sample_count": 0,
+            "minimum_ms": None,
+            "maximum_ms": None,
+            "sum_ms": None,
+            "p50_ms": Decimal("1"),
+            "p95_ms": None,
+        }
+    )
+    latency = baseline.metrics.latency.model_copy(
+        update={"provider_free_intake_ms": reported_without_samples}
+    )
+    candidate = baseline.model_copy(
+        update={"metrics": baseline.metrics.model_copy(update={"latency": latency})}
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.correctness_comparable is True
+    assert comparison.latency_comparable is False
+    assert comparison.candidate_evidence_valid is False

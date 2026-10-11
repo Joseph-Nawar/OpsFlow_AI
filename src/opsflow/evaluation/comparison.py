@@ -1,28 +1,57 @@
-"""Comparison invariants for Phase 11 evaluation runs."""
+"""Validate and compare Phase 11 evaluation evidence."""
 
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
+from decimal import Decimal
+from pathlib import Path
+from typing import Literal
 
 from pydantic import ValidationError
 
-from .models import EvaluationMode, EvaluationRunResult, LatencyMetrics, TimingMetric
+from .corpus import load_manifest
+from .models import (
+    CaseResult,
+    CaseResultStatus,
+    CorpusComposition,
+    CorpusManifest,
+    EvaluationMode,
+    EvaluationRunResult,
+    LatencyMetrics,
+    ReleaseGateSummary,
+    RoutingMetrics,
+    TimingMetric,
+)
+from .scoring import build_routing_metrics, evaluate_release_gates, score_validation_outcome
 
-_REQUIRED_GATES = {
-    "invalid_orders_executed_zero",
-    "deterministic_violation_routing_100",
-    "duplicate_blocking_100",
-    "malformed_security_safe_100",
-    "direct_llm_side_effects_zero",
-}
 _PYTHON_VERSION = re.compile(r"^(\d+)\.(\d+)(?:\.\d+)?$")
 _POSTGRES_VERSION = re.compile(r"^PostgreSQL\s+(\d+)(?:\.\d+)?\b", re.IGNORECASE)
+_TIMING_TOLERANCE_MS = Decimal("0.000000001")
+# Task 8's complete-corpus stage populations are specific to corpus 3.0.0.
+# Live Gemini calls vary by reached case and attempt, so they are verified against attribution.
+_PROVIDER_FREE_SAMPLES = {
+    "parse_ms": 38,
+    "deterministic_validation_ms": 35,
+    "provider_free_intake_ms": 30,
+    "provider_free_replay_intake_ms": 8,
+    "provider_free_recovery_intake_ms": 4,
+    "live_gemini_call_ms": 0,
+}
+_LIVE_SAMPLES = {
+    "parse_ms": 38,
+    "deterministic_validation_ms": 35,
+    "provider_free_intake_ms": 0,
+    "provider_free_replay_intake_ms": 8,
+    "provider_free_recovery_intake_ms": 4,
+}
+_COMPARISON_PERCENTILES = ("p50_ms", "p95_ms")
 
 
 @dataclass(frozen=True, slots=True)
 class ComparisonResult:
-    """Whether two runs provide comparable correctness and latency evidence."""
+    """Evidence validity, experiment comparability, outcomes, and claim eligibility."""
 
     correctness_comparable: bool
     latency_comparable: bool
@@ -30,53 +59,202 @@ class ComparisonResult:
     latency_limitation: str | None
     baseline_git_sha: str
     candidate_git_sha: str
+    baseline_evidence_valid: bool
+    candidate_evidence_valid: bool
+    baseline_correctness_passed: bool | None
+    candidate_correctness_passed: bool | None
+    optimization_eligible: bool
+    improved_latency_metrics: tuple[str, ...]
 
-    def require_optimization_claim(self) -> None:
-        """Reject an optimization claim unless correctness and latency are comparable."""
+    def require_optimization_claim(
+        self,
+        *,
+        stage: str,
+        percentile: Literal["p50_ms", "p95_ms"],
+    ) -> None:
+        """Require sound passing runs and an observed decrease in the named metric.
 
+        This establishes that the named latency observation moved in the claimed
+        direction. It does not establish causation, statistical significance, or
+        a production SLA.
+        """
+
+        if not self.baseline_evidence_valid or not self.candidate_evidence_valid:
+            raise ValueError("optimization claims require valid baseline and candidate evidence")
         if not self.correctness_comparable:
-            raise ValueError("optimization claims require passing comparable correctness evidence")
+            raise ValueError("optimization claims require comparable correctness evidence")
+        if self.baseline_correctness_passed is not True:
+            raise ValueError("optimization claims require a passing baseline correctness outcome")
+        if self.candidate_correctness_passed is not True:
+            raise ValueError("optimization claims require a passing candidate correctness outcome")
         if not self.latency_comparable:
             raise ValueError("optimization claims require comparable latency evidence")
+        metric = f"{stage}:{percentile}"
+        if metric not in self.improved_latency_metrics:
+            raise ValueError("no observed latency improvement is supported for the named metric")
 
 
-def _passing_gate_evidence(run: EvaluationRunResult) -> bool:
-    summary = run.release_gates
-    gates = summary.results
-    gate_ids = tuple(gate.gate_id for gate in gates)
-    if summary.all_passed is not True or set(gate_ids) != _REQUIRED_GATES:
+def _database_version_family(value: str | None) -> str | None:
+    if value is None:
+        return None
+    match = _POSTGRES_VERSION.match(value)
+    return f"postgresql-{match.group(1)}" if match is not None else None
+
+
+def _canonical_corpus_path() -> Path:
+    return Path(__file__).resolve().parents[3] / "evals/corpus/v1"
+
+
+def _composition_from_manifest(manifest: CorpusManifest) -> CorpusComposition:
+    categories = Counter(case.primary_category for case in manifest.cases)
+    formats = Counter(case.source.document_type for case in manifest.cases)
+    tags = Counter(tag for case in manifest.cases for tag in case.tags)
+    return CorpusComposition(
+        case_count=len(manifest.cases),
+        primary_category_counts=dict(categories),
+        format_counts=dict(formats),
+        tag_counts=dict(tags),
+    )
+
+
+def _valid_timing(metric: TimingMetric) -> bool:
+    """Check all arithmetic constraints recoverable from aggregate samples."""
+
+    try:
+        value = TimingMetric.model_validate(metric.model_dump())
+    except ValidationError:
         return False
-    if len(gate_ids) != len(_REQUIRED_GATES):
+
+    if value.sample_count == 0:
+        return True
+
+    minimum = value.minimum_ms
+    maximum = value.maximum_ms
+    total = value.sum_ms
+    p50 = value.p50_ms
+    p95 = value.p95_ms
+    if None in (minimum, maximum, total, p50, p95):
         return False
+    assert minimum is not None and maximum is not None and total is not None
+    assert p50 is not None and p95 is not None
 
-    for gate in gates:
+    if not minimum <= p50 <= p95 <= maximum:
+        return False
+    count = Decimal(value.sample_count)
+    tolerance = max(_TIMING_TOLERANCE_MS, abs(total) * Decimal("1e-12"))
+    if total + tolerance < count * minimum or total - tolerance > count * maximum:
+        return False
+    if value.sample_count == 1:
+        return minimum == maximum == total == p50 == p95
+    if total + tolerance < minimum + maximum:
+        return False
+    return total - tolerance <= minimum + (count - 1) * maximum
+
+
+def _case_evidence_issues(run: EvaluationRunResult, manifest: CorpusManifest) -> list[str]:
+    issues: list[str] = []
+    try:
+        cases = tuple(
+            CaseResult.model_validate(case.model_dump(mode="python")) for case in run.cases
+        )
+        CorpusComposition.model_validate(run.corpus.model_dump())
+        ReleaseGateSummary.model_validate(run.release_gates.model_dump())
+        RoutingMetrics.model_validate(run.metrics.routing.model_dump())
+    except ValidationError:
+        return ["result_contract"]
+    if run.run.corpus_version != manifest.corpus_version:
+        issues.append("corpus_version_not_verified_against_manifest")
+    if run.run.mode is EvaluationMode.PROVIDER_FREE:
+        cost = run.metrics.cost
         if (
-            gate.status != "PASS"
-            or gate.failing_case_ids
-            or gate.numerator is None
-            or gate.denominator is None
-            or gate.denominator == 0
+            run.run.gemini_model is not None
+            or any(case.provider.name == "gemini" for case in cases)
+            or run.pricing.status != "NOT_APPLICABLE"
+            or run.pricing.pricing_snapshot_id is not None
+            or run.pricing.model is not None
+            or cost.status != "NOT_APPLICABLE"
+            or cost.estimated_model_cost_per_initial_order is not None
+            or cost.gemini_called_order_count != 0
         ):
-            return False
-        if gate.gate_id in {"invalid_orders_executed_zero", "direct_llm_side_effects_zero"}:
-            if gate.numerator != 0:
-                return False
-        elif gate.numerator != gate.denominator:
-            return False
-        if (
-            gate.gate_id == "direct_llm_side_effects_zero"
-            and gate.denominator != run.corpus.case_count
-        ):
-            return False
-    return True
+            issues.append("provider_free_run_contains_live_evidence")
+    elif run.run.gemini_model is None:
+        issues.append("live_run_missing_configured_model")
+    case_ids = tuple(case.case_id for case in cases)
+    manifest_ids = tuple(case.case_id for case in manifest.cases)
+    if len(case_ids) != len(set(case_ids)):
+        issues.append("duplicate_case_identities")
+    if len(cases) != len(manifest.cases) or set(case_ids) != set(manifest_ids):
+        issues.append("case_identities_do_not_match_corpus")
+    if run.corpus != _composition_from_manifest(manifest):
+        issues.append("corpus_composition")
+
+    by_id = {case.case_id: case for case in cases}
+    for corpus_case in manifest.cases:
+        result = by_id.get(corpus_case.case_id)
+        if result is None:
+            continue
+        score_values = tuple(result.scores.model_dump().values())
+        has_failed_score = any(value is False for value in score_values)
+        if result.status == CaseResultStatus.PASS and has_failed_score:
+            issues.append(f"pass_case_has_failed_score:{result.case_id}")
+        if result.status == CaseResultStatus.FAIL and not has_failed_score:
+            issues.append(f"failed_case_has_no_failed_score:{result.case_id}")
+
+        validation_score = score_validation_outcome(corpus_case.expected_validation, result)
+        expected_validation_match = (
+            validation_score.overall_match if validation_score is not None else None
+        )
+        if result.scores.validation_match is not expected_validation_match:
+            issues.append(f"validation_score_disagrees_with_observation:{result.case_id}")
+
+    gates = evaluate_release_gates(manifest, cases)
+    if gates != run.release_gates:
+        issues.append("release_gates_disagree_with_case_observations")
+    routing = build_routing_metrics(manifest, cases, gates)
+    if routing != run.metrics.routing:
+        issues.append("routing_metrics_disagree_with_case_observations")
+    return issues
 
 
-def _case_evidence_is_complete(run: EvaluationRunResult) -> bool:
-    case_ids = tuple(case.case_id for case in run.cases)
-    return not (
-        run.corpus.case_count != len(run.cases)
-        or len(case_ids) != len(set(case_ids))
-        or any(case.status != "PASS" for case in run.cases)
+def _timing_issues(run: EvaluationRunResult, manifest: CorpusManifest) -> list[str]:
+    """Validate current 3.0.0 stage coverage without generalizing it to future corpora."""
+
+    issues: list[str] = []
+    latency = run.metrics.latency
+    if set(LatencyMetrics.model_fields) != set(latency.model_fields_set):
+        issues.append("missing_timing_stage_evidence")
+
+    for stage in LatencyMetrics.model_fields:
+        if not _valid_timing(getattr(latency, stage)):
+            issues.append(f"invalid_timing_summary:{stage}")
+
+    if manifest.corpus_version != "3.0.0" or len(manifest.cases) != 36:
+        issues.append("unsupported_timing_population_contract")
+        return issues
+
+    if run.run.mode is EvaluationMode.PROVIDER_FREE:
+        expected = _PROVIDER_FREE_SAMPLES
+    else:
+        live_calls = sum(
+            case.provider.calls for case in run.cases if case.provider.name == "gemini"
+        )
+        if live_calls != run.metrics.provider_usage.gemini_call_count:
+            issues.append("gemini_call_count_disagrees_with_case_attribution")
+        expected = {**_LIVE_SAMPLES, "live_gemini_call_ms": live_calls}
+
+    for stage, count in expected.items():
+        if getattr(latency, stage).sample_count != count:
+            issues.append(f"incomplete_timing_population:{stage}")
+    return issues
+
+
+def _correctness_passed(run: EvaluationRunResult, evidence_valid: bool) -> bool | None:
+    if not evidence_valid:
+        return None
+    return (
+        run.release_gates.all_passed is True
+        and all(gate.status == "PASS" for gate in run.release_gates.results)
+        and all(case.status is CaseResultStatus.PASS for case in run.cases)
     )
 
 
@@ -88,48 +266,65 @@ def _cost_is_compared(baseline: EvaluationRunResult, candidate: EvaluationRunRes
     )
 
 
-def _database_version_family(value: str | None) -> str | None:
-    if value is None:
-        return None
-    match = _POSTGRES_VERSION.match(value)
-    return f"postgresql-{match.group(1)}" if match is not None else None
-
-
-def _valid_timing(metric: TimingMetric) -> bool:
-    try:
-        TimingMetric.model_validate(metric.model_dump())
-    except ValidationError:
-        return False
-    return True
-
-
 def compare_runs(
     baseline: EvaluationRunResult,
     candidate: EvaluationRunResult,
 ) -> ComparisonResult:
-    """Compare runs against the Phase 11 correctness, safety, and latency contract."""
+    """Validate both results, compare matching dimensions, and assess claim support."""
 
     mismatches: list[str] = []
 
-    def correctness_mismatch(invariant: str) -> None:
-        mismatches.append(f"correctness:{invariant}")
+    def mismatch(category: str, invariant: str) -> None:
+        mismatches.append(f"{category}:{invariant}")
 
-    def latency_mismatch(invariant: str) -> None:
-        mismatches.append(f"latency:{invariant}")
+    try:
+        manifest = load_manifest(_canonical_corpus_path())
+    except (OSError, ValueError):
+        manifest = None
 
+    baseline_correctness_issues = (
+        ["canonical_corpus_unavailable"]
+        if manifest is None
+        else _case_evidence_issues(baseline, manifest)
+    )
+    candidate_correctness_issues = (
+        ["canonical_corpus_unavailable"]
+        if manifest is None
+        else _case_evidence_issues(candidate, manifest)
+    )
+    baseline_timing_issues = (
+        ["canonical_corpus_unavailable"] if manifest is None else _timing_issues(baseline, manifest)
+    )
+    candidate_timing_issues = (
+        ["canonical_corpus_unavailable"]
+        if manifest is None
+        else _timing_issues(candidate, manifest)
+    )
+    baseline_evidence_valid = not baseline_correctness_issues and not baseline_timing_issues
+    candidate_evidence_valid = not candidate_correctness_issues and not candidate_timing_issues
+
+    for side, issues in (
+        ("baseline", baseline_correctness_issues),
+        ("candidate", candidate_correctness_issues),
+        ("baseline", baseline_timing_issues),
+        ("candidate", candidate_timing_issues),
+    ):
+        for issue in issues:
+            mismatch(f"evidence:{side}", issue)
+
+    correctness_invariants: list[str] = []
     if baseline.schema_version != candidate.schema_version:
-        correctness_mismatch("result_schema")
+        correctness_invariants.append("result_schema")
     if baseline.evaluation_version != candidate.evaluation_version:
-        correctness_mismatch("evaluation_contract")
+        correctness_invariants.append("evaluation_contract")
     if baseline.run.corpus_version != candidate.run.corpus_version:
-        correctness_mismatch("corpus_version")
+        correctness_invariants.append("corpus_version")
     if baseline.corpus != candidate.corpus:
-        correctness_mismatch("corpus_composition")
+        correctness_invariants.append("corpus_composition")
     if baseline.run.mode != candidate.run.mode:
-        correctness_mismatch("evaluation_mode")
+        correctness_invariants.append("evaluation_mode")
     if baseline.run.command != candidate.run.command:
-        correctness_mismatch("evaluation_command")
-
+        correctness_invariants.append("evaluation_command")
     baseline_case_ids = tuple(case.case_id for case in baseline.cases)
     candidate_case_ids = tuple(case.case_id for case in candidate.cases)
     if (
@@ -137,28 +332,12 @@ def compare_runs(
         or len(candidate_case_ids) != len(set(candidate_case_ids))
         or set(baseline_case_ids) != set(candidate_case_ids)
     ):
-        correctness_mismatch("case_identities")
-    if not _case_evidence_is_complete(baseline) or not _case_evidence_is_complete(candidate):
-        correctness_mismatch("case_outcomes")
-
-    baseline_gates = {gate.gate_id: gate for gate in baseline.release_gates.results}
-    candidate_gates = {gate.gate_id: gate for gate in candidate.release_gates.results}
-    if (
-        not _passing_gate_evidence(baseline)
-        or not _passing_gate_evidence(candidate)
-        or set(baseline_gates) != set(candidate_gates)
-        or any(
-            baseline_gates[gate_id].denominator != candidate_gates[gate_id].denominator
-            for gate_id in baseline_gates.keys() & candidate_gates.keys()
-        )
-    ):
-        correctness_mismatch("release_gate_evidence")
-
-    if baseline.run.mode == EvaluationMode.LIVE_GEMINI:
+        correctness_invariants.append("case_identities")
+    if baseline.run.mode is EvaluationMode.LIVE_GEMINI:
         baseline_model = baseline.run.gemini_model
         candidate_model = candidate.run.gemini_model
         if not baseline_model or baseline_model != candidate_model:
-            correctness_mismatch("gemini_model")
+            correctness_invariants.append("gemini_model")
         if _cost_is_compared(baseline, candidate):
             baseline_pricing = baseline.pricing
             candidate_pricing = candidate.pricing
@@ -170,9 +349,21 @@ def compare_runs(
                 or baseline_pricing.model != baseline_model
                 or candidate_pricing.model != candidate_model
             ):
-                correctness_mismatch("live_cost_pricing_snapshot")
+                correctness_invariants.append("live_cost_pricing_snapshot")
+    for invariant in correctness_invariants:
+        mismatch("correctness", invariant)
 
-    correctness_comparable = not any(mismatch.startswith("correctness:") for mismatch in mismatches)
+    correctness_evidence_valid = (
+        not baseline_correctness_issues and not candidate_correctness_issues
+    )
+    correctness_comparable = correctness_evidence_valid and not correctness_invariants
+    baseline_correctness_passed = _correctness_passed(baseline, not baseline_correctness_issues)
+    candidate_correctness_passed = _correctness_passed(candidate, not candidate_correctness_issues)
+
+    latency_mismatches: list[str] = []
+
+    def latency_mismatch(invariant: str) -> None:
+        latency_mismatches.append(f"latency:{invariant}")
 
     baseline_python = _PYTHON_VERSION.fullmatch(baseline.run.python_version or "")
     candidate_python = _PYTHON_VERSION.fullmatch(candidate.run.python_version or "")
@@ -194,16 +385,21 @@ def compare_runs(
         or baseline.run.cpu_architecture != candidate.run.cpu_architecture
     ):
         latency_mismatch("cpu_architecture")
+    baseline_db_family = _database_version_family(baseline.run.database_version)
+    candidate_db_family = _database_version_family(candidate.run.database_version)
     if (
         baseline.run.database.engine != "postgresql"
         or candidate.run.database.engine != "postgresql"
         or not baseline.run.database.isolated
         or not candidate.run.database.isolated
-        or _database_version_family(baseline.run.database_version)
-        != _database_version_family(candidate.run.database_version)
-        or _database_version_family(baseline.run.database_version) is None
+        or baseline_db_family is None
+        or baseline_db_family != candidate_db_family
     ):
         latency_mismatch("database_engine_or_version_family")
+    if baseline.run.mode is EvaluationMode.LIVE_GEMINI and (
+        baseline.run.gemini_model != candidate.run.gemini_model
+    ):
+        latency_mismatch("gemini_model")
 
     baseline_latency = baseline.metrics.latency
     candidate_latency = candidate.metrics.latency
@@ -211,32 +407,64 @@ def compare_runs(
         LatencyMetrics.model_fields
     ) != set(candidate_latency.model_fields_set):
         latency_mismatch("timing_stage_evidence")
+    if baseline_timing_issues or candidate_timing_issues:
+        latency_mismatch("invalid_or_incomplete_timing_evidence")
+
+    improved_metrics: list[str] = []
     for stage in LatencyMetrics.model_fields:
         baseline_metric = getattr(baseline_latency, stage)
         candidate_metric = getattr(candidate_latency, stage)
-        if not _valid_timing(baseline_metric) or not _valid_timing(candidate_metric):
-            latency_mismatch(f"invalid_timing_evidence:{stage}")
-            continue
         if (
             baseline_metric.percentile_method != "nearest_rank_no_interpolation"
             or candidate_metric.percentile_method != "nearest_rank_no_interpolation"
             or baseline_metric.percentile_method != candidate_metric.percentile_method
         ):
             latency_mismatch(f"percentile_method:{stage}")
-        if (baseline_metric.sample_count == 0) != (candidate_metric.sample_count == 0):
-            latency_mismatch(f"sample_availability:{stage}")
+            continue
+        if baseline_metric.sample_count != candidate_metric.sample_count:
+            latency_mismatch(f"sample_count:{stage}")
+            continue
+        if baseline_metric.sample_count == 0:
+            continue
+        for percentile in _COMPARISON_PERCENTILES:
+            baseline_value = getattr(baseline_metric, percentile)
+            candidate_value = getattr(candidate_metric, percentile)
+            if (
+                baseline_value is not None
+                and candidate_value is not None
+                and candidate_value < baseline_value
+            ):
+                improved_metrics.append(f"{stage}:{percentile}")
 
     if not correctness_comparable:
         latency_mismatch("correctness_evidence_not_comparable")
+    for item in latency_mismatches:
+        mismatches.append(item)
 
-    latency_mismatches = tuple(
-        mismatch for mismatch in mismatches if mismatch.startswith("latency:")
+    latency_comparable = (
+        correctness_comparable
+        and not baseline_timing_issues
+        and not candidate_timing_issues
+        and not latency_mismatches
+    )
+    optimization_eligible = (
+        correctness_comparable
+        and latency_comparable
+        and baseline_correctness_passed is True
+        and candidate_correctness_passed is True
+        and bool(improved_metrics)
     )
     return ComparisonResult(
         correctness_comparable=correctness_comparable,
-        latency_comparable=not latency_mismatches,
+        latency_comparable=latency_comparable,
         invariant_mismatches=tuple(mismatches),
         latency_limitation="; ".join(latency_mismatches) if latency_mismatches else None,
         baseline_git_sha=baseline.run.git_sha,
         candidate_git_sha=candidate.run.git_sha,
+        baseline_evidence_valid=baseline_evidence_valid,
+        candidate_evidence_valid=candidate_evidence_valid,
+        baseline_correctness_passed=baseline_correctness_passed,
+        candidate_correctness_passed=candidate_correctness_passed,
+        optimization_eligible=optimization_eligible,
+        improved_latency_metrics=tuple(sorted(improved_metrics)),
     )
