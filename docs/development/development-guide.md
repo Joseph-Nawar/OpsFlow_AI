@@ -193,10 +193,20 @@ The README’s [local development sequence](../../README.md#local-development) i
 Both evaluation commands require a one-time dedicated PostgreSQL database
 named exactly `opsflow_evaluation`. This explicit allowlisted identity is
 provisioned once below; a different name alone does not prove a database is
-safe to reset. The guard also checks that the name differs from normal and
-configured migration-test databases, verifies the connected database and
-`public` schema, clears only application tables, and preserves Alembic
-metadata. The command does not create the database.
+safe to reset. The approved local endpoint is loopback on port `5432`, matching
+the committed Compose binding and CI PostgreSQL service. The guard checks that
+endpoint before connecting, then verifies the connected database, `public`
+schema, and PostgreSQL server port in a read-only transaction before beginning
+the application-data reset transaction. It also checks that the database
+name differs from normal and configured migration-test databases, clears only
+application tables, and preserves Alembic metadata. The command does not
+create the database. These checks prevent accidental wrong-host or wrong-port
+configuration; they do not attest against a malicious local process
+impersonating PostgreSQL on the approved loopback endpoint.
+
+The documented and committed endpoint is port `5432`. Port `55432` appears in
+older evaluation test URL fixtures but is not published by the committed
+Compose configuration, so it is not an approved evaluation endpoint.
 
 For a local Compose PostgreSQL service, create the evaluation database once and
 apply the current schema to that database:
@@ -246,8 +256,9 @@ Tests must not remove assertions, change expected results to suit broken behavio
 
 Integration tests require an explicit local PostgreSQL target through
 `OPSFLOW_INTEGRATION_TEST_DATABASE_URL`; its database name must begin with
-`opsflow_integration_`. The guard verifies the connected database name and
-`public` schema before test modules can run, then directs application settings
+`opsflow_integration_` and use the approved loopback PostgreSQL endpoint on
+port `5432`. The guard verifies the connected database name, `public` schema,
+and server port before test modules can run, then directs application settings
 and migration subprocesses to that target. `make test` and `make check` require
 this variable because they collect integration tests. Direct `pytest`
 invocations load the same guard and cannot fall back to `.env`.
@@ -269,9 +280,12 @@ check before the explicit migration command can change the disposable schema.
 
 Tests that downgrade Alembic revisions separately require
 `OPSFLOW_MIGRATION_TEST_DATABASE_URL` naming exactly
-`opsflow_migration_test`. If it is unset, those tests skip; they never fall
-back to the configured application database. CI provisions both disposable
-databases.
+`opsflow_migration_test` on the same approved loopback endpoint and port. The
+fixture verifies the connected database, `public` schema, and server port
+before returning the URL to tests that invoke Alembic. If it is unset, those
+tests skip; they never fall back to the configured application database. CI
+preflights the integration target before migrations and explicitly points
+Alembic at that target; it provisions both disposable databases.
 
 An earlier integration invocation inherited `localhost:5432/opsflow` from the
 normal configuration and encountered missing-table failures before it was

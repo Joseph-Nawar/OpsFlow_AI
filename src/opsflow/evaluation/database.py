@@ -22,6 +22,8 @@ from opsflow.settings import Settings
 
 _EVALUATION_DATABASE_ENV = "OPSFLOW_EVALUATION_DATABASE_URL"
 _APPROVED_EVALUATION_DATABASE_NAME = "opsflow_evaluation"
+_APPROVED_POSTGRESQL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_APPROVED_POSTGRESQL_PORT = 5432
 _DATABASE_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,62}\Z", re.ASCII)
 
 # Explicit child-before-parent deletion order. alembic_version is intentionally absent.
@@ -83,6 +85,7 @@ class EvaluationDatabaseConfig:
                 if migration_test_url is not None
                 else None
             )
+            _assert_approved_evaluation_endpoint(target)
         except (TypeError, ValueError, SQLAlchemyError) as error:
             raise EvaluationDatabaseSafetyError(
                 "evaluation, normal, and configured migration-test database identities "
@@ -143,6 +146,17 @@ def _required_database_name(url: URL, *, label: str) -> str:
     return database_name
 
 
+def _assert_approved_evaluation_endpoint(url: URL) -> None:
+    if (
+        url.host is None
+        or url.host.lower() not in _APPROVED_POSTGRESQL_HOSTS
+        or url.port != _APPROVED_POSTGRESQL_PORT
+    ):
+        raise ValueError(
+            "evaluation URL is outside the repository-approved local PostgreSQL endpoint"
+        )
+
+
 def _url_identity(url: URL) -> tuple[object, ...]:
     return (
         url.drivername,
@@ -159,6 +173,7 @@ def assert_evaluation_database_isolated(config: EvaluationDatabaseConfig) -> Non
 
     try:
         evaluation = _strict_postgresql_url(config.evaluation_url, label="evaluation")
+        _assert_approved_evaluation_endpoint(evaluation)
         normal = _strict_postgresql_url(config.normal_url, label="normal")
         migration = (
             _strict_postgresql_url(config.migration_test_url, label="migration-test")
@@ -213,16 +228,39 @@ async def reset_evaluation_application_data(
             "application cleanup allowlist does not match application tables"
         )
 
-    async with engine.begin() as connection:
-        identity = (
-            await connection.execute(text("SELECT current_database(), current_schema()"))
-        ).one()
-        if identity[0] != config.evaluation_database_name or identity[1] != "public":
-            raise EvaluationDatabaseSafetyError(
-                "connected PostgreSQL database identity is not the guarded target"
-            )
-        for table_name in _APPLICATION_DELETE_ORDER:
-            await connection.execute(delete(Base.metadata.tables[table_name]))
+    async with engine.connect() as connection:
+        async with connection.begin():
+            await connection.execute(text("SET TRANSACTION READ ONLY"))
+            identity = (
+                await connection.execute(
+                    text("SELECT current_database(), current_schema(), inet_server_port()")
+                )
+            ).one()
+            if identity != (
+                config.evaluation_database_name,
+                "public",
+                _APPROVED_POSTGRESQL_PORT,
+            ):
+                raise EvaluationDatabaseSafetyError(
+                    "connected PostgreSQL server is not the approved evaluation target"
+                )
+
+        async with connection.begin():
+            identity = (
+                await connection.execute(
+                    text("SELECT current_database(), current_schema(), inet_server_port()")
+                )
+            ).one()
+            if identity != (
+                config.evaluation_database_name,
+                "public",
+                _APPROVED_POSTGRESQL_PORT,
+            ):
+                raise EvaluationDatabaseSafetyError(
+                    "connected PostgreSQL database identity is not the guarded target"
+                )
+            for table_name in _APPLICATION_DELETE_ORDER:
+                await connection.execute(delete(Base.metadata.tables[table_name]))
 
 
 def confirm_current_migration_head(alembic_config: Config, expected_revision: str) -> None:
@@ -244,12 +282,18 @@ def confirm_current_migration_head(alembic_config: Config, expected_revision: st
 
     async def read_heads() -> tuple[str, ...]:
         async with engine.connect() as connection:
-            connected_name, connected_schema = (
-                await connection.execute(text("SELECT current_database(), current_schema()"))
+            connected_identity = (
+                await connection.execute(
+                    text("SELECT current_database(), current_schema(), inet_server_port()")
+                )
             ).one()
-            if connected_name != config.evaluation_database_name or connected_schema != "public":
+            if connected_identity != (
+                config.evaluation_database_name,
+                "public",
+                _APPROVED_POSTGRESQL_PORT,
+            ):
                 raise EvaluationDatabaseSafetyError(
-                    "migration check is not connected to the guarded evaluation database"
+                    "migration check is not connected to the approved evaluation target"
                 )
             return await connection.run_sync(
                 lambda sync_connection: tuple(

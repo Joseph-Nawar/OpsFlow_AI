@@ -42,7 +42,7 @@ from opsflow.persistence.models import (
 from opsflow.settings import Settings
 
 EXPECTED_HEAD = "0007_phase7_intake_ownership"
-EVALUATION_URL = "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_evaluation"
+EVALUATION_URL = "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow_evaluation"
 NORMAL_URL = "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow"
 MIGRATION_URL = "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow_migration_test"
 
@@ -64,6 +64,22 @@ def test_evaluation_config_parses_only_a_distinct_named_async_postgresql_target(
     assert config.url.get_backend_name() == "postgresql"
     assert config.url.drivername == "postgresql+asyncpg"
     assert_evaluation_database_isolated(config)
+
+
+@pytest.mark.parametrize(
+    "evaluation_url",
+    [
+        "postgresql+asyncpg://opsflow:opsflow@unrelated-remote-host.example:6543/opsflow_evaluation",
+        "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_evaluation",
+        "postgresql+asyncpg://opsflow:opsflow@localhost/opsflow_evaluation",
+        "postgresql+asyncpg:///opsflow_evaluation",
+    ],
+)
+def test_evaluation_config_rejects_same_name_database_on_unapproved_endpoint(
+    evaluation_url: str,
+) -> None:
+    with pytest.raises(EvaluationDatabaseSafetyError):
+        config_for(evaluation_url)
 
 
 @pytest.mark.parametrize(
@@ -132,6 +148,78 @@ def test_reset_rejects_unapproved_database_before_opening_transaction() -> None:
 
     with pytest.raises(EvaluationDatabaseSafetyError):
         asyncio.run(reset_evaluation_application_data(config, NeverConnectEngine()))  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "unsafe_url",
+    [
+        "postgresql+asyncpg://opsflow:opsflow@unrelated-remote-host.example:6543/opsflow_evaluation",
+        "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:55432/opsflow_evaluation",
+    ],
+)
+def test_reset_rejects_same_name_unapproved_endpoint_before_transaction(
+    unsafe_url: str,
+) -> None:
+    config = EvaluationDatabaseConfig(
+        evaluation_url=unsafe_url,
+        normal_url=NORMAL_URL,
+        migration_test_url=MIGRATION_URL,
+        evaluation_database_name="opsflow_evaluation",
+    )
+
+    class NeverConnectEngine:
+        url: URL = make_url(unsafe_url)
+
+        def begin(self):
+            pytest.fail("unapproved endpoint must be rejected before opening a transaction")
+
+    with pytest.raises(EvaluationDatabaseSafetyError):
+        asyncio.run(reset_evaluation_application_data(config, NeverConnectEngine()))  # type: ignore[arg-type]
+
+
+def test_reset_rejects_connected_server_port_before_any_delete() -> None:
+    statements: list[str] = []
+
+    class Result:
+        def one(self) -> tuple[str, str, int]:
+            return "opsflow_evaluation", "public", 55432
+
+    class Connection:
+        async def execute(self, statement: object) -> Result:
+            statements.append(str(statement))
+            return Result()
+
+        def begin(self) -> Transaction:
+            return Transaction()
+
+    class Transaction:
+        async def __aenter__(self) -> Connection:
+            return connection
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    class ConnectionContext:
+        async def __aenter__(self) -> Connection:
+            return connection
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    class FakeEngine:
+        url: URL = make_url(EVALUATION_URL)
+
+        def connect(self) -> ConnectionContext:
+            return ConnectionContext()
+
+    connection = Connection()
+    config = config_for()
+
+    with pytest.raises(EvaluationDatabaseSafetyError):
+        asyncio.run(reset_evaluation_application_data(config, FakeEngine()))  # type: ignore[arg-type]
+
+    assert any("READ ONLY" in statement.upper() for statement in statements)
+    assert not any("DELETE" in statement.upper() for statement in statements)
 
 
 def test_reset_rejects_engine_identity_mismatch_before_connecting() -> None:
