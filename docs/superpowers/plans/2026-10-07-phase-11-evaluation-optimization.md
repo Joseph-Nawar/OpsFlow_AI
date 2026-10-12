@@ -27,15 +27,18 @@
 
 ## Current execution status
 
-M11B is `COMPLETE` at its independently reviewed technical baseline; its
-historical approved corpus remains `1.0.0`. The recovery-authority correction
+M11A — Evaluation Contract & Benchmark Design is `COMPLETE`; its design and
+implementation plan remain approved at `bde63c54a66486aea8c1e7292887d004bf9e91f4`
+and `1e8c152aa072b075f059020ca232889ad2bcfa91`, respectively. M11B is
+`COMPLETE` at its independently reviewed technical baseline; its historical
+approved corpus remains `1.0.0`. The recovery-authority correction
 was corpus `2.0.0` at amendment SHA
 `1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. The duplicate replay-contract
 correction was corpus `3.0.0` at amendment SHA
 `7184efb9589445d16e354decd486f28bc90ac09b`; it is the active executable
 corpus. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at
 independently reviewed technical baseline
-`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `IN PROGRESS`; M11F remains `NOT STARTED`;
+`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `COMPLETE`, independently reviewed and human-approved at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447`; M11F remains `NOT STARTED`;
 Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
 
 ### M11E execution authorization — Tasks 13–14
@@ -46,6 +49,50 @@ comparison invariants and the measured baseline decision are implemented.
 M11A–M11D remain `COMPLETE`; M11F remains `NOT STARTED`; Phase 11 remains
 `IN PROGRESS`; Phase 12 remains `NOT STARTED`. This execution stops for
 independent review and human approval before M11F.
+
+### M11E closeout — independently reviewed and human-approved
+
+M11E Tasks 13–14 are `COMPLETE` at approved implementation SHA
+`49f9365c1e41f246d293e11c647b2ffda0198447`. The final independent review
+returned PASS with no remaining implementation blockers, and human approval
+was granted for this documentation-only closeout. M11E changed only evaluation
+comparison and baseline-decision evidence; it did not modify production
+application behavior.
+
+**Task 13 — comparison correctness:** The comparator separates evidence
+validity, correctness/safety comparability, each run's correctness outcome,
+latency comparability, and optimization eligibility. It validates canonical
+corpus identities and release-gate evidence, reconciles required case scores
+with retained observations, rejects contradictory or incomplete replay,
+recovery, and execution-safety evidence, and preserves original recovery
+field-presence information during comparison validation. It distinguishes
+genuine observed failures from invalid evidence, validates required timing-stage
+populations and mathematically consistent timing summaries, and prevents
+invalid evidence or correctness regressions from supporting optimization
+claims. Historical artifacts do not retain every operational detail; in
+particular, the comparator does not claim to verify the immediate
+retry-command return state.
+
+**Task 14 — optimization decision:** `NO_OPTIMIZATION — no sufficiently
+specific, reproducible, actionable bottleneck was demonstrated.` Available
+provider-free measurements did not justify changing production or evaluation
+runtime behavior. Numerical timing differences are observations, not
+established improvements. No production latency, Gemini quality, usage, or cost
+improvement was established, and no optimization candidate was implemented.
+The approved [baseline-decision artifact](../../evaluation/reference/phase-11-baseline-decision.md)
+and historical M11D reference pair remain unchanged.
+
+**Local independent-review verification (not a fresh full `make check`):** 92
+comparator tests passed; the full evaluation suite recorded 312 passed and 20
+skipped; corpus/reference/release-gate tests recorded 65 passed and 1 skipped.
+Ruff, formatting, mypy, and Git diff hygiene passed. PostgreSQL-dependent tests
+were skipped in the final review because dedicated database URLs were
+unavailable. No fresh full `make check` was run at the approved M11E SHA; prior
+full-suite evidence is not represented as a run at that SHA. These results
+are local independent-review checks, not GitHub-hosted CI. The historical
+M11D reference and corpus `3.0.0` (36 cases and source hashes) remain unchanged.
+No live Gemini, Odoo, or HubSpot calls were performed. M11F remains
+`NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
 
 ### M11C closeout — local milestone verification
 
