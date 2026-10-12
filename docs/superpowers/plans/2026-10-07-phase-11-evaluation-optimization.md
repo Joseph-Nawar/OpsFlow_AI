@@ -38,8 +38,7 @@ correction was corpus `3.0.0` at amendment SHA
 `7184efb9589445d16e354decd486f28bc90ac09b`; it is the active executable
 corpus. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at
 independently reviewed technical baseline
-`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `COMPLETE`, independently reviewed and human-approved at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447`; M11F remains `NOT STARTED`;
-Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
+`ce456f2928ed9773f26ec65dfa5776d29dd4e915`. M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `COMPLETE`, independently reviewed and human-approved at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447`; M11F Task 15 is `COMPLETE` after independent audit PASS and human approval; Task 16 and M11F are `COMPLETE`; Phase 11 is `COMPLETE`; Phase 12 remains `NOT STARTED`.
 
 ### M11E execution authorization — Tasks 13–14
 
@@ -91,8 +90,9 @@ unavailable. No fresh full `make check` was run at the approved M11E SHA; prior
 full-suite evidence is not represented as a run at that SHA. These results
 are local independent-review checks, not GitHub-hosted CI. The historical
 M11D reference and corpus `3.0.0` (36 cases and source hashes) remain unchanged.
-No live Gemini, Odoo, or HubSpot calls were performed. M11F remains
-`NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
+No live Gemini, Odoo, or HubSpot calls were performed. At the M11E
+closeout, M11F was `NOT STARTED`, Phase 11 was `IN PROGRESS`, and Phase 12
+was `NOT STARTED`.
 
 ### M11C closeout — local milestone verification
 
@@ -930,3 +930,48 @@ No application tests or live providers are run during this planning task.
   contracts consistently.
 - The plan does not add a second state machine, a second retry implementation, a live external benchmark, a Phase 12 deliverable, an implementation-plan file beyond this artifact, or an unresolved placeholder step.
 - Production changes are not pre-authorized; any later change must satisfy the documented measurement-gap and regression-test policy.
+
+## Task 16 closeout disposition — 2026-10-12
+
+Task 15's independent Phase 11 audit received final `PASS` and human approval
+at audit SHA `a48af3cd45bf16f89e9d120932de755452020f17`. Task 16 completed this
+documentation-only closeout. The identities remain distinct: frozen M11E
+technical implementation `49f9365c1e41f246d293e11c647b2ffda0198447`, M11E
+documentation closeout `b3e66cd9a98fb876346b634ac226670fdb1fef96`, and Task 15
+audit `a48af3cd45bf16f89e9d120932de755452020f17`. The Task 16 closeout SHA is
+the commit containing this status update and is reported with the closeout.
+
+The audit verified a dedicated Compose project
+`opsflow-m11f-audit-20261012` on PostgreSQL 16.15 and the approved loopback
+endpoint, with isolated evaluation, integration, migration-test, and M11C
+databases; the normal `opsflow` database was not migrated or reset. Integration
+recorded 367 passed; evaluation recorded 332 passed with no skips; migration
+round-trip verification passed and returned Alembic to head. The clean-clone
+full check recorded 2,116 passed, 6 skipped, and 90.79% coverage; frontend
+tests recorded 68 passed. Ruff, formatting, mypy, package build, frontend lint
+and build, and the production security audit passed. The six full-check skips
+were optional live Odoo/HubSpot tests. Production dependency checks passed;
+two high-severity frontend development-dependency advisories remain.
+
+From clean-clone SHA `b3e66cd9a98fb876346b634ac226670fdb1fef96`, provider-free
+`make evaluate` succeeded twice (run IDs
+`d906421c-c696-4cc0-a19d-7bdfa6b3b302` and
+`b385d603-df6f-4611-920d-1b2a0b5e4b13`). Both runs verified corpus `3.0.0`,
+all 36 identities and source hashes, 36/36 PASS, the five gates at 0/13, 7/7,
+4/4, 4/4, and 0/36 PASS, zero Gemini calls, and extraction quality/model cost
+`NOT_APPLICABLE`. Each JSON artifact validated and its Markdown rendering
+matched byte-for-byte; historical reference artifacts were unchanged. Timing
+values and run IDs may differ between runs.
+
+The approved M11E outcome remains `NO_OPTIMIZATION`: no sufficiently specific,
+reproducible, actionable bottleneck was demonstrated, and no production
+performance improvement was established. The audit's prior BLOCKED checkpoints
+remain preserved. Limitations remain: live Gemini extraction quality,
+authoritative tokens, provider latency, and live model cost are unmeasured;
+local timing is not a production SLA; historical artifacts do not retain the
+immediate retry-command return state; ignored-file secret-pattern matches were
+not confirmed as credential exposure; the reused integration database caused
+seven fixed-identity failures before the fresh-target check passed; and
+GitHub-hosted CI was not run. The final audit report is
+[docs/audits/phase-11-audit.md](../../audits/phase-11-audit.md). M11A–M11F and
+Phase 11 are `COMPLETE`; Phase 12 remains `NOT STARTED`.

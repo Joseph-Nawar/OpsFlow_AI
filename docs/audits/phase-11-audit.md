@@ -214,3 +214,48 @@ Failed verification attempts are retained here for accuracy. An evaluation-suite
 - **Final Task 15 disposition: PASS.** The previous BLOCKED verdicts accurately describe the earlier environment states and remain in the record. Their outstanding verification gates are now completed. No unresolved Critical, High, or Medium Phase 11 implementation finding was demonstrated. The one low operational repeatability observation above does not block Task 15 under the approved severity policy. The report is ready for human review; this does not close Phase 11 or authorize Task 16 automatically.
 
 At this final follow-up, M11A–M11E remain `COMPLETE`; M11F Task 15 is ready for human review; Task 16 remains unauthorized; Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
+
+### Task 15 human approval and Task 16 closeout — 2026-10-12
+
+The user approved the final Task 15 audit `PASS` at audit SHA
+`a48af3cd45bf16f89e9d120932de755452020f17` and authorized documentation-only
+Task 16. The earlier BLOCKED audit and environment rechecks above remain in
+this record as the accurate history of those attempts; the final follow-up
+completed their outstanding verification gates.
+
+Task 16 updated only status and closeout documentation. The frozen M11E
+technical implementation remains `49f9365c1e41f246d293e11c647b2ffda0198447`;
+the M11E documentation closeout remains `b3e66cd9a98fb876346b634ac226670fdb1fef96`;
+the approved Task 15 audit is `a48af3cd45bf16f89e9d120932de755452020f17`.
+The Task 16 closeout SHA is the commit containing this documentation update
+and is reported in the closeout delivery.
+
+**Final status:** M11A–M11E `COMPLETE`; M11F Task 15 independently audited,
+`PASS`, and human-approved; Task 16 documentation and verification complete;
+M11F `COMPLETE`; Phase 11 `COMPLETE`; Phase 12 `NOT STARTED`.
+
+The Task 15 verification remains as reported above: the dedicated PostgreSQL
+Compose environment and database identities were verified; integration passed
+367 tests; evaluation passed 332 tests with no skips; migration verification
+returned Alembic to head; and clean-clone `make check` passed with 2,116 tests,
+6 optional live Odoo/HubSpot skips, and 90.79% coverage. The clean clone at
+`b3e66cd9a98fb876346b634ac226670fdb1fef96` ran provider-free `make evaluate`
+twice. Both runs passed 36/36 cases, all five gates (0/13, 7/7, 4/4, 4/4,
+0/36), verified all corpus `3.0.0` source hashes, made zero Gemini calls, and
+produced schema-valid JSON with byte-matching Markdown. Run IDs and timing
+values are recorded above and are not expected to match across runs.
+
+Known limitations and the LOW reused-integration-database repeatability
+observation remain unchanged. Real Gemini extraction quality, authoritative
+token usage, provider latency, and estimated live model cost remain unmeasured;
+local timings are diagnostics, not production SLAs; the immediate retry-command
+return state is absent from historical artifacts; two frontend development
+dependency advisories remain; ignored-file secret-pattern matches were not
+confirmed as credential exposure; the first check on a previously populated
+integration DB had seven fixed-identity failures before passing on a fresh
+isolated target; and GitHub-hosted CI was not run. The approved M11E result
+remains `NO_OPTIMIZATION`; no production performance improvement was
+established. No live Gemini, Odoo, or HubSpot calls were made.
+
+Task 16 closeout SHA: recorded by the commit that adds this disposition and
+reported in the delivery response. No Phase 12 work is included or authorized.

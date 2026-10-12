@@ -17,7 +17,7 @@ is `COMPLETE` (M9A–M9F `COMPLETE`; M9F and Phase 9 technical approval at
 M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`,
 M10B `COMPLETE` at human-approved technical SHA
 `765c5030659d6c4d0aebe325b7d35d577766dbfd`, M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`, M10D `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`, M10E `COMPLETE` at human-approved technical SHA `b73d7add25c273b5efac10f86bdd3ebef952d6da`, and M10F `COMPLETE` after final audit disposition on technical remediation SHA `3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; Phase 10 is `COMPLETE`.
-Phase 11 is `IN PROGRESS`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts. It did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at independently reviewed technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; it delivered Tasks 5–7 using active corpus `3.0.0`. M11D — Performance, Live Gemini, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `COMPLETE`, independently reviewed and human-approved at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447`; M11F remains `NOT STARTED`. Phase 11 remains `IN PROGRESS`; Phase 12 is `NOT STARTED`. The [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md) records M11C scope and local milestone verification. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
+Phase 11 is `COMPLETE`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts. It did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at independently reviewed technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; it delivered Tasks 5–7 using active corpus `3.0.0`. M11D — Performance, Live Gemini, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `COMPLETE`, independently reviewed and human-approved at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447`; M11F Task 15 is `COMPLETE` after independent audit PASS and human approval; Task 16 is `COMPLETE`; M11F is `COMPLETE`; Phase 12 remains `NOT STARTED`. The [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md) records M11C scope and local milestone verification. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
 Independent local M11B milestone verification recorded: corpus version `1.0.0`, 36 cases with category split 10/8/4/7/4/3 (normal/edge/security/deterministic violation/duplicate/retry-recovery), format split 9/9/9/9 (EMAIL_BODY/CSV/XLSX/PDF), all 14 routed cases mechanically verified against the real deterministic validation engine, all 36 source artifacts verified through the production document processor, provider-free extraction quality `NOT_APPLICABLE`, no live provider called, and no existing production behavior modified. Evaluation tests: 83 passed; focused regressions: 673 passed; integration: 367 passed; local `make check`: 1,847 passed, 6 skipped, 91.11% coverage; Ruff, format, mypy, Gitleaks, Markdown links, and `git diff --check`: PASS. These are local milestone verification results, not GitHub PR-head CI.
 The [Phase 0 audit record](../audits/phase-0-audit.md) through the [Phase 9
 audit record](../audits/phase-9-audit.md) preserve closeout evidence.
@@ -104,8 +104,37 @@ tests were skipped because dedicated database URLs were unavailable; no fresh
 full `make check` was run at this SHA. No live Gemini, Odoo, or HubSpot calls
 were performed. The historical M11D reference and corpus remain unchanged.
 Detailed closeout evidence is in the [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md).
-M11F remains `NOT STARTED`; Phase 11 remains `IN PROGRESS`; Phase 12 remains
-`NOT STARTED`.
+At the M11E closeout, M11F was `NOT STARTED`, Phase 11 was `IN PROGRESS`,
+and Phase 12 was `NOT STARTED`.
+
+### Phase 11 closeout — independent audit and documentation approval
+
+M11F Task 15 received independent audit `PASS` and human approval at audit
+SHA `a48af3cd45bf16f89e9d120932de755452020f17`. Task 16 completed this
+documentation-only closeout. M11A–M11F and Phase 11 are `COMPLETE`; Phase 12
+remains `NOT STARTED`. The frozen M11E technical baseline is
+`49f9365c1e41f246d293e11c647b2ffda0198447`, and the M11E documentation
+closeout is `b3e66cd9a98fb876346b634ac226670fdb1fef96`.
+
+The final audit records two clean-clone provider-free evaluations at
+`b3e66cd9a98fb876346b634ac226670fdb1fef96`; each passed 36/36 cases and all
+five gates with zero Gemini calls. The clean-clone full check recorded 2,116
+passed, 6 skipped, and 90.79% coverage; the skips were optional live
+Odoo/HubSpot cases. Dedicated PostgreSQL-backed evaluation, integration, and
+migration verification passed. No GitHub-hosted CI run or live Gemini,
+Odoo, or HubSpot calls were made. The M11E decision remains
+`NO_OPTIMIZATION`: no actionable bottleneck or production performance
+improvement was established.
+
+The audit retains the known limits: live Gemini accuracy, authoritative token
+usage, provider latency, and live model cost remain unmeasured; local timing is
+diagnostic rather than a production SLA; historical artifacts omit the
+immediate retry-command return state; two high-severity frontend development-dependency
+advisories remain; ignored-file secret-pattern matches were not confirmed as
+credential exposure; and reusing a seeded integration database caused seven
+fixed-identity failures before the fresh disposable-target run passed. Earlier
+BLOCKED audit checkpoints remain preserved in the [Phase 11 audit](../audits/phase-11-audit.md).
+
 ## Working principles
 
 - Keep the production-grade portfolio project understandable and locally demonstrable.
