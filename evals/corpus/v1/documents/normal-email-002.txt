@@ -1,0 +1,10 @@
+SYNTHETIC PURCHASE ORDER
+Customer: Brightline Retail
+Customer reference: CUST-002
+PO number: PO-E-002
+Order date: 2026-10-02
+Requested delivery: 2026-10-12
+Currency: USD
+Notes: Call before delivery.
+Line 1: SKU=SKU-002; description=Packing tape; quantity=6; price=4.50
+Line 2: SKU=SKU-003; description=Shipping labels; quantity=3; price=8.25

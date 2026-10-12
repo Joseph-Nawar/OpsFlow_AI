@@ -49,3 +49,5 @@ Thumbs.db
 coverage/
 docs/_build/
 evals/output/
+evals/results/*
+!evals/results/.gitkeep

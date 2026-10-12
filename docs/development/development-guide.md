@@ -17,11 +17,123 @@ is `COMPLETE` (M9A–M9F `COMPLETE`; M9F and Phase 9 technical approval at
 M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`,
 M10B `COMPLETE` at human-approved technical SHA
 `765c5030659d6c4d0aebe325b7d35d577766dbfd`, M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`, M10D `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`, M10E `COMPLETE` at human-approved technical SHA `b73d7add25c273b5efac10f86bdd3ebef952d6da`, and M10F `COMPLETE` after final audit disposition on technical remediation SHA `3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; Phase 10 is `COMPLETE`.
-Phases 11–12 remain `NOT STARTED`. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
+Phase 11 is `COMPLETE`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE`, with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts. It did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at independently reviewed technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; it delivered Tasks 5–7 using active corpus `3.0.0`. M11D — Performance, Live Gemini, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `COMPLETE`, independently reviewed and human-approved at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447`; M11F Task 15 is `COMPLETE` after independent audit PASS and human approval; Task 16 is `COMPLETE`; M11F is `COMPLETE`; Phase 12 remains `NOT STARTED`. The [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md) records M11C scope and local milestone verification. The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
+Independent local M11B milestone verification recorded: corpus version `1.0.0`, 36 cases with category split 10/8/4/7/4/3 (normal/edge/security/deterministic violation/duplicate/retry-recovery), format split 9/9/9/9 (EMAIL_BODY/CSV/XLSX/PDF), all 14 routed cases mechanically verified against the real deterministic validation engine, all 36 source artifacts verified through the production document processor, provider-free extraction quality `NOT_APPLICABLE`, no live provider called, and no existing production behavior modified. Evaluation tests: 83 passed; focused regressions: 673 passed; integration: 367 passed; local `make check`: 1,847 passed, 6 skipped, 91.11% coverage; Ruff, format, mypy, Gitleaks, Markdown links, and `git diff --check`: PASS. These are local milestone verification results, not GitHub PR-head CI.
 The [Phase 0 audit record](../audits/phase-0-audit.md) through the [Phase 9
 audit record](../audits/phase-9-audit.md) preserve closeout evidence.
 Commands below distinguish historical verified checks from current or
 still-planned later-milestone workflows.
+
+### Phase 11 corrective status amendment
+
+M11B remains `COMPLETE` at its independently reviewed technical baseline, with
+the original approved corpus `1.0.0` preserved as historical evidence. M11C
+Task 5 exposed an authority contradiction in two intake-recovery expectations;
+the corrected corpus was `2.0.0`, approved at amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`; only the expected final state of
+`retry-email-001` and `retry-csv-001` changed to `READY_FOR_APPROVAL`. No
+source bytes changed. At that amendment, M11C remained `IN PROGRESS`, and
+evaluation execution used corpus `2.0.0` until the approved amendment below.
+M11D–M11F remained `NOT STARTED`; Phase 11 remained `IN PROGRESS`; Phase 12
+remained `NOT STARTED`.
+
+### Phase 11 duplicate replay-contract amendment
+
+Corpus `1.0.0` is the historical M11B-approved corpus. Corpus `2.0.0` is the
+approved recovery-authority correction at amendment SHA
+`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C real-path duplicate execution
+showed that Phase 2 creation replay and Phase 7 intake execution expose distinct
+dispositions. Corpus `2.0.0` encoded them in one ambiguous field; approved corpus
+`3.0.0` splits those expectations without changing production behavior, source
+documents, or source SHA-256 values. The corpus `3.0.0` amendment is approved at
+`7184efb9589445d16e354decd486f28bc90ac09b`; all further Phase 11 evaluation
+execution uses corpus `3.0.0`. At that amendment, M11C remained
+`IN PROGRESS`; M11D–M11F remained `NOT STARTED`; Phase 11 remained
+`IN PROGRESS`; Phase 12 remained `NOT STARTED`.
+
+### M11D closeout — local verification and limitations
+
+M11D Tasks 8–12 are complete at approved implementation baseline
+`9ecaaef9e2f7bf8e59529228d8576438d1a94f1a` after independent final-review
+PASS and human approval. The final review verified the
+four original M11D correctness/safety findings, the related integration-test
+safety correction, and the final three database-safety findings as resolved.
+The active executable corpus remains `3.0.0`, with 36 cases and unchanged
+source hashes. Two provider-free runs at the approved SHA passed 36/36 cases
+and all five hard gates, with zero Gemini calls. The committed provider-free
+reference JSON/Markdown pair is unchanged; its measured-run SHA is
+`7b67e6e32a2c7f7c44894dcf38eb68968ce1195b`, distinct from the implementation
+SHA. The [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md)
+contains the complete verification record.
+
+Local milestone verification, not GitHub-hosted CI, recorded `make check` at
+2,007 passed, 23 skipped, and 87.56% coverage; standalone integration at 367
+passed; and final independent focused safety tests at 46 passed, 3 skipped,
+with the evaluation suite at 220 passed, 20 skipped (including database tests
+skipped for unavailable configuration). Ruff, formatting, mypy, package build,
+frontend tests (68 passed), frontend lint/build, Git diff hygiene, Markdown
+links, and pinned Gitleaks v8.28.0 were reported passing. Hosted GitHub CI and
+live Gemini were not independently executed. Local p50/p95 measurements are
+diagnostic and are not production SLAs.
+
+Real Gemini extraction quality, authoritative usage, provider latency, and
+estimated live cost remain unmeasured. Two high-severity frontend
+development-dependency advisories remain unresolved. The historical effects of
+the earlier accidental integration invocation remain unverified, although
+subsequent read-only catalog inspection found no public application tables in
+the normal database. The database endpoint guard covers accidental
+target-misconfiguration within documented local/CI assumptions, not malicious
+server impersonation.
+
+### M11E closeout — independent review and human approval
+
+M11E Tasks 13–14 are `COMPLETE` at approved implementation SHA
+`49f9365c1e41f246d293e11c647b2ffda0198447`. Independent review returned
+PASS and human approval was granted. The comparison contract validates retained
+case observations and canonical gates, preserves recovery field presence, and
+separates evidence validity, comparability, outcome, latency comparability,
+and optimization eligibility. It does not verify properties absent from the
+historical result contract, including the immediate retry-command return state.
+The approved outcome is `NO_OPTIMIZATION`: no sufficiently specific,
+reproducible, actionable bottleneck was demonstrated. Local timing differences
+are observations, not demonstrated improvements or production SLAs. Verification
+recorded 92 comparator tests passed; the full evaluation suite recorded 312
+passed and 20 skipped; corpus/reference/release-gate tests recorded 65 passed
+and 1 skipped. Ruff, formatting, mypy, and Git diff hygiene passed. PostgreSQL
+tests were skipped because dedicated database URLs were unavailable; no fresh
+full `make check` was run at this SHA. No live Gemini, Odoo, or HubSpot calls
+were performed. The historical M11D reference and corpus remain unchanged.
+Detailed closeout evidence is in the [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md).
+At the M11E closeout, M11F was `NOT STARTED`, Phase 11 was `IN PROGRESS`,
+and Phase 12 was `NOT STARTED`.
+
+### Phase 11 closeout — independent audit and documentation approval
+
+M11F Task 15 received independent audit `PASS` and human approval at audit
+SHA `a48af3cd45bf16f89e9d120932de755452020f17`. Task 16 completed this
+documentation-only closeout. M11A–M11F and Phase 11 are `COMPLETE`; Phase 12
+remains `NOT STARTED`. The frozen M11E technical baseline is
+`49f9365c1e41f246d293e11c647b2ffda0198447`, and the M11E documentation
+closeout is `b3e66cd9a98fb876346b634ac226670fdb1fef96`.
+
+The final audit records two clean-clone provider-free evaluations at
+`b3e66cd9a98fb876346b634ac226670fdb1fef96`; each passed 36/36 cases and all
+five gates with zero Gemini calls. The clean-clone full check recorded 2,116
+passed, 6 skipped, and 90.79% coverage; the skips were optional live
+Odoo/HubSpot cases. Dedicated PostgreSQL-backed evaluation, integration, and
+migration verification passed. No GitHub-hosted CI run or live Gemini,
+Odoo, or HubSpot calls were made. The M11E decision remains
+`NO_OPTIMIZATION`: no actionable bottleneck or production performance
+improvement was established.
+
+The audit retains the known limits: live Gemini accuracy, authoritative token
+usage, provider latency, and live model cost remain unmeasured; local timing is
+diagnostic rather than a production SLA; historical artifacts omit the
+immediate retry-command return state; two high-severity frontend development-dependency
+advisories remain; ignored-file secret-pattern matches were not confirmed as
+credential exposure; and reusing a seeded integration database caused seven
+fixed-identity failures before the fresh disposable-target run passed. Earlier
+BLOCKED audit checkpoints remain preserved in the [Phase 11 audit](../audits/phase-11-audit.md).
 
 ## Working principles
 
@@ -160,17 +272,57 @@ This scan completed successfully with no leaks found. The CI workflow is [`.gith
 
 The README’s [local development sequence](../../README.md#local-development) is the concise clean-checkout procedure. It installs the committed Python and npm dependencies, creates only the ignored local `.env`, starts PostgreSQL, applies migrations, runs the two development servers, and then runs `make check`. The sequence was verified from a fresh clone of `phase/0-foundation`.
 
-## Still planned or unverified commands
+## Phase 11 evaluation commands
 
-These commands remain planned until their later milestone introduces the corresponding workflow:
+Both evaluation commands require a one-time dedicated PostgreSQL database
+named exactly `opsflow_evaluation`. This explicit allowlisted identity is
+provisioned once below; a different name alone does not prove a database is
+safe to reset. The approved local endpoint is loopback on port `5432`, matching
+the committed Compose binding and CI PostgreSQL service. The guard checks that
+endpoint before connecting, then verifies the connected database, `public`
+schema, and PostgreSQL server port in a read-only transaction before beginning
+the application-data reset transaction. It also checks that the database
+name differs from normal and configured migration-test databases, clears only
+application tables, and preserves Alembic metadata. The command does not
+create the database. These checks prevent accidental wrong-host or wrong-port
+configuration; they do not attest against a malicious local process
+impersonating PostgreSQL on the approved loopback endpoint.
+
+The documented and committed endpoint is port `5432`. Port `55432` appears in
+older evaluation test URL fixtures but is not published by the committed
+Compose configuration, so it is not an approved evaluation endpoint.
+
+For a local Compose PostgreSQL service, create the evaluation database once and
+apply the current schema to that database:
 
 ```bash
-# Focused verification — use the project’s eventual documented test selectors
-uv run pytest tests/unit -q
-uv run pytest tests/integration -q
+docker compose up -d postgres
+docker compose exec -T postgres createdb -U opsflow opsflow_evaluation
+OPSFLOW_DATABASE_URL=postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_evaluation uv run alembic upgrade head
+export OPSFLOW_EVALUATION_DATABASE_URL=postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_evaluation
 ```
 
-Do not report any command as passing until its output has been observed in the current repository. If a command is not applicable to a documentation-only milestone, record that fact rather than fabricating a result.
+Run the complete provider-free corpus with:
+
+```bash
+make evaluate
+```
+
+This mode needs no Gemini configuration and makes no provider calls. Generated
+JSON and Markdown files are ignored under `evals/results/`.
+
+Live Gemini evaluation is a separate, potentially billable command. Configure
+the existing `OPSFLOW_GEMINI_API_KEY`, `OPSFLOW_GEMINI_MODEL`, and finite
+positive `OPSFLOW_GEMINI_TIMEOUT_SECONDS` settings, then explicitly run:
+
+```bash
+make evaluate-live OPSFLOW_EVALUATION_LIVE_GEMINI=1
+```
+
+Live mode validates its opt-in and provider configuration before database
+cleanup or case execution. It uses the real Gemini adapter and fake downstream
+integrations. It is not part of normal CI. No command publishes generated
+results as references automatically.
 
 ## Testing approach
 
@@ -186,12 +338,45 @@ Tests must not remove assertions, change expected results to suit broken behavio
 
 ### Destructive migration test isolation
 
-Integration tests that downgrade Alembic revisions require an explicit
-`OPSFLOW_MIGRATION_TEST_DATABASE_URL` naming a PostgreSQL database whose name
-differs from `OPSFLOW_DATABASE_URL`. If it is unset, those tests skip; they
-never fall back to the configured development database. CI provisions a
-separate migration-test database, and migration subprocesses and schema
-assertions use that same URL.
+Integration tests require an explicit local PostgreSQL target through
+`OPSFLOW_INTEGRATION_TEST_DATABASE_URL`; its database name must begin with
+`opsflow_integration_` and use the approved loopback PostgreSQL endpoint on
+port `5432`. The guard verifies the connected database name, `public` schema,
+and server port before test modules can run, then directs application settings
+and migration subprocesses to that target. `make test` and `make check` require
+this variable because they collect integration tests. Direct `pytest`
+invocations load the same guard and cannot fall back to `.env`.
+
+For the local Compose PostgreSQL service, create a disposable integration
+database once and run the integration suite with:
+
+```bash
+docker compose up -d postgres
+docker compose exec -T postgres createdb -U opsflow opsflow_integration_local
+export OPSFLOW_INTEGRATION_TEST_DATABASE_URL=postgresql+asyncpg://opsflow:opsflow@localhost:5432/opsflow_integration_local
+uv run pytest tests/integration --collect-only -q --no-cov
+OPSFLOW_DATABASE_URL="$OPSFLOW_INTEGRATION_TEST_DATABASE_URL" uv run alembic upgrade head
+make test-integration
+```
+
+The collection command runs the integration guard's read-only connected-target
+check before the explicit migration command can change the disposable schema.
+
+Tests that downgrade Alembic revisions separately require
+`OPSFLOW_MIGRATION_TEST_DATABASE_URL` naming exactly
+`opsflow_migration_test` on the same approved loopback endpoint and port. The
+fixture verifies the connected database, `public` schema, and server port
+before returning the URL to tests that invoke Alembic. If it is unset, those
+tests skip; they never fall back to the configured application database. CI
+preflights the integration target before migrations and explicitly points
+Alembic at that target; it provisions both disposable databases.
+
+An earlier integration invocation inherited `localhost:5432/opsflow` from the
+normal configuration and encountered missing-table failures before it was
+stopped. The execution trace is unavailable, so its exact statements and
+historical effects cannot be reconstructed. A later read-only catalog check
+found no public application tables; that observation does not establish the
+full history of the interrupted invocation.
 
 M0A had no application behavior; M0B adds `/health`; M0C adds database configuration, engine lifecycle, `/ready`, Alembic’s empty baseline, and local PostgreSQL/Docker infrastructure; M0D adds only the static frontend foundation page; M0E adds only developer commands, CI, and secret scanning. M0D intentionally adds no frontend test framework because it has no meaningful application behavior yet. No business tables, review UI, or later-milestone behavior is covered here.
 

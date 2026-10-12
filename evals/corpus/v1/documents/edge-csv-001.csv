@@ -1,0 +1,2 @@
+customer_name,customer_reference,po_number,order_date,requested_delivery_date,currency,notes,sku,description,quantity,submitted_price
+"Lumen Energy","CUST-012","PO-C-003","2026-10-03","2026-10-15","USD","","SKU-015","Cable tie","100","0.08"

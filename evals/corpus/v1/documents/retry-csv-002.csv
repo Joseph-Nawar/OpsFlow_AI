@@ -1,0 +1,2 @@
+customer_name,customer_reference,po_number,order_date,requested_delivery_date,currency,notes,sku,description,quantity,submitted_price
+"Fjord Engineering","CUST-006","PO-C-009","2026-10-09","2026-10-22","USD","Worker recovery with prior receipt.","SKU-019","Safety glasses","6","11.50"

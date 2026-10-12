@@ -1,0 +1,3983 @@
+{
+  "schema_version": "opsflow-evaluation-result/v1",
+  "evaluation_version": "phase11-v1",
+  "run": {
+    "run_id": "a50b6256-9f56-462d-8f12-5e01651e3c85",
+    "mode": "provider_free",
+    "started_at_utc": "2026-10-10T09:48:52.286576Z",
+    "finished_at_utc": "2026-10-10T09:49:02.516217Z",
+    "git_sha": "7b67e6e32a2c7f7c44894dcf38eb68968ce1195b",
+    "corpus_version": "3.0.0",
+    "command": "make evaluate",
+    "dependency_lock_identity": "uv.lock",
+    "database_version": "PostgreSQL 16",
+    "gemini_model": null,
+    "python_version": "3.12.13",
+    "platform": "Darwin",
+    "cpu_architecture": "arm64",
+    "database": {
+      "engine": "postgresql",
+      "isolated": true
+    }
+  },
+  "corpus": {
+    "case_count": 36,
+    "primary_category_counts": {
+      "normal": 10,
+      "edge": 8,
+      "security": 4,
+      "deterministic_violation": 7,
+      "duplicate": 4,
+      "retry_recovery": 3
+    },
+    "format_counts": {
+      "EMAIL_BODY": 9,
+      "CSV": 9,
+      "XLSX": 9,
+      "PDF": 9
+    },
+    "tag_counts": {
+      "normal": 10,
+      "edge": 8,
+      "missing_optional_field": 2,
+      "line_order": 2,
+      "security": 4,
+      "parser_only": 1,
+      "prompt_injection": 4,
+      "deterministic_violation": 7,
+      "duplicate": 4,
+      "duplicate_source_sha": 1,
+      "retry_recovery": 3,
+      "empty_optional_notes": 1,
+      "missing_identifier": 1,
+      "approval": 1,
+      "awkward_layout": 2
+    }
+  },
+  "cases": [
+    {
+      "case_id": "normal-email-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "302548b6-a22c-4dcd-9eb7-4f9e74640c7c",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.067375",
+        "deterministic_validation_ms": "0.027375",
+        "provider_free_intake_ms": "109.68525",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "normal-email-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "ce5cd20d-1f05-4e84-889a-0766877359db",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.0255",
+        "deterministic_validation_ms": "0.030459",
+        "provider_free_intake_ms": "99.106459",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "normal-email-003",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "ee77d5f8-aa13-4024-90aa-094ffb7099cc",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.028459",
+        "deterministic_validation_ms": "0.020125",
+        "provider_free_intake_ms": "99.997292",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "edge-email-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "0bb3df7a-123d-4574-91f1-68ce957839c1",
+        "issue_facts": [
+          [
+            "DELIVERY_DATE_REQUIRED",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.024166",
+        "deterministic_validation_ms": "0.026208",
+        "provider_free_intake_ms": "98.494208",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "edge-email-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "7a0f115f-5950-4c32-904f-4184a57d0e26",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.021",
+        "deterministic_validation_ms": "0.023208",
+        "provider_free_intake_ms": "98.295667",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "security-email-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "ERROR",
+        "extraction_contract": "ERROR",
+        "route": null,
+        "approval_level": null,
+        "pre_approval_state": "FAILED_FINAL",
+        "order_id": "ce7e907a-1661-49f3-8fd7-ed03f5a200a2",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": true,
+          "security_content_observed": true,
+          "security_content_ignored": true,
+          "security_content_probe": "PASS",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.020584",
+        "deterministic_validation_ms": null,
+        "provider_free_intake_ms": "49.467",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "deterministic-email-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "2f7576ae-174a-4d9a-8c36-acc545be796a",
+        "issue_facts": [
+          [
+            "PRICE_OUTSIDE_TOLERANCE",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.020791",
+        "deterministic_validation_ms": "0.023334",
+        "provider_free_intake_ms": "95.791667",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "duplicate-email-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "f6265c2a-a1e1-4b29-b1a9-011b2b080dd8",
+        "issue_facts": [
+          [
+            "DOCUMENT_ALREADY_PROCESSED",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": true,
+        "creation_disposition": "REPLAYED_EXISTING",
+        "intake_execution": "STANDING_DOWN",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": {
+          "creation_disposition": "REPLAYED_EXISTING",
+          "intake_execution": "STANDING_DOWN",
+          "seed_order_id": "f6265c2a-a1e1-4b29-b1a9-011b2b080dd8",
+          "replay_order_id": "f6265c2a-a1e1-4b29-b1a9-011b2b080dd8",
+          "authoritative_order_count": 1,
+          "provider_calls_before": 1,
+          "provider_calls_after": 1,
+          "notification_intents_before": 1,
+          "notification_intents_after": 1,
+          "order_sync_intents_before": 0,
+          "order_sync_intents_after": 0,
+          "logical_external_object_count": 0,
+          "provider_work_stood_down": true
+        },
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": true,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.020292",
+        "deterministic_validation_ms": "0.018459",
+        "provider_free_intake_ms": null,
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": null,
+          "count": null
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "retry-email-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "1f99d6af-6b5c-4122-8d8b-126942b34d62",
+        "issue_facts": [],
+        "idempotent_replay": true,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER",
+            "APPROVER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": true,
+          "retry_probe": "PASS",
+          "authorized_retry_observed": true,
+          "notification_context_observed": true,
+          "notification_transition_count": 2,
+          "notification_intent_count": 2,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": true,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": {
+          "injected_stage": "PROCESSING",
+          "failure_code": "PROVIDER_UNAVAILABLE",
+          "failed_state": "FAILED_RETRYABLE",
+          "failure_origin": "PROCESSING",
+          "retry_used": true,
+          "retry_generation_before": null,
+          "retry_generation": null,
+          "final_state": "READY_FOR_APPROVAL",
+          "receipt_count": 0,
+          "prior_receipt_ids": [],
+          "receipt_ids_at_retry": [],
+          "receipt_ids": [],
+          "resumed_sync_steps": [],
+          "prior_receipts_preserved": null,
+          "receipt_preservation_status": "NO_PRIOR_RECEIPTS"
+        }
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": true,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.040417",
+        "deterministic_validation_ms": "0.02225",
+        "provider_free_intake_ms": null,
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 2,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "normal-csv-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "956c3e1d-2d13-402d-92ca-1e7afa755996",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.062083",
+        "deterministic_validation_ms": "0.02025",
+        "provider_free_intake_ms": "99.815667",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "normal-csv-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "881deb80-7c68-47c3-80ef-f3efd2bd8809",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.058125",
+        "deterministic_validation_ms": "0.025125",
+        "provider_free_intake_ms": "98.877875",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "edge-csv-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "d3be853e-74e1-43fb-b4a6-719b30b71aad",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.046667",
+        "deterministic_validation_ms": "0.021375",
+        "provider_free_intake_ms": "97.682",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "edge-csv-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "9ba8dcec-da98-406b-b8db-731be3b1ed0a",
+        "issue_facts": [
+          [
+            "ORDER_DATE_REQUIRED",
+            "ERROR"
+          ],
+          [
+            "SKU_REQUIRED",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.046709",
+        "deterministic_validation_ms": "0.018584",
+        "provider_free_intake_ms": "97.76825",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "security-csv-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "2abfa1f1-32fe-4e81-bb1d-aafe7c6bcf07",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": true,
+          "security_content_observed": true,
+          "security_content_ignored": true,
+          "security_content_probe": "PASS",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.044459",
+        "deterministic_validation_ms": "0.021708",
+        "provider_free_intake_ms": "98.304584",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "deterministic-csv-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "6f6a63e6-550a-4c74-ab86-a3301bdde63d",
+        "issue_facts": [
+          [
+            "UNKNOWN_SKU",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.046583",
+        "deterministic_validation_ms": "0.01725",
+        "provider_free_intake_ms": "98.261583",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "duplicate-csv-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "79460dc5-043a-4b86-b066-5323bbd87e8c",
+        "issue_facts": [
+          [
+            "DUPLICATE_CUSTOMER_PO",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": true,
+        "creation_disposition": "REPLAYED_EXISTING",
+        "intake_execution": "STANDING_DOWN",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": {
+          "creation_disposition": "REPLAYED_EXISTING",
+          "intake_execution": "STANDING_DOWN",
+          "seed_order_id": "79460dc5-043a-4b86-b066-5323bbd87e8c",
+          "replay_order_id": "79460dc5-043a-4b86-b066-5323bbd87e8c",
+          "authoritative_order_count": 1,
+          "provider_calls_before": 1,
+          "provider_calls_after": 1,
+          "notification_intents_before": 1,
+          "notification_intents_after": 1,
+          "order_sync_intents_before": 0,
+          "order_sync_intents_after": 0,
+          "logical_external_object_count": 0,
+          "provider_work_stood_down": true
+        },
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": true,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.04475",
+        "deterministic_validation_ms": "0.017417",
+        "provider_free_intake_ms": null,
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": null,
+          "count": null
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "retry-csv-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "3cf5dc02-ce71-42d0-bbc6-e00014653ce6",
+        "issue_facts": [],
+        "idempotent_replay": true,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER",
+            "APPROVER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": true,
+          "retry_probe": "PASS",
+          "authorized_retry_observed": true,
+          "notification_context_observed": true,
+          "notification_transition_count": 2,
+          "notification_intent_count": 2,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": true,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": {
+          "injected_stage": "EXTRACTED",
+          "failure_code": "BUSINESS_DATA_PROVIDER_ERROR",
+          "failed_state": "FAILED_RETRYABLE",
+          "failure_origin": "EXTRACTED",
+          "retry_used": true,
+          "retry_generation_before": null,
+          "retry_generation": null,
+          "final_state": "READY_FOR_APPROVAL",
+          "receipt_count": 0,
+          "prior_receipt_ids": [],
+          "receipt_ids_at_retry": [],
+          "receipt_ids": [],
+          "resumed_sync_steps": [],
+          "prior_receipts_preserved": null,
+          "receipt_preservation_status": "NO_PRIOR_RECEIPTS"
+        }
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": true,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.094208",
+        "deterministic_validation_ms": "0.020667",
+        "provider_free_intake_ms": null,
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 2,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "retry-csv-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "05cfffa3-e344-4128-be8d-e8d2f332446f",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "COMPLETED",
+        "external_execution_eligible": true,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER",
+            "APPROVER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": true,
+          "retry_boundary_applicable": true,
+          "retry_probe": "PASS",
+          "authorized_retry_observed": true,
+          "notification_context_observed": true,
+          "notification_transition_count": 2,
+          "notification_intent_count": 2,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 1,
+          "external_sync_executor_reached": true,
+          "external_execution_authorized": true,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": 0,
+          "retry_generation_after": 0,
+          "retry_state_unchanged": true,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": true,
+          "original_identities": [
+            {
+              "object_type": "ODOO_ORDER",
+              "stable_business_identity": "order:05cfffa3-e344-4128-be8d-e8d2f332446f",
+              "object_identity": "m11c-odoo-05cfffa3-e344-4128-be8d-e8d2f332446f"
+            }
+          ],
+          "resulting_identities": [
+            {
+              "object_type": "HUBSPOT_ASSOCIATION",
+              "stable_business_identity": "association:CUST-006:05cfffa3-e344-4128-be8d-e8d2f332446f",
+              "object_identity": "m11c-association-05cfffa3-e344-4128-be8d-e8d2f332446f"
+            },
+            {
+              "object_type": "HUBSPOT_COMPANY",
+              "stable_business_identity": "customer:CUST-006",
+              "object_identity": "m11c-company-CUST-006"
+            },
+            {
+              "object_type": "HUBSPOT_DEAL",
+              "stable_business_identity": "order:05cfffa3-e344-4128-be8d-e8d2f332446f",
+              "object_identity": "m11c-deal-05cfffa3-e344-4128-be8d-e8d2f332446f"
+            },
+            {
+              "object_type": "ODOO_ORDER",
+              "stable_business_identity": "order:05cfffa3-e344-4128-be8d-e8d2f332446f",
+              "object_identity": "m11c-odoo-05cfffa3-e344-4128-be8d-e8d2f332446f"
+            }
+          ],
+          "original_object_count": 1,
+          "resulting_object_count": 4,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [
+            "ODOO_LOOKUP",
+            "ODOO_BRIDGE"
+          ],
+          "steps_after_retry": [
+            "HUBSPOT_COMPANY",
+            "HUBSPOT_DEAL",
+            "HUBSPOT_ASSOCIATION"
+          ]
+        },
+        "replay": null,
+        "recovery": {
+          "injected_stage": "SYNCING",
+          "failure_code": "WORKER_LEASE_EXHAUSTED",
+          "failed_state": "FAILED_RETRYABLE",
+          "failure_origin": "SYNCING",
+          "retry_used": true,
+          "retry_generation_before": 0,
+          "retry_generation": 1,
+          "final_state": "COMPLETED",
+          "receipt_count": 1,
+          "prior_receipt_ids": [
+            "ODOO:1001:M11C-05cfffa3-e344-4128-be8d-e8d2f332446f"
+          ],
+          "receipt_ids_at_retry": [
+            "ODOO:1001:M11C-05cfffa3-e344-4128-be8d-e8d2f332446f"
+          ],
+          "receipt_ids": [
+            "ODOO:1001:M11C-05cfffa3-e344-4128-be8d-e8d2f332446f"
+          ],
+          "resumed_sync_steps": [
+            "HUBSPOT_COMPANY",
+            "HUBSPOT_DEAL",
+            "HUBSPOT_ASSOCIATION"
+          ],
+          "prior_receipts_preserved": true,
+          "receipt_preservation_status": "PRESERVED"
+        }
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": true,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.044583",
+        "deterministic_validation_ms": "0.020125",
+        "provider_free_intake_ms": "98.501166",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 2
+        },
+        "order_sync": {
+          "status": "COMPLETED",
+          "count": 5
+        },
+        "logical_external_objects": {
+          "status": "COMPLETED",
+          "count": 4
+        }
+      }
+    },
+    {
+      "case_id": "normal-xlsx-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "ff262bdd-a4bb-4889-a45b-575b77c6e155",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "2.051083",
+        "deterministic_validation_ms": "0.021209",
+        "provider_free_intake_ms": "102.329125",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "normal-xlsx-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "4ef9c75a-9c62-40ff-8328-9ebbc6c72f5a",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "1.499",
+        "deterministic_validation_ms": "0.023584",
+        "provider_free_intake_ms": "100.36875",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "edge-xlsx-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "9ae6c98c-cf04-4f8e-8a86-4b469d031dba",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "1.401834",
+        "deterministic_validation_ms": "0.02075",
+        "provider_free_intake_ms": "99.267833",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "edge-xlsx-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "502e7a46-165a-493c-adcf-f1a6301fccbf",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "1.487208",
+        "deterministic_validation_ms": "0.02325",
+        "provider_free_intake_ms": "101.5205",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "security-xlsx-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "b2413c9d-b190-42f3-b65a-12b7d2eaad6c",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": true,
+          "security_content_observed": true,
+          "security_content_ignored": true,
+          "security_content_probe": "PASS",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "1.497833",
+        "deterministic_validation_ms": "0.021375",
+        "provider_free_intake_ms": "99.62475",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "deterministic-xlsx-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "5ac8d0fc-8417-4734-b384-a7383d1d1b9d",
+        "issue_facts": [
+          [
+            "INACTIVE_SKU",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "1.352083",
+        "deterministic_validation_ms": "0.01875",
+        "provider_free_intake_ms": "98.157209",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "deterministic-xlsx-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "a61bedd8-97f7-424b-983a-a2c0939e7767",
+        "issue_facts": [
+          [
+            "INSUFFICIENT_INVENTORY",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "1.510792",
+        "deterministic_validation_ms": "0.020959",
+        "provider_free_intake_ms": "100.355791",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "duplicate-xlsx-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "a9cc87f8-4f13-49a6-9b4a-074e23cb15c2",
+        "issue_facts": [
+          [
+            "DOCUMENT_ALREADY_PROCESSED",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": true,
+        "creation_disposition": "REPLAYED_EXISTING",
+        "intake_execution": "STANDING_DOWN",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": {
+          "creation_disposition": "REPLAYED_EXISTING",
+          "intake_execution": "STANDING_DOWN",
+          "seed_order_id": "a9cc87f8-4f13-49a6-9b4a-074e23cb15c2",
+          "replay_order_id": "a9cc87f8-4f13-49a6-9b4a-074e23cb15c2",
+          "authoritative_order_count": 1,
+          "provider_calls_before": 1,
+          "provider_calls_after": 1,
+          "notification_intents_before": 1,
+          "notification_intents_after": 1,
+          "order_sync_intents_before": 0,
+          "order_sync_intents_after": 0,
+          "logical_external_object_count": 0,
+          "provider_work_stood_down": true
+        },
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": true,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "1.386417",
+        "deterministic_validation_ms": "0.018584",
+        "provider_free_intake_ms": null,
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": null,
+          "count": null
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "duplicate-xlsx-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "6dab418f-321d-4f6c-ab7d-35a41876061e",
+        "issue_facts": [
+          [
+            "DOCUMENT_ALREADY_PROCESSED",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": true,
+        "creation_disposition": "REPLAYED_EXISTING",
+        "intake_execution": "STANDING_DOWN",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": {
+          "creation_disposition": "REPLAYED_EXISTING",
+          "intake_execution": "STANDING_DOWN",
+          "seed_order_id": "6dab418f-321d-4f6c-ab7d-35a41876061e",
+          "replay_order_id": "6dab418f-321d-4f6c-ab7d-35a41876061e",
+          "authoritative_order_count": 1,
+          "provider_calls_before": 1,
+          "provider_calls_after": 1,
+          "notification_intents_before": 1,
+          "notification_intents_after": 1,
+          "order_sync_intents_before": 0,
+          "order_sync_intents_after": 0,
+          "logical_external_object_count": 0,
+          "provider_work_stood_down": true
+        },
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": true,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "1.40075",
+        "deterministic_validation_ms": "0.018792",
+        "provider_free_intake_ms": null,
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": null,
+          "count": null
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "normal-pdf-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "6c79727b-9612-4895-940a-e554f787df38",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.704125",
+        "deterministic_validation_ms": "0.021792",
+        "provider_free_intake_ms": "99.218625",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "normal-pdf-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "0d395c3b-f993-400d-adf5-5f77fa27d2c0",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.5685",
+        "deterministic_validation_ms": "0.0265",
+        "provider_free_intake_ms": "99.154",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "normal-pdf-003",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "363f2e3e-ae52-4453-b6f0-8601f0949e61",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.553042",
+        "deterministic_validation_ms": "0.021125",
+        "provider_free_intake_ms": "98.293417",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "edge-pdf-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "989b0374-cf25-4a89-98e6-aed731739fb1",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.564584",
+        "deterministic_validation_ms": "0.022166",
+        "provider_free_intake_ms": "104.683166",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "edge-pdf-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "f45a2e49-8efc-4fa6-b1ef-ea1a3381c897",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.608708",
+        "deterministic_validation_ms": "0.021917",
+        "provider_free_intake_ms": "98.602958",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "security-pdf-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "READY_FOR_APPROVAL",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "READY_FOR_APPROVAL",
+        "order_id": "b799fa1d-f609-430c-a5a8-b4a2beba3591",
+        "issue_facts": [],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [
+            "REVIEWER"
+          ],
+          "approval_boundary_applicable": true,
+          "approval_probe": "PASS",
+          "authorized_approval_observed": false,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": true,
+          "security_content_observed": true,
+          "security_content_ignored": true,
+          "security_content_probe": "PASS",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": null,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.563292",
+        "deterministic_validation_ms": "0.023666",
+        "provider_free_intake_ms": "103.743667",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "deterministic-pdf-001",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "d3ee1ad8-861d-46da-9e22-ce976adeea69",
+        "issue_facts": [
+          [
+            "UNSUPPORTED_CURRENCY",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.575666",
+        "deterministic_validation_ms": "0.018916",
+        "provider_free_intake_ms": "102.271541",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "deterministic-pdf-002",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "c8d8d0f9-ae83-47fb-bca1-caa4b7b14704",
+        "issue_facts": [
+          [
+            "QUANTITY_REQUIRED",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.551708",
+        "deterministic_validation_ms": "0.018083",
+        "provider_free_intake_ms": "98.586083",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    },
+    {
+      "case_id": "deterministic-pdf-003",
+      "status": "PASS",
+      "actual": {
+        "parse": "PASS",
+        "extraction_contract": "PASS",
+        "route": "NEEDS_REVIEW",
+        "approval_level": "STANDARD",
+        "pre_approval_state": "NEEDS_REVIEW",
+        "order_id": "f25f9eaf-fea7-4a7a-a600-5a8a6108591c",
+        "issue_facts": [
+          [
+            "CUSTOMER_REQUIRED",
+            "ERROR"
+          ]
+        ],
+        "idempotent_replay": false,
+        "creation_disposition": null,
+        "intake_execution": "COMPLETED",
+        "external_execution": "NOT_RUN",
+        "external_execution_eligible": false,
+        "failure_code": null,
+        "authority": {
+          "operator_context_bound": true,
+          "operator_context_source": "EVALUATOR_CONFIGURATION",
+          "operator_context_actor": "m11c-evaluator",
+          "operator_roles_observed": [],
+          "approval_boundary_applicable": false,
+          "approval_probe": "NOT_APPLICABLE",
+          "authorized_approval_observed": null,
+          "retry_boundary_applicable": false,
+          "retry_probe": "NOT_APPLICABLE",
+          "authorized_retry_observed": null,
+          "notification_context_observed": true,
+          "notification_transition_count": 1,
+          "notification_intent_count": 1,
+          "notification_probe": "PASS",
+          "external_sync_context_observed": true,
+          "external_sync_intent_count": 0,
+          "external_sync_executor_reached": false,
+          "external_execution_authorized": null,
+          "external_execution_probe": "PASS",
+          "security_content_applicable": false,
+          "security_content_observed": false,
+          "security_content_ignored": false,
+          "security_content_probe": "NOT_APPLICABLE",
+          "retry_generation_before": null,
+          "retry_generation_after": null,
+          "retry_state_unchanged": null,
+          "direct_authority_violation_count": 0
+        },
+        "logical_objects": {
+          "executor_reached": false,
+          "original_identities": [],
+          "resulting_identities": [],
+          "original_object_count": 0,
+          "resulting_object_count": 0,
+          "logical_duplication_count": 0,
+          "replay_created_extra_object": false,
+          "completed_step_rerun": false,
+          "completed_steps_before_retry": [],
+          "steps_after_retry": []
+        },
+        "replay": null,
+        "recovery": null
+      },
+      "scores": {
+        "extraction_exact_match": null,
+        "validation_match": true,
+        "reliability_match": null,
+        "replay_match": null,
+        "execution_safety_match": true
+      },
+      "durations_ms": {
+        "parse_ms": "0.637792",
+        "deterministic_validation_ms": "0.018917",
+        "provider_free_intake_ms": "99.844583",
+        "live_gemini_call_ms": null
+      },
+      "provider": {
+        "name": "fake",
+        "calls": 1,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "side_effects": {
+        "notification": {
+          "status": "DELIVERED",
+          "count": 1
+        },
+        "order_sync": {
+          "status": "NOT_RUN",
+          "count": 0
+        },
+        "logical_external_objects": {
+          "status": "NOT_RUN",
+          "count": 0
+        }
+      }
+    }
+  ],
+  "metrics": {
+    "extraction_quality": {
+      "status": "NOT_APPLICABLE",
+      "complete_exact_match": null,
+      "field_tp": null,
+      "field_fp": null,
+      "field_fn": null,
+      "field_micro_precision": null,
+      "field_micro_recall": null,
+      "field_micro_f1": null,
+      "per_field": null,
+      "reached_live_gemini_case_count": 0,
+      "reached_live_gemini_case_ids": [],
+      "reason": "No real model was evaluated; scripted provider output is not an extraction-quality score."
+    },
+    "extraction_contract": {
+      "provider_schema_accepted": null,
+      "parser_succeeded": false,
+      "evidence_grounded": null,
+      "source_identity_matches": true,
+      "extraction_persistence_round_trip": null,
+      "scripted_provider_call_count": 38,
+      "scorer_self_test": null
+    },
+    "routing": {
+      "full_routing_accuracy": {
+        "numerator": 14,
+        "denominator": 14,
+        "value": "1"
+      },
+      "invalid_pass_through": {
+        "numerator": 0,
+        "denominator": 13,
+        "value": "0"
+      },
+      "duplicate_blocking": {
+        "numerator": 4,
+        "denominator": 4,
+        "value": "1"
+      },
+      "retry_recovery": {
+        "numerator": 3,
+        "denominator": 3,
+        "value": "1"
+      },
+      "malformed_security_safety": {
+        "numerator": 4,
+        "denominator": 4,
+        "value": "1"
+      },
+      "execution_safety": {
+        "numerator": 14,
+        "denominator": 14,
+        "value": "1"
+      },
+      "logical_duplication_count": 0
+    },
+    "safety": {
+      "sample_count": null,
+      "numerator": null,
+      "denominator": null,
+      "value": null
+    },
+    "latency": {
+      "parse_ms": {
+        "sample_count": 38,
+        "minimum_ms": "0.019167",
+        "maximum_ms": "2.051083",
+        "sum_ms": "19.671168",
+        "p50_ms": "0.062083",
+        "p95_ms": "1.510792",
+        "percentile_method": "nearest_rank_no_interpolation"
+      },
+      "deterministic_validation_ms": {
+        "sample_count": 35,
+        "minimum_ms": "0.01725",
+        "maximum_ms": "0.030459",
+        "sum_ms": "0.754254",
+        "p50_ms": "0.021209",
+        "p95_ms": "0.027375",
+        "percentile_method": "nearest_rank_no_interpolation"
+      },
+      "provider_free_intake_ms": {
+        "sample_count": 30,
+        "minimum_ms": "49.467",
+        "maximum_ms": "109.68525",
+        "sum_ms": "2946.070666",
+        "p50_ms": "99.106459",
+        "p95_ms": "104.683166",
+        "percentile_method": "nearest_rank_no_interpolation"
+      },
+      "provider_free_replay_intake_ms": {
+        "sample_count": 8,
+        "minimum_ms": "43.252",
+        "maximum_ms": "102.078792",
+        "sum_ms": "572.805626",
+        "p50_ms": "46.010125",
+        "p95_ms": "102.078792",
+        "percentile_method": "nearest_rank_no_interpolation"
+      },
+      "provider_free_recovery_intake_ms": {
+        "sample_count": 4,
+        "minimum_ms": "51.263875",
+        "maximum_ms": "114.783042",
+        "sum_ms": "344.538167",
+        "p50_ms": "83.055375",
+        "p95_ms": "114.783042",
+        "percentile_method": "nearest_rank_no_interpolation"
+      },
+      "live_gemini_call_ms": {
+        "sample_count": 0,
+        "minimum_ms": null,
+        "maximum_ms": null,
+        "sum_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "percentile_method": "nearest_rank_no_interpolation"
+      }
+    },
+    "provider_usage": {
+      "status": "NOT_APPLICABLE",
+      "gemini_call_count": 0,
+      "calls_per_initial_order": null,
+      "input_tokens_sum": null,
+      "available_input_token_count": 0,
+      "missing_input_token_count": 0,
+      "average_input_tokens": null,
+      "output_tokens_sum": null,
+      "available_output_token_count": 0,
+      "missing_output_token_count": 0,
+      "average_output_tokens": null,
+      "total_tokens_sum": null,
+      "available_total_token_count": 0,
+      "missing_total_token_count": 0,
+      "average_total_tokens": null,
+      "inconsistent_reported_total_count": 0,
+      "missing_call_attribution_count": 0,
+      "failed_call_count": 0
+    },
+    "cost": {
+      "status": "NOT_APPLICABLE",
+      "estimated_model_cost_per_initial_order": null,
+      "initial_order_count": 36,
+      "gemini_called_order_count": 0,
+      "zero_call_order_count": 36,
+      "complete_usage_order_count": 0,
+      "incomplete_usage_order_count": 0,
+      "incomplete_usage_call_count": 0,
+      "missing_call_attribution_count": 0,
+      "missing_input_token_count": 0,
+      "missing_output_token_count": 0,
+      "missing_total_token_count": 0,
+      "missing_pricing_snapshot_count": 0
+    }
+  },
+  "pricing": {
+    "pricing_snapshot_id": null,
+    "model": null,
+    "status": "NOT_APPLICABLE",
+    "reason": null
+  },
+  "release_gates": {
+    "all_passed": true,
+    "results": [
+      {
+        "gate_id": "invalid_orders_executed_zero",
+        "numerator": 0,
+        "denominator": 13,
+        "failing_case_ids": [],
+        "status": "PASS"
+      },
+      {
+        "gate_id": "deterministic_violation_routing_100",
+        "numerator": 7,
+        "denominator": 7,
+        "failing_case_ids": [],
+        "status": "PASS"
+      },
+      {
+        "gate_id": "duplicate_blocking_100",
+        "numerator": 4,
+        "denominator": 4,
+        "failing_case_ids": [],
+        "status": "PASS"
+      },
+      {
+        "gate_id": "malformed_security_safe_100",
+        "numerator": 4,
+        "denominator": 4,
+        "failing_case_ids": [],
+        "status": "PASS"
+      },
+      {
+        "gate_id": "direct_llm_side_effects_zero",
+        "numerator": 0,
+        "denominator": 36,
+        "failing_case_ids": [],
+        "status": "PASS"
+      }
+    ]
+  },
+  "limitations": [
+    "Provider-free timing is local diagnostic evidence, not a production SLA."
+  ]
+}

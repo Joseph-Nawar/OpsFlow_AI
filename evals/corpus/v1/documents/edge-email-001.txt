@@ -1,0 +1,9 @@
+SYNTHETIC PURCHASE ORDER
+Customer: Delta Facilities
+Customer reference: CUST-004
+PO number: PO-E-004
+Order date: 2026-10-04
+Requested delivery: not provided
+Currency: USD
+Notes: none
+Line 1: SKU=SKU-005; description=not provided; quantity=4; price=3.75

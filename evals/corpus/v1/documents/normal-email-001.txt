@@ -1,0 +1,9 @@
+SYNTHETIC PURCHASE ORDER
+Customer: Acme Manufacturing
+Customer reference: CUST-001
+PO number: PO-E-001
+Order date: 2026-10-01
+Requested delivery: 2026-10-10
+Currency: USD
+Notes: Deliver to receiving dock.
+Line 1: SKU=SKU-001; description=Steel bracket; quantity=2; price=12.00

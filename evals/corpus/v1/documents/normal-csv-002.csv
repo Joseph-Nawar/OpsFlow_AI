@@ -1,0 +1,3 @@
+customer_name,customer_reference,po_number,order_date,requested_delivery_date,currency,notes,sku,description,quantity,submitted_price
+"Kite Logistics","CUST-011","PO-C-002","2026-10-02","2026-10-13","USD","Two line CSV order.","SKU-013","Pallet wrap","4","18.00"
+"Kite Logistics","CUST-011","PO-C-002","2026-10-02","2026-10-13","USD","Two line CSV order.","SKU-014","Corner guards","4","7.00"

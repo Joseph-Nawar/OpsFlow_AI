@@ -1,0 +1,9 @@
+SYNTHETIC PURCHASE ORDER
+Customer: Cedar Health Supplies
+Customer reference: CUST-003
+PO number: PO-E-003
+Order date: 2026-10-03
+Requested delivery: 2026-10-14
+Currency: USD
+Notes: München receiving team.
+Line 1: SKU=SKU-004; description=Calibration cable; quantity=1; price=27.00

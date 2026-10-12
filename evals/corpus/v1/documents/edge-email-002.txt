@@ -1,0 +1,11 @@
+SYNTHETIC PURCHASE ORDER
+Customer: Eastport Foods
+Customer reference: CUST-005
+PO number: PO-E-005
+Order date: 2026-10-05
+Requested delivery: 2026-10-20
+Currency: USD
+Notes: Keep requested line order.
+Line 1: SKU=SKU-006; description=Blue marker; quantity=10; price=1.20
+Line 2: SKU=SKU-007; description=Archive folder; quantity=5; price=6.40
+Line 3: SKU=SKU-008; description=Label sleeves; quantity=2; price=9.10

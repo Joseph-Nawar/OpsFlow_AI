@@ -1,0 +1,9 @@
+SYNTHETIC PURCHASE ORDER
+Customer: Harbor Hospitality
+Customer reference: CUST-008
+PO number: PO-E-008
+Order date: 2026-10-08
+Requested delivery: 2026-10-19
+Currency: USD
+Notes: First identity in duplicate group.
+Line 1: SKU=SKU-010; description=Guest badge holder; quantity=12; price=2.10

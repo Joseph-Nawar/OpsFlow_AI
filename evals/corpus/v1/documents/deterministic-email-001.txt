@@ -1,0 +1,9 @@
+SYNTHETIC PURCHASE ORDER
+Customer: Granite Office Systems
+Customer reference: CUST-007
+PO number: PO-E-007
+Order date: 2026-10-07
+Requested delivery: 2026-10-18
+Currency: USD
+Notes: Submitted price intentionally outside catalogue tolerance.
+Line 1: SKU=SKU-009; description=Desk lamp; quantity=1; price=99.00

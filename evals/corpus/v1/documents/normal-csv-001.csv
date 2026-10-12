@@ -1,0 +1,2 @@
+customer_name,customer_reference,po_number,order_date,requested_delivery_date,currency,notes,sku,description,quantity,submitted_price
+"Juniper Schools","CUST-010","PO-C-001","2026-10-01","2026-10-11","USD","CSV export from procurement.","SKU-012","Notebook","20","2.25"
