@@ -196,7 +196,11 @@ def _replay_observations_complete(result: CaseResult) -> bool:
     )
 
 
-def _recovery_observations_complete(case: CorpusCase, result: CaseResult) -> bool:
+def _recovery_observations_complete(
+    case: CorpusCase,
+    result: CaseResult,
+    supplied_recovery_fields: frozenset[str],
+) -> bool:
     recovery = result.actual.recovery
     required_fields = {
         "injected_stage",
@@ -211,11 +215,12 @@ def _recovery_observations_complete(case: CorpusCase, result: CaseResult) -> boo
         "prior_receipt_ids",
         "receipt_ids_at_retry",
         "receipt_ids",
-        "resumed_sync_steps",
         "prior_receipts_preserved",
         "receipt_preservation_status",
     }
-    if recovery is None or not required_fields.issubset(recovery.model_fields_set):
+    if case.recovery is not None and case.recovery.injected_stage.value == "SYNCING":
+        required_fields.add("resumed_sync_steps")
+    if recovery is None or not required_fields.issubset(supplied_recovery_fields):
         return False
     if any(
         value is None
@@ -258,7 +263,11 @@ def _recovery_observations_complete(case: CorpusCase, result: CaseResult) -> boo
     )
 
 
-def _recovery_observation_issues(case: CorpusCase, result: CaseResult) -> list[str]:
+def _recovery_observation_issues(
+    case: CorpusCase,
+    result: CaseResult,
+    supplied_recovery_fields: frozenset[str],
+) -> list[str]:
     recovery = result.actual.recovery
     if recovery is None or case.recovery is None:
         return []
@@ -268,10 +277,10 @@ def _recovery_observation_issues(case: CorpusCase, result: CaseResult) -> list[s
         "prior_receipt_ids",
         "receipt_ids_at_retry",
         "receipt_ids",
-    }.issubset(recovery.model_fields_set)
+    }.issubset(supplied_recovery_fields)
     if (
         recovery.receipt_count is not None
-        and "receipt_ids" in recovery.model_fields_set
+        and "receipt_ids" in supplied_recovery_fields
         and recovery.receipt_count != len(recovery.receipt_ids)
     ):
         issues.append(f"recovery_receipt_count_disagrees_with_identities:{result.case_id}")
@@ -324,15 +333,19 @@ def _recovery_observation_issues(case: CorpusCase, result: CaseResult) -> list[s
         issues.append(f"recovery_receipt_identities_unavailable:{result.case_id}")
 
     if result.status is not CaseResultStatus.ERROR and not _recovery_observations_complete(
-        case, result
+        case, result, supplied_recovery_fields
     ):
         issues.append(f"recovery_observations_incomplete:{result.case_id}")
     return issues
 
 
-def _execution_observations_complete(case: CorpusCase, result: CaseResult) -> bool:
+def _execution_observations_complete(
+    case: CorpusCase,
+    result: CaseResult,
+    supplied_recovery_fields: frozenset[str],
+) -> bool:
     if case.recovery is not None and case.recovery.injected_stage.value == "SYNCING":
-        return _recovery_observations_complete(case, result)
+        return _recovery_observations_complete(case, result, supplied_recovery_fields)
     return (
         result.actual.pre_approval_state is not None
         and result.actual.external_execution is not None
@@ -382,6 +395,14 @@ def _execution_eligibility_issues(case: CorpusCase, result: CaseResult) -> list[
 
 def _case_evidence_issues(run: EvaluationRunResult, manifest: CorpusManifest) -> list[str]:
     issues: list[str] = []
+    supplied_recovery_fields = {
+        case.case_id: (
+            frozenset(case.actual.recovery.model_fields_set)
+            if case.actual.recovery is not None
+            else frozenset()
+        )
+        for case in run.cases
+    }
     try:
         cases = tuple(
             CaseResult.model_validate(case.model_dump(mode="python")) for case in run.cases
@@ -435,19 +456,23 @@ def _case_evidence_issues(run: EvaluationRunResult, manifest: CorpusManifest) ->
             expected_validation_match = (
                 validation_score.overall_match if validation_score is not None else None
             )
+        recovery_fields = supplied_recovery_fields.get(result.case_id, frozenset())
         issues.extend(_replay_observation_issues(corpus_case, result))
         expected_replay_match = (
             score_replay_outcome(corpus_case, result)
             if corpus_case.replay is None or _replay_observations_complete(result)
             else None
         )
-        issues.extend(_recovery_observation_issues(corpus_case, result))
+        issues.extend(_recovery_observation_issues(corpus_case, result, recovery_fields))
         expected_reliability_match = (
             score_reliability_outcome(corpus_case, result)
-            if corpus_case.recovery is None or _recovery_observations_complete(corpus_case, result)
+            if corpus_case.recovery is None
+            or _recovery_observations_complete(corpus_case, result, recovery_fields)
             else None
         )
-        execution_observations_complete = _execution_observations_complete(corpus_case, result)
+        execution_observations_complete = _execution_observations_complete(
+            corpus_case, result, recovery_fields
+        )
         issues.extend(_execution_eligibility_issues(corpus_case, result))
         if not execution_observations_complete and result.status is not CaseResultStatus.ERROR:
             issues.append(f"execution_safety_observations_incomplete:{result.case_id}")

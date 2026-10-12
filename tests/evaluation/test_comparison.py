@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -36,6 +37,13 @@ REFERENCE = (
 
 def baseline_result():
     return validate_result_json(REFERENCE)
+
+
+def _result_without_recovery_field(case_id: str, field: str) -> EvaluationRunResult:
+    payload = json.loads(REFERENCE.read_text(encoding="utf-8"))
+    case = next(item for item in payload["cases"] if item["case_id"] == case_id)
+    del case["actual"]["recovery"][field]
+    return validate_result_json(json.dumps(payload))
 
 
 def _with_run(result, **updates):
@@ -1450,6 +1458,135 @@ def test_coherent_recovery_receipt_loss_remains_a_comparable_regression() -> Non
     assert comparison.optimization_eligible is False
     with pytest.raises(ValueError, match="candidate correctness"):
         comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_omitted_prior_receipt_ids_invalidates_evidence_and_optimization_claim() -> None:
+    baseline = baseline_result()
+    candidate = _result_without_recovery_field("retry-email-001", "prior_receipt_ids")
+    recovery = next(case for case in candidate.cases if case.case_id == "retry-email-001")
+    assert recovery.actual.recovery is not None
+    assert "prior_receipt_ids" not in recovery.actual.recovery.model_fields_set
+
+    intake = candidate.metrics.latency.provider_free_intake_ms.model_copy(
+        update={"p95_ms": Decimal("100.000")}
+    )
+    latency = candidate.metrics.latency.model_copy(update={"provider_free_intake_ms": intake})
+    candidate = candidate.model_copy(
+        update={"metrics": candidate.metrics.model_copy(update={"latency": latency})}
+    )
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.candidate_correctness_passed is None
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+def test_omitted_syncing_resume_steps_cannot_be_accepted_as_comparable_failure() -> None:
+    baseline = baseline_result()
+    candidate = _result_without_recovery_field("retry-csv-002", "resumed_sync_steps")
+    case = next(case for case in candidate.cases if case.case_id == "retry-csv-002")
+    assert case.actual.recovery is not None
+    assert "resumed_sync_steps" not in case.actual.recovery.model_fields_set
+    fabricated_failure = case.model_copy(
+        update={
+            "status": CaseResultStatus.FAIL,
+            "scores": case.scores.model_copy(
+                update={"reliability_match": False, "execution_safety_match": False}
+            ),
+        }
+    )
+    cases = tuple(
+        fabricated_failure if current.case_id == case.case_id else current
+        for current in candidate.cases
+    )
+    candidate = _with_cases_and_recomputed_scores(candidate, cases)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.correctness_comparable is False
+    assert comparison.candidate_correctness_passed is None
+    assert comparison.optimization_eligible is False
+    with pytest.raises(ValueError, match="evidence"):
+        comparison.require_optimization_claim(stage="provider_free_intake_ms", percentile="p95_ms")
+
+
+@pytest.mark.parametrize(
+    ("case_id", "field"),
+    [
+        ("retry-email-001", "receipt_ids_at_retry"),
+        ("retry-email-001", "receipt_ids"),
+        ("retry-csv-002", "prior_receipt_ids"),
+        ("retry-csv-002", "receipt_ids_at_retry"),
+        ("retry-csv-002", "receipt_ids"),
+    ],
+)
+def test_omitted_applicable_receipt_identity_invalidates_evidence(case_id: str, field: str) -> None:
+    baseline = baseline_result()
+    candidate = _result_without_recovery_field(case_id, field)
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is False
+    assert comparison.correctness_comparable is False
+    assert comparison.optimization_eligible is False
+
+
+def test_processing_recovery_allows_omitted_inapplicable_resume_steps() -> None:
+    baseline = baseline_result()
+    candidate = _result_without_recovery_field("retry-email-001", "resumed_sync_steps")
+
+    comparison = compare_runs(baseline, candidate)
+
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.candidate_correctness_passed is True
+
+
+def test_explicit_empty_processing_receipt_identities_remain_valid() -> None:
+    payload = json.loads(REFERENCE.read_text(encoding="utf-8"))
+    case = next(item for item in payload["cases"] if item["case_id"] == "retry-email-001")
+    for field in ("prior_receipt_ids", "receipt_ids_at_retry", "receipt_ids"):
+        case["actual"]["recovery"][field] = []
+    candidate = validate_result_json(json.dumps(payload))
+    recovery = next(
+        item for item in candidate.cases if item.case_id == "retry-email-001"
+    ).actual.recovery
+    assert recovery is not None
+    assert all(
+        field in recovery.model_fields_set
+        for field in ("prior_receipt_ids", "receipt_ids_at_retry", "receipt_ids")
+    )
+
+    comparison = compare_runs(baseline_result(), candidate)
+
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.candidate_correctness_passed is True
+
+
+def test_error_recovery_can_omit_unavailable_identity_observations() -> None:
+    candidate = _result_without_recovery_field("retry-email-001", "prior_receipt_ids")
+    case = next(item for item in candidate.cases if item.case_id == "retry-email-001")
+    error_case = case.model_copy(
+        update={
+            "status": CaseResultStatus.ERROR,
+            "actual": case.actual.model_copy(update={"failure_code": "PROVIDER_UNAVAILABLE"}),
+            "scores": case.scores.model_copy(update={"reliability_match": None}),
+        }
+    )
+    cases = tuple(error_case if item.case_id == case.case_id else item for item in candidate.cases)
+    candidate = _with_cases_and_recomputed_scores(candidate, cases)
+
+    comparison = compare_runs(baseline_result(), candidate)
+
+    assert comparison.candidate_evidence_valid is True
+    assert comparison.correctness_comparable is True
+    assert comparison.candidate_correctness_passed is False
+    assert comparison.optimization_eligible is False
 
 
 @pytest.mark.parametrize("stage", list(LatencyMetrics.model_fields))
