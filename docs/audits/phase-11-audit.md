@@ -155,3 +155,62 @@ The resumed audit began from clean, mutually agreeing local and remote SHA `28e7
 No Compose project was started and no PostgreSQL database operation was attempted: without a reachable daemon there is no way to verify container/project/volume ownership or connected database identity. The database-backed suites, migrations, `make check`, applicable database security checks, and successful clean-clone `make evaluate` therefore remain **NOT RUN / NOT VERIFIED**. The prior safe configuration-parse result and all earlier source/static evidence remain as recorded; they do not satisfy these missing gates.
 
 **Disposition remains BLOCKED, not FAIL:** this recheck produced an environment limitation, not evidence of an implementation defect. The required next action is to ensure Docker Desktop's Engine has fully started and that `docker info` succeeds in this workspace's `desktop-linux` context. Port 5432 was available at this recheck. Resume database work only after daemon access returns and the dedicated disposable Compose project, volume, container, database, schema, and migration state can all be positively identified.
+
+### Final follow-up verification after Docker became available — 2026-10-12
+
+This section adds the missing infrastructure-dependent evidence. It does not erase the original BLOCKED audit or either subsequent blocked environment recheck above. The original source review and static results remain as recorded; only the missing verification was resumed.
+
+#### Git and baseline identity
+
+- The resume request named `28e7052e3ba97f7f8a4c01267a9f76aae3f556b6`, but the actual latest branch tip was `78a5d10c83b7a4baf4507286eaceb2d7fcefe3ee`. That later commit is present on both local and remote and adds only eight lines to this audit record describing the preceding Docker-unavailable recheck. The tracked worktree was clean. Verification continued from the actual latest tip so that this committed history was preserved.
+- The frozen M11E implementation remains `49f9365c1e41f246d293e11c647b2ffda0198447`; it is an ancestor of clean-clone documentation baseline `b3e66cd9a98fb876346b634ac226670fdb1fef96`. `git diff --name-only 49f9365..b3e66cd` returned only `README.md`, the development guide, roadmap, Phase 11 design, and Phase 11 plan. The corpus and historical references have no diff from that baseline.
+
+#### Disposable PostgreSQL identity and isolation
+
+- Docker client/server were available (`29.7.2`), Compose was `v5.4.0`, and the selected context was `desktop-linux`. Before provisioning, loopback port 5432 had no listener and a TCP connection was refused. The committed Compose file passed `docker compose --env-file /dev/null --project-name opsflow-m11f-audit-20261012 -f docker-compose.yml config --quiet`.
+- Only the repository's PostgreSQL service was started with `docker compose --env-file /dev/null --project-name opsflow-m11f-audit-20261012 -f docker-compose.yml up -d postgres`. The healthy container was `f9cb104347d4` (`postgres:16`), with Compose project label `opsflow-m11f-audit-20261012`, service label `postgres`, and only `127.0.0.1:5432->5432/tcp`. Its data volume was `opsflow-m11f-audit-20261012_postgres-data`, also labeled for that project. No unrelated container was stopped or replaced. The dedicated project and volume were retained after verification.
+- Database URLs were passed explicitly; no `.env` was read or copied. The disposable databases used were `opsflow_evaluation`, `opsflow_integration_m11f_20261012`, `opsflow_integration_m11f_check_20261012`, `opsflow_migration_test`, and `opsflow_m11c_m11f_20261012`. Before destructive evaluation reset or migration-test operations, the selected target was checked over TCP through the owned container. Connected identity queries reported the exact target database, `public` schema, server port `5432`, PostgreSQL `16.15` (`server_version_num=160015`), and expected Alembic head `0007_phase7_intake_ownership` where migrated. The application guards also accepted the evaluation, integration, and migration-test identities.
+- The normal `opsflow` database was queried read-only after verification: it remained on `public`, had no Alembic version table, and had zero public tables. No reset or migration targeted it. The evaluation database retained its schema and Alembic head after resets.
+
+#### Database-backed verification
+
+All test URLs below targeted the explicitly named databases above; credentials are intentionally omitted.
+
+| Check | Result |
+| --- | --- |
+| `uv run pytest tests/integration --collect-only -q --no-cov` with the guarded integration URL | **367 tests collected** before the first migration/run. |
+| `uv run alembic upgrade head` and `uv run alembic current` with `OPSFLOW_DATABASE_URL` explicitly set to the disposable integration target | **PASS**; head `0007_phase7_intake_ownership`. The same explicit migration/head check was performed for the evaluation, M11C, and fresh full-check targets. |
+| `make --silent test-integration` on fresh `opsflow_integration_m11f_20261012` | **367 passed** in 75.39 seconds. |
+| `uv run pytest tests/evaluation -q --no-cov -rs` with evaluation, migration-test, and M11C test URLs set to their guarded targets | **332 passed**, no skips, in 22.24 seconds. This includes the database-backed evaluation and M11C execution tests. |
+| `uv run pytest tests/integration/test_phase2_migrations.py -q --no-cov` with `OPSFLOW_MIGRATION_TEST_DATABASE_URL=opsflow_migration_test` and integration preflight configured | **1 passed** in 2.14 seconds. The test exercised downgrade/re-upgrade; afterward the migration database was back at `0007_phase7_intake_ownership`. |
+| `make --silent check` on the clean clone with fresh `opsflow_integration_m11f_check_20261012` and explicit evaluation, migration-test, and M11C URLs | **PASS: 2,116 passed, 6 skipped, 90.79% coverage**. Ruff passed; 317 files were formatted; mypy passed for 100 source files; package build passed; frontend tests **68 passed**, lint passed, and build passed. The six skips were optional live Odoo/HubSpot tests; no live calls occurred. |
+| `make --silent security-audit` | **PASS** for the production Python and frontend dependency checks; production frontend audit reported zero vulnerabilities. |
+
+The six optional integration skips are live-provider cases. The two already-known high-severity npm advisories remain in the frontend development dependency tree; they are unchanged from the earlier audit, no dependency files changed, and the production-only frontend audit remains clean. No live Gemini, Odoo, or HubSpot request was made.
+
+Failed verification attempts are retained here for accuracy. An evaluation-suite invocation supplied an empty timeout string and produced **2 failed, 2 errors** from invalid settings parsing; with the finite timeout set to `30`, the full evaluation suite passed as shown above. A coverage-enabled evaluation-only invocation also exited because that partial suite reported roughly 61% coverage below the repository-wide threshold; it was not used as coverage evidence. Separately, an initial full check reused the integration database already seeded by `make test-integration` and produced **7 failed, 2,109 passed, 6 skipped** (90.81% coverage). The affected integration tests contain fixed fixture identities and encountered rows from the previous run. No code was changed. Repeating the suite on a fresh dedicated integration database made the full check pass. This is recorded as a **LOW operational repeatability observation**: local integration runs should use a fresh disposable target; it is not an unresolved Critical, High, or Medium Phase 11 finding, and CI provisions a fresh database per job. The approved plan's repeated evaluation-reset behavior was separately exercised below.
+
+#### Clean-clone provider-free evaluation
+
+- A separate clone at `/tmp/opsflow-m11f-task15-clean-20261012-78a5` was checked out at `b3e66cd9a98fb876346b634ac226670fdb1fef96`; `uv sync --frozen --dev` completed. It had no `.env`; before evaluation, `evals/results/` contained only `.gitkeep`. The clone's tracked tree remained unchanged. Documentation-only changes after frozen M11E technical SHA `49f9365c1e41f246d293e11c647b2ffda0198447` were the only source difference from that implementation baseline.
+- `make evaluate` was run **twice consecutively** with the same positively verified `opsflow_evaluation` database and with live opt-in/key unset. Both invocations exited 0 and executed the real provider-free application path. Run IDs were `d906421c-c696-4cc0-a19d-7bdfa6b3b302` and `b385d603-df6f-4611-920d-1b2a0b5e4b13`; both result artifacts report source Git SHA `b3e66cd9a98fb876346b634ac226670fdb1fef96`, corpus `3.0.0`, and command `make evaluate`.
+- Both JSON outputs passed `validate_result_json`; their 36 unique case IDs exactly matched the manifest, and the corpus loader verified all 36 source SHA-256 values. Both runs report **36/36 PASS**, zero Gemini calls, extraction quality `NOT_APPLICABLE`, and model cost `NOT_APPLICABLE`. The gates in both runs were:
+
+  | Gate | Result |
+  | --- | ---: |
+  | `invalid_orders_executed_zero` | 0/13 PASS |
+  | `deterministic_violation_routing_100` | 7/7 PASS |
+  | `duplicate_blocking_100` | 4/4 PASS |
+  | `malformed_security_safe_100` | 4/4 PASS |
+  | `direct_llm_side_effects_zero` | 0/36 PASS |
+
+  `render_markdown_from_json` reproduced each generated Markdown file byte-for-byte. The second run records sanitized runtime metadata: macOS/Darwin, Python `3.12.15`, CPU `arm64`, dependency lock `uv.lock`, isolated PostgreSQL `16`. The committed historical reference pair was not overwritten; its SHA-256 values remain JSON `22026cb1b2f8d5a8202a2b8e585994494b0290d8116855dd17b20bf8204c24d1` and Markdown `d8c40c09f9a254690b67c38695a591467808989af1bf933fb3f59658e60cbc6d`.
+- Stage samples in the first run were parse 38, deterministic validation 35, normal provider-free intake 30, replay 8, recovery 4, and live Gemini 0. The second run independently reported the required case/gate result and valid artifact provenance; wall-clock values and run IDs are allowed to differ. These local timings remain diagnostic, not production SLAs.
+
+#### Security, documentation, and final disposition
+
+- Pinned Gitleaks `8.28.0` is available at `/tmp/opsflow-m11f-audit.CJnQg5/gitleaks`; the earlier audit's full-history scan covered 321 commits with no committed findings. The updated audit record is scanned directly and as staged content before commit; the final commit-range scan is reported in the delivery response. The earlier whole-checkout scan's 24 matches in ignored local `.env` / `.superpowers/sdd/` material remain qualified as unverified patterns, not confirmed credential exposure; no values were printed or inspected.
+- No Phase 11 implementation, tests, corpus, dependencies, CI, historical reference, or milestone status changed during this follow-up. The active corpus remains `3.0.0`; M11E remains `NO_OPTIMIZATION`. Live Gemini quality, provider latency, usage, and cost remain unavailable and are not claimed. GitHub-hosted CI was not run; the committed workflow was reviewed previously, and the local clean-clone sequence used the same guarded integration/migration contract.
+- **Final Task 15 disposition: PASS.** The previous BLOCKED verdicts accurately describe the earlier environment states and remain in the record. Their outstanding verification gates are now completed. No unresolved Critical, High, or Medium Phase 11 implementation finding was demonstrated. The one low operational repeatability observation above does not block Task 15 under the approved severity policy. The report is ready for human review; this does not close Phase 11 or authorize Task 16 automatically.
+
+At this final follow-up, M11A–M11E remain `COMPLETE`; M11F Task 15 is ready for human review; Task 16 remains unauthorized; Phase 11 remains `IN PROGRESS`; Phase 12 remains `NOT STARTED`.
