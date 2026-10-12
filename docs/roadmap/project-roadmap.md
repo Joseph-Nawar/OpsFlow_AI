@@ -225,7 +225,7 @@ The final M10F audit record is [the Phase 10 audit](../audits/phase-10-audit.md)
 | M11C — Correctness, Routing & Reliability Evaluation | COMPLETE at independently reviewed technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; Tasks 5–7; corpus `3.0.0` |
 | M11D — Performance, Token & Cost Evaluation | COMPLETE; independently reviewed and human-approved at `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a` |
 | M11E — Measurement-Driven Optimization & Regression Comparison | COMPLETE; independently reviewed and human-approved at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447` |
-| M11F — Independent Phase 11 Audit & Closeout | NOT STARTED |
+| M11F — Independent Phase 11 Audit & Closeout | COMPLETE |
 
 ## 8. Detailed phases
 
