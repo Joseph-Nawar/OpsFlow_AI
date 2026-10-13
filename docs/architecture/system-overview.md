@@ -44,14 +44,22 @@ Gmail label trigger or authenticated intake request
                    human review
                          |
               explicit authorized approval
-                         |
-                         v
-         Odoo synchronization, then HubSpot
-                         |
-        PostgreSQL state, events, and receipts
-                         |
-        current approval-time notifications
+                  /                  \
+                 v                    v
+    current approval-time intents    approved-order sync
+      Slack: ORDER_APPROVED             |
+      Gmail: ORDER_APPROVED             v
+      with Gmail provenance       Odoo, then HubSpot
+      (delivery does not gate sync)      |
+                                  durable receipts
+                                          |
+                                    COMPLETED
+                                          |
+                            M12B planned completion intents
+                              Gmail + Slack (not implemented)
 ```
+
+Slack `REVIEW_REQUIRED`, `APPROVAL_READY`, and `PROCESSING_FAILED` intents are also created for their corresponding state events. Approval-time notification delivery and retry do not gate synchronization.
 
 The Gmail intake workflow watches an operator-configured label, selects the message body or supported attachment, and sends the original Gmail message identity and source metadata to the authenticated intake endpoint. The Python document processor canonicalizes supported email text, CSV, XLSX, and PDF content before extraction. Intake identity and source provenance support idempotent replay; raw source document bytes are not persisted by the Phase 7 intake pipeline.
 
@@ -69,7 +77,7 @@ The domain states, transition rules, and invariants are defined in the [domain m
 
 ## Current notification behavior and M12B boundary
 
-The current durable notification outbox supports Slack events for `REVIEW_REQUIRED`, `APPROVAL_READY`, `PROCESSING_FAILED`, and `ORDER_APPROVED`. Gmail delivery is a sender-only reply to the original thread for `ORDER_APPROVED`, and it requires persisted Gmail-source provenance. The approval reply says the order was approved for processing; it does not claim that synchronization completed. Each channel has separate durable outcomes and bounded retries, with at-least-once external delivery semantics.
+The current durable notification outbox supports Slack events for `REVIEW_REQUIRED`, `APPROVAL_READY`, `PROCESSING_FAILED`, and `ORDER_APPROVED`. Gmail delivery is a sender-only reply to the original thread for `ORDER_APPROVED`, and it requires persisted Gmail-source provenance. The approval reply says the order was approved for processing; it does not claim that synchronization completed. Each channel has separate durable outcomes and bounded retries, with at-least-once external delivery semantics. Notification delivery does not change order state or gate the approved order's ERP/CRM synchronization.
 
 **Post-sync completion notifications are not implemented.** M12B has an approved design contract for creating separate Gmail and Slack completion intents only after successful Odoo and HubSpot synchronization with durable receipts. Gmail would reply to the original sender/thread when persisted Gmail provenance exists. Slack would independently report successful synchronization; neither channel's delivery eligibility depends on the other's delivery. Both outcomes would be required by the Phase 12 full-demo acceptance criterion, but their external delivery order is not a correctness invariant. M12B remains NOT STARTED and needs separate implementation authorization and review. See the [approved Phase 12 design](../superpowers/specs/2026-10-12-phase-12-portfolio-release-design.md) and [implementation plan](../superpowers/plans/2026-10-12-phase-12-portfolio-release.md).
 

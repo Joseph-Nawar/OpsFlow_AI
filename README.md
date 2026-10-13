@@ -61,17 +61,20 @@ Install dependencies and create ignored local configuration:
 ```bash
 uv sync --frozen --dev
 npm --prefix web ci
-cp .env.example .env
+if [ ! -e .env ] && [ ! -L .env ]; then
+  cp .env.example .env
+fi
 ```
 
-Start a fresh, named Compose project containing only PostgreSQL, then apply migrations:
+The guard creates `.env` only when no file, directory, or symlink exists at that path. An existing local configuration is left unchanged.
+
+Start a fresh, named Compose project containing only PostgreSQL and wait for its configured health check before applying migrations:
 
 ```bash
-docker compose -p opsflow-m12a-local up -d postgres
-make migrate
+docker compose -p opsflow-m12a-local up --wait postgres && make migrate
 ```
 
-If that Compose project name or its volume already exists, choose a new unique `-p` name and use it consistently in the corresponding Compose commands. The `make migrate` command reads the local `.env` database URL at `localhost:5432`. `.env` is ignored; keep all credentials there or in local n8n credential storage, never in Git.
+Compose waits until PostgreSQL's `pg_isready` health check succeeds. The `&&` prevents migrations from running if startup or the health check fails. If that Compose project name or its volume already exists, choose a new unique `-p` name and use it consistently in the corresponding Compose commands. The `make migrate` command reads the local `.env` database URL at `localhost:5432`. `.env` is ignored; keep all credentials there or in local n8n credential storage, never in Git.
 
 Start the local API and review frontend in separate terminals:
 
