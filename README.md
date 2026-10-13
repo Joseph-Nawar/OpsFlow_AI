@@ -10,7 +10,7 @@ OpsFlow is a locally runnable portfolio project for freelance clients and Applie
 
 Implemented capabilities include canonical processing of email text, CSV, XLSX, and PDF inputs; structured extraction through a provider interface; deterministic validation; a React human-review application; PostgreSQL-backed state and audit history; authenticated n8n orchestration; Gmail intake and approval-time notifications; and Odoo/HubSpot synchronization with durable receipts and recovery controls.
 
-Phases 0–11 are complete. Phase 12 is in progress: M12A — Portfolio Framing and Onboarding is underway, and M12B–M12F have not started. The Phase 11 provider-free reference passed **36/36 synthetic cases and all five correctness and safety gates**, with zero Gemini calls. The new Phase 12 end-to-end portfolio demonstration—including post-sync Gmail and Slack completion notifications—has not yet been captured. No Phase 12 video or screenshots are available yet. See the [roadmap](docs/roadmap/project-roadmap.md), [Phase 11 evaluation reference](docs/evaluation/reference/phase-11-provider-free-baseline.md), and [Phase 11 audit](docs/audits/phase-11-audit.md) for status and evidence.
+Phases 0–11 are complete. Phase 12 is in progress: M12A — Portfolio Framing and Onboarding is **complete**, independently reviewed at implementation SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199`, and human-approved. M12B–M12F have not started. The Phase 11 provider-free reference passed **36/36 synthetic cases and all five correctness and safety gates**, with zero Gemini calls. The new Phase 12 end-to-end portfolio demonstration—including post-sync Gmail and Slack completion notifications—has not yet been captured. No Phase 12 video or screenshots are available yet. See the [roadmap](docs/roadmap/project-roadmap.md), [Phase 11 evaluation reference](docs/evaluation/reference/phase-11-provider-free-baseline.md), and [Phase 11 audit](docs/audits/phase-11-audit.md) for status and evidence.
 
 ## How it works
 
@@ -54,7 +54,7 @@ Real Gemini extraction quality, aggregate provider latency, authoritative token 
 
 The following is a local PostgreSQL, API, and frontend quick start. It does not start n8n, run the end-to-end provider demo, or make external calls.
 
-**Prerequisites:** Python 3.12, `uv`, Node.js 24 with npm 11.19.0, Docker Engine or Desktop with the Compose v2 plugin (`docker compose`), GNU Make, and Git. Python and Node ranges are pinned in the project manifests; `uv` and Docker/Compose versions are not pinned. PostgreSQL is supplied by Compose. The Compose file uses PostgreSQL 16 and publishes it on loopback port 5432. Confirm that port is free; if another service owns it, stop and identify that service before proceeding rather than connecting to an unknown database.
+**Prerequisites:** Python 3.12, `uv`, Node.js 24 with npm 11.19.0, Docker Engine or Desktop with the Compose v2 plugin supporting `docker compose up --wait`, GNU Make, and Git. Python and Node ranges are pinned in the project manifests; `uv` and Docker/Compose versions are not pinned. PostgreSQL is supplied by Compose. The Compose file uses PostgreSQL 16 and publishes it on loopback port 5432. Confirm that port is free; if another service owns it, stop and identify that service before proceeding rather than connecting to an unknown database.
 
 Install dependencies and create ignored local configuration:
 
@@ -68,13 +68,34 @@ fi
 
 The guard creates `.env` only when no file, directory, or symlink exists at that path. An existing local configuration is left unchanged.
 
-Start a fresh, named Compose project containing only PostgreSQL and wait for its configured health check before applying migrations:
+Start a fresh, uniquely named Compose project containing only PostgreSQL. Its project name owns the local service and project-scoped data volume. Wait for PostgreSQL's health check, then verify the effective Alembic target before applying migrations:
 
 ```bash
-docker compose -p opsflow-m12a-local up --wait postgres && make migrate
+docker compose -p opsflow-m12a-local up --wait postgres &&
+{
+  uv run python - <<'PY'
+from sqlalchemy.engine import make_url
+from opsflow.settings import get_settings
+
+expected = ("postgresql+asyncpg", "localhost", 5432, "opsflow", "opsflow")
+try:
+    url = make_url(get_settings().database_url)
+    actual = (url.drivername, url.host, url.port, url.database, url.username)
+except Exception:
+    raise SystemExit("Refusing migration: effective database target could not be verified.")
+
+if actual != expected:
+    raise SystemExit(
+        "Refusing migration: target must be the local OpsFlow database "
+        "at localhost:5432/opsflow as user opsflow."
+    )
+print("Verified effective migration target: local OpsFlow database.")
+PY
+} &&
+make migrate
 ```
 
-Compose waits until PostgreSQL's `pg_isready` health check succeeds. The `&&` prevents migrations from running if startup or the health check fails. If that Compose project name or its volume already exists, choose a new unique `-p` name and use it consistently in the corresponding Compose commands. The `make migrate` command reads the local `.env` database URL at `localhost:5432`. `.env` is ignored; keep all credentials there or in local n8n credential storage, never in Git.
+Compose `--wait` returns after the service is healthy, as reported by its configured `pg_isready` check. The read-only verifier parses the same `get_settings().database_url` used by Alembic and compares its driver, host, port, database, and username with the documented local target. It prints no URL, password, or other credential, does not connect to the database, and fails closed on a mismatch; the `&&` chain then prevents `make migrate` from running. `OPSFLOW_DATABASE_URL` or an existing `.env` can override defaults, so this check runs immediately before migration. If another service owns loopback port 5432, stop and identify it before proceeding rather than connecting to an unknown database. If this Compose project name or its volume already exists and its state is not the intended disposable local database, choose a new unique `-p` name and use it consistently in corresponding Compose commands; Compose scopes the PostgreSQL data volume to that project. `.env` is ignored; keep credentials there or in local n8n credential storage, never in Git.
 
 Start the local API and review frontend in separate terminals:
 

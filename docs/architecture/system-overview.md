@@ -89,7 +89,7 @@ The current durable notification outbox supports Slack events for `REVIEW_REQUIR
 - **Workflow:** self-hosted n8n Community 2.40.5.
 - **Integrations:** Gemini adapter; Gmail intake and approval reply; Slack notification dispatch; Odoo ERP; HubSpot CRM.
 
-Phases 0–11 are COMPLETE. Phase 12 is IN PROGRESS with M12A — Portfolio Framing and Onboarding authorized and underway; M12B–M12F remain NOT STARTED. The design and implementation plan are APPROVED. The authoritative current tracker is the [project roadmap](../roadmap/project-roadmap.md).
+Phases 0–11 are COMPLETE. Phase 12 is IN PROGRESS. M12A — Portfolio Framing and Onboarding is COMPLETE, independently reviewed at implementation SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199` and human-approved; M12B–M12F remain NOT STARTED. The design and implementation plan are APPROVED. The authoritative current tracker is the [project roadmap](../roadmap/project-roadmap.md).
 
 ## Related documentation
 

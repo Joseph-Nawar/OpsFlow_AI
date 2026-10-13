@@ -3,9 +3,10 @@
 ## Status of this guide
 
 Phases 0–11 are `COMPLETE`. Phase 12 is `IN PROGRESS`; M12A — Portfolio
-Framing and Onboarding is authorized and in progress, while M12B–M12F remain
-`NOT STARTED`. The Phase 12 design and implementation plan are approved. The
-[roadmap](../roadmap/project-roadmap.md) is the current status source; the
+Framing and Onboarding is `COMPLETE`, independently reviewed at implementation
+SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199` and human-approved, while
+M12B–M12F remain `NOT STARTED`. The Phase 12 design and implementation plan
+are approved. The [roadmap](../roadmap/project-roadmap.md) is the current status source; the
 [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md)
 and [Phase 11 audit](../audits/phase-11-audit.md) preserve detailed historical
 evidence and limitations. The Phase 12 [design](../superpowers/specs/2026-10-12-phase-12-portfolio-release-design.md)
@@ -264,7 +265,7 @@ This scan completed successfully with no leaks found. The CI workflow is [`.gith
 
 ## Clean-checkout workflow
 
-The README’s [local development sequence](../../README.md#local-development) is the concise clean-checkout procedure. It installs the committed Python and npm dependencies, creates only the ignored local `.env`, starts PostgreSQL, applies migrations, runs the two development servers, and then runs `make check`. The sequence was verified from a fresh clone of `phase/0-foundation`.
+The README’s [local development sequence](../../README.md#local-development) is the concise clean-checkout procedure. It installs the committed Python and npm dependencies, creates only the ignored local `.env` when none exists, starts PostgreSQL, verifies its health and the effective migration target, applies migrations, and starts the two development servers. `make check` is a separate optional full quality-check workflow; it requires the disposable integration database described below and is not part of the basic quick start. The sequence was verified from a fresh clone of `phase/0-foundation`.
 
 ## Phase 11 evaluation commands
 
