@@ -1,140 +1,126 @@
 # OpsFlow AI
 
-OpsFlow AI is a production-grade portfolio project for reliable B2B purchase-order and operations automation. It is designed to demonstrate how messy inputs such as email, PDF, XLSX, and forms can move through AI-assisted extraction, deterministic validation, human review, and safe synchronization with business systems.
+**AI-assisted purchase-order processing with deterministic safeguards and human authority.**
 
-The project is intentionally sized as a portfolio project, not an enterprise platform. The goal is a clear, credible, locally demonstrable system that shows applied AI, workflow automation, backend engineering, integrations, reliability, and evaluation.
+Businesses receive purchase orders in inconsistent emails and documents. OpsFlow AI extracts order data from those inputs, checks it against trusted business rules and data, routes exceptions to people, and synchronizes approved orders with ERP and CRM systems. The project demonstrates applied AI inside a controlled business workflow rather than allowing a model to make or execute business decisions.
 
-## Current status
+OpsFlow is a locally runnable portfolio project for freelance clients and Applied AI engineering roles. It is not a hosted service or a claim of production deployment.
 
-**M0A — Repository Intelligence & Project Specification**, **M0B — Backend Foundation**, **M0C — PostgreSQL, SQLAlchemy, Alembic & Docker**, **M0D — Frontend Foundation**, **M0E — Developer Experience & CI**, and **M0F — Independent Phase 0 Audit** are `COMPLETE`. Phase 0 is `COMPLETE`. Phase 1 is `COMPLETE`; **M1A — Domain Contract & Implementation Plan**, **M1B — Supporting Domain Records**, **M1C — Order Aggregate**, **M1D — State Machine & Recovery Semantics**, **M1E — Domain Scenario Verification & Contract Hardening**, and **M1F — Independent Phase 1 Audit** are `COMPLETE`. Phase 2 is `COMPLETE`; **M2A — Persistence & API Contract**, **M2B — Relational Schema & Domain Mapping**, **M2C — Repository & Durable Reads**, **M2D — Idempotent Order Creation**, **M2E — Core /v1/orders API & Hardening**, and **M2F — Independent Phase 2 Audit & Closeout** are `COMPLETE`. Phase 3 is `COMPLETE`; **M3A — Canonical Ingestion Contract**, **M3B — Canonical Models, Validation & Text/CSV**, **M3C — XLSX Parsing**, **M3D — PDF Parsing**, **M3E — Unified Processor & Robustness**, and **M3F — Independent Phase 3 Audit & Closeout** are `COMPLETE`. Phase 4 is `COMPLETE`; **M4A — Extraction Contract & Design**, **M4B — Typed Models, Prompt Renderer & Fake Provider**, **M4C — OrderExtractor & Response Hardening**, **M4D — Gemini Provider**, **M4E — Cross-Format & Adversarial Robustness**, and **M4F — Independent Phase 4 Audit & Closeout** are `COMPLETE`. Phase 5 is `COMPLETE`; **M5A — Deterministic Validation Contract & Design**, **M5B — Trusted Business Data, Policy & Rule Engine**, **M5C — Extraction Snapshot Persistence**, **M5D — Validation Application Service & Atomic Routing**, **M5E — Rule Matrix, Integration & Adversarial Hardening**, and **M5F — Independent Phase 5 Audit & Closeout** are `COMPLETE`. Phase 6 is `COMPLETE`; **M6A — Human Review Contract & Design**, **M6B — Review Persistence, Authorization & Read Model**, **M6C — Human Correction & Deterministic Revalidation**, **M6D — Approval, Rejection & Retry Commands/API**, **M6E — React Review Application & Cross-Boundary Hardening**, and **M6F — Independent Phase 6 Audit & Closeout** are `COMPLETE`. Phase 7 is `COMPLETE`; **M7A — Orchestration Contract & Design**, **M7B — Orchestration Service Authentication & HTTP Contract**, **M7C — Idempotent Intake Pipeline**, **M7D — n8n Runtime & Version-Controlled Sandbox Workflow**, **M7E — Cross-Boundary Reliability & Demo Hardening**, and **M7F — Independent Phase 7 Audit & Closeout** are `COMPLETE`. Phase 8 is `COMPLETE` (M8A–M8F `COMPLETE`). Phase 9 is `COMPLETE` (M9A, M9B, M9C, M9D, M9E, and M9F `COMPLETE`). M9B remains human-approved at `8f1a25c55f627c3920465e95ffc954434d3aad74`; M9C at `1ed8508167c75305553db54906bc5e9af5d89870`; M9D at `9f319e9baeb8f6d39fccd578cfa85bda3fcb480f`; M9E at `8b1f6941f2070017724346c4acb93d1d16cfa492`. M9F and Phase 9 technical approval is recorded at `b96364d11da37b61fd6c8bc75c651918cf596ac7`; the final disposition is in [the Phase 9 audit](docs/audits/phase-9-audit.md). Phase 10 is `COMPLETE` with M10A `COMPLETE` at approved SHA `ab7cec323e4d45dae57e5d418bc0755175aa0a88`, M10B `COMPLETE` at human-approved technical SHA `765c5030659d6c4d0aebe325b7d35d577766dbfd`, M10C `COMPLETE` at human-approved technical SHA `7d7ec4a2e2135b2280e16bdad8ac6c6315765a28`, M10D `COMPLETE` at human-approved technical SHA `cf0b331864ca2cc5246aa32c7ce12827b79284d0`, M10E `COMPLETE` at human-approved technical SHA `b73d7add25c273b5efac10f86bdd3ebef952d6da`, and M10F `COMPLETE` after the final audit disposition on the technical remediation SHA `3632dbc46129ca0a074708a88d2698cb3ffcc3a7`; Phase 10 is `COMPLETE`. Phase 11 is `COMPLETE`; M11A — Evaluation Contract & Benchmark Design is `COMPLETE` with design `APPROVED` at `bde63c54a66486aea8c1e7292887d004bf9e91f4` and implementation plan `APPROVED` at `1e8c152aa072b075f059020ca232889ad2bcfa91`; M11B — Synthetic Ground-Truth Corpus & Scoring Foundation is `COMPLETE` at independently reviewed technical baseline `c5b33dd2c0d71263552ea9085fc6e3f5985ad17d`. M11B completed only the versioned 36-case synthetic corpus, trusted synthetic catalog, corpus integrity/ground-truth contracts, canonical extraction scorer, validation scorer, and result contracts. It did not implement the full evaluation runner, application-level reliability execution, release-gate execution, evaluation database lifecycle, latency benchmark execution, live Gemini evaluation, token/cost calculation, reference result generation, optimization, or the Phase 11 audit. M11C — Correctness, Routing & Reliability Evaluation is `COMPLETE` at independently reviewed technical baseline `ce456f2928ed9773f26ec65dfa5776d29dd4e915`; M11D — Performance, Token & Cost Evaluation is `COMPLETE`, independently reviewed and human-approved at implementation baseline `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; M11E — Measurement-Driven Optimization & Regression Comparison is `COMPLETE`, independently reviewed and human-approved at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447`; M11F Task 15 is `COMPLETE` after independent audit PASS and human approval; Task 16 is `COMPLETE`; M11F is `COMPLETE`; Phase 12 is IN PROGRESS for planning only; implementation is NOT STARTED. M11C delivered Tasks 5–7 on active corpus `3.0.0`; its provider-free 36-case run passed all five hard gates. Full local milestone evidence is recorded in the [Phase 11 implementation plan](docs/superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md). M11D Tasks 8–12 passed independent final review and received human approval at `9ecaaef9e2f7bf8e59529228d8576438d1a94f1a`; two provider-free runs each passed all 36 cases and all five release gates, with zero Gemini calls. The unchanged committed reference pair records measured-run SHA `7b67e6e32a2c7f7c44894dcf38eb68968ce1195b`; detailed local verification and limitations are in the plan. M11E Tasks 13–14 are complete after independent review and human approval at implementation baseline `49f9365c1e41f246d293e11c647b2ffda0198447`; the approved `NO_OPTIMIZATION` decision and closeout evidence are recorded in the [Phase 11 implementation plan](docs/superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md).
+## Current capabilities and demo status
 
-**Phase 11 closeout:** M11F Task 15 received independent audit PASS and human approval at audit SHA `a48af3cd45bf16f89e9d120932de755452020f17`; Task 16 completed this documentation-only closeout. The frozen M11E technical baseline is `49f9365c1e41f246d293e11c647b2ffda0198447`, and its M11E documentation closeout is `b3e66cd9a98fb876346b634ac226670fdb1fef96`. The final audit and its preserved verification history are in [the Phase 11 audit](docs/audits/phase-11-audit.md).
+Implemented capabilities include canonical processing of email text, CSV, XLSX, and PDF inputs; structured extraction through a provider interface; deterministic validation; a React human-review application; PostgreSQL-backed state and audit history; authenticated n8n orchestration; Gmail intake and approval-time notifications; and Odoo/HubSpot synchronization with durable receipts and recovery controls.
 
-Phase 9 closeout: M9B provides durable order-sync state, claims, fencing, receipts, and retry ownership; M9C provides Odoo ERP integration; M9D provides HubSpot Company/Deal integration; M9E provides thin n8n scheduling; and M9F records the independent whole-phase audit and remediation closure. The recovery guarantee is **at-most-one logical external record / convergent replay under the documented stable identities and recovery model**.
+Phases 0–11 are complete. Phase 12 is in progress: M12A — Portfolio Framing and Onboarding is underway, and M12B–M12F have not started. The Phase 11 provider-free reference passed **36/36 synthetic cases and all five correctness and safety gates**, with zero Gemini calls. The new Phase 12 end-to-end portfolio demonstration—including post-sync Gmail and Slack completion notifications—has not yet been captured. No Phase 12 video or screenshots are available yet. See the [roadmap](docs/roadmap/project-roadmap.md), [Phase 11 evaluation reference](docs/evaluation/reference/phase-11-provider-free-baseline.md), and [Phase 11 audit](docs/audits/phase-11-audit.md) for status and evidence.
 
-M6A closed with approved design and implementation-plan artifacts. M6B completed the review foundation: immutable review/operator contracts, canonical review serialization, migration `0004_phase6_review_revisions` with immutable revision persistence, server-derived development authorization, synthetic runtime composition, strong read-side ETags, and review queue/detail/reference-data GET APIs. M6C provides narrow `NEEDS_REVIEW`-only reviewed-data promotion and complete Save & revalidate behavior. Human corrections are persisted as immutable review revisions; `If-Match` is enforced before provider work and again under the final order lock. Provider and deterministic validation run outside database transactions, while final locked checks cover local facts, revision, audit generation, state, and source identity. Invalid corrections preserve the trusted order graph; clean corrections promote only `ValidatedOrderData`. Deterministic review audit events and PostgreSQL atomicity/concurrency coverage are in place through `PUT /v1/review/orders/{order_id}/draft`. M6D completes approval, rejection, and retry commands/API with server-resolved authorization, strong `If-Match` concurrency and audit-generation ABA protection, persisted high-value approval enforcement, and retry to the recorded failure origin without resuming processing; each lifecycle transition and its audit events commit atomically. M6E delivers the React human-review application and cross-boundary hardening: server-verified development credential access and switching, server-backed queue filtering and pagination, distinct AI provenance, untrusted human draft, trusted order, deterministic validation, trusted reference data, revision/audit history, ordered-line editing, Save & revalidate, explicit no-replay stale-screen protection, and backend-authoritative approve/reject/retry actions with frontend tests and CI coverage. M6F completed the independent whole-Phase-6 audit with zero CRITICAL, HIGH, MEDIUM, or LOW findings, and Phase 6 is closed.
-
-M7C now provides the idempotent intake pipeline: backward-compatible created-versus-replayed Phase 2 disposition, locked execution claims, separate creation and execution authority, exact source/idempotency binding, human-authorized PROCESSING and EXTRACTED retry-generation consumption with same-document Phase 3/4 reconstruction, typed provider/document/business-data failure classification with atomic failed-state persistence, an injectable network-free extraction runtime with optional Gemini, the composed Phase 2–5 application service, the real authenticated FastAPI handler, bounded 401/409/422/503 and 201/200/202 behavior, and PostgreSQL/HTTP evidence for replay, concurrency, retries, reconstruction, business routing, and persistence ambiguity. M7C persists no raw document bytes. If a claim or human-retry resume marker commits and a later persistence operation becomes unavailable, the request returns the safe unavailable boundary and matching redelivery stands down rather than reclaiming execution automatically. M7C does not implement Gmail/Slack, ERP/CRM synchronization, automatic machine retries, lease/heartbeat ownership recovery, or SYNCING execution.
-
-M7D provided the pinned self-hosted n8n Community runtime `n8nio/n8n:2.40.5` as one minimal Compose service with persistent local data, server-side orchestration/review configuration propagation, credential-backed OpsFlow HTTP authentication, a sanitized version-controlled workflow and synthetic fixture, Webhook → OpsFlow HTTP Request → backend-state Switch → response routing, clean-clone import/relink/publish instructions, and pinned-runtime evidence selecting Decision B (standard-node-only fallback). M7D froze that direction; M7E subsequently implemented and verified the bounded retry and cross-boundary recovery behavior.
-
-M7E provides a standard-node finite retry graph on n8n 2.40.5: one initial request plus at most two retry attempts separated by two one-second waits, retrying only true HTTP Request connection/node errors and HTTP 503. It preserves the original binary/source/event identity and returns a visible bounded 503 `UNAVAILABLE` response after exhaustion; 401, 409, 422, generic 500, and 2xx `FAILED_RETRYABLE` do not retry. M7E also adds exact graph-contract checks, deterministic real application-service seeds for PROCESSING and EXTRACTED `FAILED_RETRYABLE` origins, human Retry/redelivery recovery and one-owner concurrency evidence, EXTRACTED reconstruction before immutable snapshot persistence, and complete Docker/n8n/Vite sandbox and clean-clone handoff evidence. M10B now adds a backend-authoritative, one-shot delayed redelivery for valid live `PROCESSING`/`EXTRACTED` stand-downs; n8n does not own the lease or business retry state. Gmail/Slack, ERP/CRM, and SYNCING execution remain later boundaries.
-
-M7F completed the independent whole-Phase-7 audit and final remediation verification. It identified and resolved F-001–F-005: four LOW documentation-truth findings and one MEDIUM fail-closed lifecycle-history finding. The consolidated audit finished with CRITICAL 0, HIGH 0, MEDIUM 0, and LOW 0, and confirmed the approved architecture, concurrency, transport-retry, sandbox, privacy, cost, and Phase 8+ scope boundaries.
-
-M8E completed Gmail approval replies and cross-boundary acceptance. Live primary and clean-clone runs covered Gmail intake, real review UI/revalidation, elevated approval, Slack delivery, and sender-only original-thread Gmail reply. The clean clone used fresh PostgreSQL and n8n storage with credentials manually relinked; no primary database or credential data was copied. Destructive migration integration tests require a separately named `OPSFLOW_MIGRATION_TEST_DATABASE_URL` and skip if it is absent. After the migration-test incident, primary local PostgreSQL was deliberately reset to a fresh baseline at migration head; prior synthetic rows were not reconstructed. The dispatcher-paused acceptance left pre-approval `REVIEW_REQUIRED` and `APPROVAL_READY` intents pending. M8F found that ordinary delays can produce the same delivery order and changed these Slack summaries to describe the recorded state-entry event.
-
-M8F completed the independent whole-Phase-8 audit. It resolved one MEDIUM notification-freshness finding with event-historical copy and two LOW documentation-truth findings; no notification cancellation state or migration was added. The audit verified the migration-test isolation guard, provider boundaries, atomicity, concurrency, Gmail provenance, clean-clone evidence, and the Phase 9 boundary. See [the Phase 8 audit](docs/audits/phase-8-audit.md).
-
-The canonical phase tracker and approved scope are in [the project roadmap](docs/roadmap/project-roadmap.md). Independent closeout evidence is recorded in [the Phase 0 audit](docs/audits/phase-0-audit.md), [the Phase 1 audit](docs/audits/phase-1-audit.md), [the Phase 2 audit](docs/audits/phase-2-audit.md), [the Phase 3 audit](docs/audits/phase-3-audit.md), [the Phase 4 audit](docs/audits/phase-4-audit.md), [the Phase 5 audit](docs/audits/phase-5-audit.md), [the Phase 6 audit](docs/audits/phase-6-audit.md), and [the Phase 7 audit](docs/audits/phase-7-audit.md). The approved Phase 1 contract is in [the domain model specification](docs/architecture/domain-model.md), with its implementation sequence in [the Phase 1 plan](docs/superpowers/plans/2026-09-13-phase-1-domain-model.md). The authoritative Phase 2 design is [the Phase 2 Persistence & Core API design](docs/superpowers/specs/2026-09-14-phase-2-persistence-api-design.md), with its execution sequence in [the Phase 2 implementation plan](docs/superpowers/plans/2026-09-14-phase-2-persistence-api.md). The authoritative M3A design is [the Phase 3 Document Ingestion & Canonical Parsing design](docs/superpowers/specs/2026-09-14-phase-3-document-ingestion-design.md). The authoritative M4A design is [the Phase 4 Structured AI Extraction design](docs/superpowers/specs/2026-09-17-phase-4-structured-ai-extraction-design.md). The authoritative Phase 5 design is [the Phase 5 Deterministic Validation design](docs/superpowers/specs/2026-09-17-phase-5-deterministic-validation-design.md), with its execution sequence in [the Phase 5 implementation plan](docs/superpowers/plans/2026-09-17-phase-5-deterministic-validation.md). The authoritative M6A design is [the Phase 6 Human Review Application Contract & Design](docs/superpowers/specs/2026-09-19-phase-6-human-review-application-design.md), with its approved execution sequence in [the Phase 6 implementation plan](docs/superpowers/plans/2026-09-19-phase-6-human-review-application.md). The approved Phase 7 n8n Workflow Orchestration design is [the Phase 7 n8n Workflow Orchestration design](docs/superpowers/specs/2026-09-22-phase-7-n8n-workflow-orchestration-design.md), with its [approved implementation plan](docs/superpowers/plans/2026-09-22-phase-7-n8n-workflow-orchestration.md); M7B completed the authenticated HTTP/transport boundary, M7C completed the idempotent intake pipeline with HTTP/PostgreSQL integration, M7D completed the pinned local n8n runtime, sanitized sandbox workflow, import/publish verification, and retry-capability decision, M7E completed selective transport retry, deterministic retryable seeding, human-retry/redelivery verification, and the complete local sandbox handoff, and M7F completed the independent Phase 7 audit; Phase 7 is COMPLETE.
-
-## Architectural guardrails
-
-- **AI interprets unstructured information; deterministic software controls business decisions and side effects.** An LLM may extract fields and evidence, but it may not decide validity, approval, execution, or external mutation.
-- **n8n orchestrates workflows; Python owns business logic.** n8n will handle triggers, sequencing, SaaS connections, notifications, and simple routing. Python will own document processing, extraction, validation, policy, persistence, state transitions, auditability, and integration contracts.
-
-The system is expected to evolve toward this flow:
+## How it works
 
 ```text
-Email / PDF / XLSX / Form
-            |
-           n8n
-            |
-       OpsFlow API
-            |
-  document processing and extraction
-            |
- deterministic validation and policy
-        /                 \
-     valid              exception
-       |                   |
- ready for approval    human review
-        \                 /
-             approval
-                |
-       ERP / CRM / notifications
-                |
-             audit log
+Gmail intake / email text / CSV / XLSX / PDF
+                    |
+                   n8n  (triggers and provider transport)
+                    |
+              Python / FastAPI
+                    |
+       canonical processing and extraction
+                    |
+   deterministic validation against trusted data
+               /                 \
+      ready for approval       exception
+               \                 /
+                human review and approval
+                         |
+                Odoo, then HubSpot
+                         |
+             PostgreSQL state and receipts
 ```
 
-## Intended technology baseline
+Python owns processing, extraction orchestration, validation, policy, persisted state transitions, and ERP/CRM integration contracts. n8n handles workflow triggers, sequencing, authenticated API calls, provider transport, and simple routing. The [architecture overview](docs/architecture/system-overview.md) describes the implemented boundaries and current notification behavior.
 
-M0B verified Python 3.12, `uv`, FastAPI, Pydantic v2, pydantic-settings, pytest, Ruff, mypy, and package building. M0C verifies SQLAlchemy 2.x async PostgreSQL access through asyncpg, Alembic, PostgreSQL 16, Docker Compose, and the `/ready` readiness boundary. M0D verifies the minimal Node.js 24/npm React, TypeScript, Vite, and ESLint frontend foundation. M0E verifies the Makefile command interface, GitHub Actions quality gates, and Gitleaks scanning. Document handling, AI extraction/provider infrastructure, and the React human-review application are now implemented through Phases 3, 4, and 6. The Phase 7 local n8n orchestration runtime and sandbox workflow are implemented through M7D and M7E. Phase 10 hardening and independent audit closeout are complete through M10F; the final audit disposition is recorded in [the Phase 10 audit](docs/audits/phase-10-audit.md).
+### Reliability and human authority
 
-The final M10F audit record is [the Phase 10 audit](docs/audits/phase-10-audit.md); it preserves the frozen-baseline FAIL and records the final PASS after remediation and targeted independent re-review.
+- Model output is an untrusted extraction draft. Deterministic code checks it against trusted customer, product, price, inventory, and policy data.
+- Exceptions go to the review application. Review edits are revalidated; an authorized human explicitly approves or rejects an order.
+- PostgreSQL persists order state, review history, audit events, integration receipts, and notification intents. Approval and synchronization transitions use guarded state and durable records.
+- Stable identities, idempotent intake, claims, fencing, retries, and exact-source replay protect against duplicate logical orders and ERP/CRM objects. External calls can still have ambiguous acknowledgements; do not interpret these controls as physical exactly-once delivery.
+- Current Gmail and Slack notifications report review, approval, or processing events. The Gmail approval reply targets the original sender/thread when persisted Gmail provenance is available. These are **not** post-sync completion notifications. M12B plans separate Gmail and Slack completion events tied to successful Odoo and HubSpot synchronization; that behavior is not implemented yet.
 
-## Documentation map
+## Evaluation and limitations
 
-- [Architecture overview](docs/architecture/system-overview.md) — authority boundaries and intended system flow.
-- [Development guide](docs/development/development-guide.md) — conventions, verified M0B–M0E commands, and planned workflow.
-- [Decision records](docs/decisions/README.md) — how durable technical decisions will be recorded.
-- [Project roadmap](docs/roadmap/project-roadmap.md) — approved phases, rules, status, and completion protocol.
-- [Phase 11 evaluation design](docs/superpowers/specs/2026-10-07-phase-11-evaluation-optimization-design.md) — M11A evaluation contract, benchmark boundary, and quantitative evidence rules.
-- [Phase 12 portfolio release design proposal](docs/superpowers/specs/2026-10-12-phase-12-portfolio-release-design.md) — draft scope, evidence, demo, and approval gates.
-- [Phase 12 portfolio release implementation plan](docs/superpowers/plans/2026-10-12-phase-12-portfolio-release.md) — draft milestone sequence; not authorization to execute.
+The committed provider-free Phase 11 reference records 36/36 synthetic cases passing, all five correctness/safety gates passing, and zero Gemini calls. Provider-free extraction quality is `NOT_APPLICABLE`; these results are not Gemini accuracy. The reference is tied to run SHA `7b67e6e32a2c7f7c44894dcf38eb68968ce1195b` and corpus `3.0.0`.
 
-## Cost and data posture
-
-The project must remain deployable and demonstrable with **$0 mandatory development cost**. Local and open-source infrastructure, free developer environments, adapters, test doubles, and synthetic data are preferred. Optional paid AI testing must remain a convenience rather than an architectural dependency.
-
-Never commit credentials, API keys, private business data, or real customer documents. Use local configuration and synthetic fixtures as later phases are implemented.
+Real Gemini extraction quality, aggregate provider latency, authoritative token totals, and estimated model cost remain unmeasured. The local timing diagnostics are not production SLAs. Phase 11's approved performance outcome is `NO_OPTIMIZATION`. Customer adoption, production deployment, ROI, and cost savings have not been measured or claimed. The [evaluation reference](docs/evaluation/reference/phase-11-provider-free-baseline.md), [baseline decision](docs/evaluation/reference/phase-11-baseline-decision.md), and [live Gemini evidence record](docs/evaluation/reference/phase-11-live-gemini-unavailable.md) preserve these boundaries.
 
 ## Local development
 
-Prerequisites are Python 3.12 with `uv`, Node.js 24 with npm, Docker Desktop with Compose, GNU Make, and Git.
+The following is a local PostgreSQL, API, and frontend quick start. It does not start n8n, run the end-to-end provider demo, or make external calls.
 
-For a fresh checkout, use this sequence:
+**Prerequisites:** Python 3.12, `uv`, Node.js 24 with npm 11.19.0, Docker Engine or Desktop with the Compose v2 plugin (`docker compose`), GNU Make, and Git. Python and Node ranges are pinned in the project manifests; `uv` and Docker/Compose versions are not pinned. PostgreSQL is supplied by Compose. The Compose file uses PostgreSQL 16 and publishes it on loopback port 5432. Confirm that port is free; if another service owns it, stop and identify that service before proceeding rather than connecting to an unknown database.
+
+Install dependencies and create ignored local configuration:
 
 ```bash
 uv sync --frozen --dev
 npm --prefix web ci
 cp .env.example .env
-docker compose up -d postgres
+```
+
+Start a fresh, named Compose project containing only PostgreSQL, then apply migrations:
+
+```bash
+docker compose -p opsflow-m12a-local up -d postgres
 make migrate
 ```
 
-Run the local development servers in separate terminals:
+If that Compose project name or its volume already exists, choose a new unique `-p` name and use it consistently in the corresponding Compose commands. The `make migrate` command reads the local `.env` database URL at `localhost:5432`. `.env` is ignored; keep all credentials there or in local n8n credential storage, never in Git.
+
+Start the local API and review frontend in separate terminals:
 
 ```bash
 uv run uvicorn opsflow.main:app --reload
 npm --prefix web run dev
 ```
 
-Run the quality gates with PostgreSQL available:
+The local application defaults to a scripted extraction provider when no Gemini key is configured. It returns a fixed synthetic response rather than extracting your input, so it is not live Gemini evidence. Review and approval actions require distinct local development operator credentials; the quick start does not provide usable credentials. See the [development guide](docs/development/development-guide.md) and [Phase 9 clean-clone procedure](docs/development/phase9-n8n-sync-e2e.md) for guarded local role configuration.
+
+To stop the database service while preserving this project's named data volume:
 
 ```bash
-make check
+docker compose -p opsflow-m12a-local stop postgres
 ```
 
-`make backend-check` covers Ruff, formatting, mypy, the full pytest suite, and `uv build`. `make frontend-check` repeats `npm ci`, ESLint, and the production build. The integration tests and full backend suite require PostgreSQL; quality targets do not start or destroy infrastructure automatically.
+### Evaluation and integration setup
 
-For the containerized API and database lifecycle, use `make up`, `make migrate`, and `make down`. `make down` removes containers and the Compose network but preserves the named database volume.
+`make check` runs backend and frontend quality checks, including the full test suite. It requires a correctly configured disposable integration database; read the [development guide](docs/development/development-guide.md#destructive-migration-test-isolation) before running it. It does not provision or reset external services. `make evaluate` is provider-free, but its guarded evaluation database setup is described separately in the [evaluation instructions](docs/development/development-guide.md#phase-11-evaluation-commands). Neither command is part of the quick start.
 
-Verified M0B–M0E commands and still-planned commands are distinguished in the [development guide](docs/development/development-guide.md).
+The live Gemini evaluation command runs the full 36-case evaluation and may incur provider charges; it is not authorized for Phase 12. Any individual Gemini request for the future demo also requires separate explicit authorization and a spending ceiling. No Gemini, Gmail, Slack, Odoo, or HubSpot operation is performed by the commands above.
 
-### Phase 11 corrective status amendment
+## Integrations and demonstration procedures
 
-M11B remains `COMPLETE` at its independently reviewed technical baseline, with
-the original approved corpus `1.0.0` preserved as historical evidence. M11C
-Task 5 exposed an authority contradiction in two intake-recovery expectations;
-the corrected corpus was `2.0.0`, approved at amendment SHA
-`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`; only the expected final state of
-`retry-email-001` and `retry-csv-001` changed to `READY_FOR_APPROVAL`. No
-source bytes changed. At that amendment, M11C remained `IN PROGRESS`, and
-evaluation execution used corpus `2.0.0` until the approved amendment below.
-M11D–M11F remained `NOT STARTED`; Phase 11 remained `IN PROGRESS`; Phase 12
-remained `NOT STARTED`.
+Existing integration guides document distinct provider procedures and historical sandbox evidence. They are not the pending full Phase 12 demonstration, and a provider-free run or prior integration test cannot substitute for that live end-to-end evidence.
 
-### Phase 11 duplicate replay-contract amendment
+- [n8n workflow setup and Gmail/Slack procedures](workflows/n8n/README.md) — n8n 2.40.5; Gmail intake/reply and Slack delivery require dedicated sandbox credentials and explicit setup.
+- [Odoo sandbox setup](docs/development/odoo-m9c-sandbox.md) — disposable Odoo environment and credentials are required for live synchronization.
+- [HubSpot sandbox setup](docs/development/hubspot-m9d-sandbox.md) — a developer-test portal and credentials are required for live synchronization.
+- [Phase 9 n8n synchronization clean-clone procedure](docs/development/phase9-n8n-sync-e2e.md) — local Compose, role credentials, and the separate Odoo/HubSpot sandbox flow.
 
-Corpus `1.0.0` is the historical M11B-approved corpus. Corpus `2.0.0` is the
-approved recovery-authority correction at amendment SHA
-`1bdd3763bd00e73a28a8eacb148f803d03ea7bfe`. M11C real-path duplicate execution
-showed that Phase 2 creation replay and Phase 7 intake execution expose distinct
-dispositions. Corpus `2.0.0` encoded them in one ambiguous field; approved corpus
-`3.0.0` splits those expectations without changing production behavior, source
-documents, or source SHA-256 values. The corpus `3.0.0` amendment is approved at
-`7184efb9589445d16e354decd486f28bc90ac09b`; all further Phase 11 evaluation
-execution uses corpus `3.0.0`. At that amendment, M11C remained
-`IN PROGRESS`; M11D–M11F remained `NOT STARTED`; Phase 11 remained
-`IN PROGRESS`; Phase 12 remained `NOT STARTED`.
+Phase 12's future full demonstration requires actual synthetic Gmail intake, application processing with provider mode identified, deterministic validation, human review and approval, successful Odoo and HubSpot synchronization with durable receipts, confirmed completion, actual post-sync Gmail and Slack delivery, and exact-source replay without a second logical order or duplicate ERP/CRM objects. Both completion notifications must be causally tied to successful synchronization; their external delivery order is not a correctness requirement. The demo requires dedicated disposable sandboxes and separate authorization for each live model or provider operation. No such run has been captured.
+
+## Testing and security
+
+`make check` runs backend tests and quality checks plus frontend tests, lint, and build. Configure a disposable integration database and follow the database safeguards in the [development guide](docs/development/development-guide.md#destructive-migration-test-isolation) before running it. `make security-audit` runs the repository's Python production-dependency and frontend production-dependency audits; pinned Gitleaks history-scan instructions are also in the development guide. These checks do not make provider calls.
+
+The latest recorded dependency review found two high-severity transitive advisories in frontend development dependencies; the production-only frontend audit was clean at the Phase 11 audit baseline. They remain an explicit limitation pending current release-candidate review. See [dependency security guidance](docs/development/dependency-security.md) and the [Phase 11 audit](docs/audits/phase-11-audit.md).
+
+## Technical documentation
+
+- [Architecture overview](docs/architecture/system-overview.md) — implemented system boundaries and state flow.
+- [Domain model](docs/architecture/domain-model.md) — canonical order lifecycle and invariants.
+- [Development guide](docs/development/development-guide.md) — commands, database guards, evaluation, and workflow conventions.
+- [Roadmap](docs/roadmap/project-roadmap.md) — authoritative phase scope and current status.
+- [Phase 11 implementation plan](docs/superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md) and [independent audit](docs/audits/phase-11-audit.md) — evidence provenance and closeout.
+- [Phase 12 design](docs/superpowers/specs/2026-10-12-phase-12-portfolio-release-design.md) and [implementation plan](docs/superpowers/plans/2026-10-12-phase-12-portfolio-release.md) — approved scope and milestone gates.
+- [Security guidance](docs/development/dependency-security.md) — pinned dependency-audit commands and current known advisory boundaries.
+
+## License
+
+No project license has been selected. Repository visibility does not grant permission to reuse project code or assets. Licensing remains a human-owner decision for a later Phase 12 milestone.
