@@ -13,6 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsflow.domain import AuditEvent, Order, OrderState
+from opsflow.notifications.contracts import NotificationChannel, NotificationKind
+from opsflow.notifications.service import create_notification_intent
 from opsflow.order_sync.contracts import (
     ExecuteNextKind,
     HubSpotAssociationReceipt,
@@ -37,7 +39,8 @@ from opsflow.persistence.order_sync_repository import (
     insert_order_sync_intent,
     reset_order_sync_for_human_retry,
 )
-from opsflow.persistence.repositories import insert_audit_event, update_order_snapshot
+from opsflow.persistence.repositories import get_order, insert_audit_event, update_order_snapshot
+from opsflow.settings import get_settings
 
 _ACTOR = "opsflow-order-sync"
 _monotonic = time.monotonic
@@ -332,10 +335,13 @@ async def complete_order_sync(
     """Complete only after all four external receipts are durably present."""
 
     async with session.begin():
-        sync_row, order_row = await _require_current_claim(session, order_id, claim_token)
+        sync_row, _ = await _require_current_claim(session, order_id, claim_token)
         if not _has_all_receipts(sync_row):
             raise OrderSyncCompletionError
-        order = _order_from_row(order_row)
+        persisted = await get_order(session, order_id)
+        if persisted is None:
+            raise OrderSyncCompletionError
+        order = persisted.order
         if order.state is not OrderState.SYNCING:
             raise OrderSyncCompletionError
         completed = order.transition_to(OrderState.COMPLETED)
@@ -346,13 +352,36 @@ async def complete_order_sync(
         now = await session.scalar(select(func.now()))
         if now is None:
             raise RuntimeError("database clock did not return a timestamp")
-        await _insert_sync_audit(
+        completion_event = await _insert_sync_audit(
             session,
             order_id,
             "ORDER_SYNC_COMPLETED",
             "All required ERP and CRM synchronization receipts are durable.",
             now,
         )
+        review_base_url = get_settings().review_base_url
+        await create_notification_intent(
+            session,
+            order=completed,
+            event=completion_event,
+            channel=NotificationChannel.SLACK,
+            kind=NotificationKind.ORDER_SYNC_COMPLETED,
+            review_base_url=review_base_url,
+        )
+        if any(
+            ("source_system", "GMAIL") in source.metadata
+            and isinstance(source.message_id, str)
+            and source.message_id.strip()
+            for source in order.source_documents
+        ):
+            await create_notification_intent(
+                session,
+                order=completed,
+                event=completion_event,
+                channel=NotificationChannel.GMAIL,
+                kind=NotificationKind.ORDER_SYNC_COMPLETED,
+                review_base_url=review_base_url,
+            )
         await session.flush()
         await session.refresh(sync_row)
         completed_sync = order_sync_from_model(sync_row)
@@ -745,15 +774,14 @@ async def _insert_sync_audit(
     event_type: str,
     description: str,
     occurred_at: datetime,
-) -> None:
-    await insert_audit_event(
-        session,
-        AuditEvent(
-            id=uuid4(),
-            order_id=order_id,
-            event_type=event_type,
-            actor=_ACTOR,
-            occurred_at=occurred_at,
-            description=description,
-        ),
+) -> AuditEvent:
+    event = AuditEvent(
+        id=uuid4(),
+        order_id=order_id,
+        event_type=event_type,
+        actor=_ACTOR,
+        occurred_at=occurred_at,
+        description=description,
     )
+    await insert_audit_event(session, event)
+    return event

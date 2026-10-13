@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from opsflow.application import order_sync as order_sync_module
 from opsflow.application.order_sync import (
     OrderSyncCompletionError,
     OrderSyncStepPreconditionError,
@@ -26,6 +27,13 @@ from opsflow.application.order_sync import (
     yield_order_sync_claim,
 )
 from opsflow.domain import OrderState
+from opsflow.notifications.contracts import (
+    NotificationFailureCode,
+    NotificationOutcome,
+    NotificationOutcomeKind,
+    NotificationStatus,
+)
+from opsflow.notifications.service import claim_next_notification, record_notification_outcome
 from opsflow.order_sync.contracts import (
     HubSpotAssociationReceipt,
     HubSpotCompanyReceipt,
@@ -35,7 +43,13 @@ from opsflow.order_sync.contracts import (
     OrderSyncFailureCode,
     OrderSyncStep,
 )
-from opsflow.persistence.models import AuditEventModel, OrderModel, OrderSyncModel
+from opsflow.persistence.models import (
+    AuditEventModel,
+    NotificationDeliveryModel,
+    OrderModel,
+    OrderSyncModel,
+    SourceDocumentModel,
+)
 from opsflow.persistence.order_sync_repository import claim_one_eligible_order_sync
 from opsflow.settings import Settings
 
@@ -470,14 +484,69 @@ def test_completion_requires_all_four_receipts_and_is_terminal() -> None:
     asyncio.run(_assert_completion_requires_receipts_and_is_terminal())
 
 
+@pytest.mark.parametrize(
+    "missing_receipt",
+    [
+        "odoo_receipt_pair",
+        "hubspot_company_id",
+        "hubspot_deal_id",
+        "hubspot_association_confirmed_at",
+    ],
+)
+def test_each_missing_provider_receipt_blocks_completion(missing_receipt: str) -> None:
+    asyncio.run(_assert_each_missing_receipt_blocks_completion(missing_receipt))
+
+
+async def _assert_each_missing_receipt_blocks_completion(missing_receipt: str) -> None:
+    async with _sync_database(full_receipts=True) as (session_factory, order_id):
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        async with session_factory() as session, session.begin():
+            sync_row = await session.get(OrderSyncModel, order_id)
+            assert sync_row is not None
+            if missing_receipt == "odoo_receipt_pair":
+                sync_row.odoo_sale_order_id = None
+                sync_row.odoo_sale_order_name = None
+            elif missing_receipt in {"hubspot_company_id", "hubspot_deal_id"}:
+                setattr(sync_row, missing_receipt, None)
+                sync_row.hubspot_association_confirmed_at = None
+            else:
+                setattr(sync_row, missing_receipt, None)
+        async with session_factory() as session:
+            with pytest.raises(OrderSyncCompletionError):
+                await complete_order_sync(session, order_id, claim.claim_token)
+        async with session_factory() as session:
+            event_count = await session.scalar(
+                select(func.count())
+                .select_from(AuditEventModel)
+                .where(
+                    AuditEventModel.order_id == order_id,
+                    AuditEventModel.event_type == "ORDER_SYNC_COMPLETED",
+                )
+            )
+            delivery_count = await session.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.order_id == order_id)
+            )
+    assert event_count == 0 and delivery_count == 0
+
+
 async def _assert_completion_requires_receipts_and_is_terminal() -> None:
-    async with _sync_database() as (session_factory, order_id):
+    async with _sync_database(untrusted_message_id=True) as (session_factory, order_id):
         async with session_factory() as session:
             claim = await claim_next_order_sync(session)
         assert claim is not None
         async with session_factory() as session:
             with pytest.raises(OrderSyncCompletionError):
                 await complete_order_sync(session, order_id, claim.claim_token)
+            delivery_count = await session.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.order_id == order_id)
+            )
+        assert delivery_count == 0
 
         for step, receipt in (
             (OrderSyncStep.ODOO_BRIDGE, OdooOrderReceipt(44, "S00044")),
@@ -498,6 +567,13 @@ async def _assert_completion_requires_receipts_and_is_terminal() -> None:
                     select(AuditEventModel).where(AuditEventModel.order_id == order_id)
                 )
             )
+            deliveries = tuple(
+                await session.scalars(
+                    select(NotificationDeliveryModel).where(
+                        NotificationDeliveryModel.order_id == order_id
+                    )
+                )
+            )
         async with session_factory() as session:
             claim_after_completion = await claim_next_order_sync(session)
     assert isinstance(completed, OrderSync)
@@ -509,12 +585,430 @@ async def _assert_completion_requires_receipts_and_is_terminal() -> None:
         "ORDER_SYNC_STARTED",
         "ORDER_SYNC_COMPLETED",
     ]
+    completion_event = next(event for event in events if event.event_type == "ORDER_SYNC_COMPLETED")
+    assert [(row.channel, row.kind) for row in deliveries] == [("SLACK", "ORDER_SYNC_COMPLETED")]
+    assert all(row.trigger_audit_event_id == completion_event.id for row in deliveries)
     assert claim_after_completion is None
+
+
+def test_gmail_origin_completion_creates_both_intents_for_exact_completion_event() -> None:
+    asyncio.run(_assert_gmail_origin_completion_creates_both_intents())
+
+
+async def _assert_gmail_origin_completion_creates_both_intents() -> None:
+    async with _sync_database(gmail_source=True) as (session_factory, order_id):
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        for step, receipt in (
+            (OrderSyncStep.ODOO_BRIDGE, OdooOrderReceipt(44, "S00044")),
+            (OrderSyncStep.HUBSPOT_COMPANY, HubSpotCompanyReceipt("company-44")),
+            (OrderSyncStep.HUBSPOT_DEAL, HubSpotDealReceipt("deal-44")),
+            (OrderSyncStep.HUBSPOT_ASSOCIATION, HubSpotAssociationReceipt(_NOW)),
+        ):
+            async with session_factory() as session:
+                await begin_order_sync_step(session, order_id, claim.claim_token, step)
+            async with session_factory() as session:
+                await persist_order_sync_receipt(session, order_id, claim.claim_token, receipt)
+        async with session_factory() as session:
+            await complete_order_sync(session, order_id, claim.claim_token)
+        async with session_factory() as session:
+            completion_event = await session.scalar(
+                select(AuditEventModel).where(
+                    AuditEventModel.order_id == order_id,
+                    AuditEventModel.event_type == "ORDER_SYNC_COMPLETED",
+                )
+            )
+            deliveries = tuple(
+                await session.scalars(
+                    select(NotificationDeliveryModel)
+                    .where(NotificationDeliveryModel.order_id == order_id)
+                    .order_by(NotificationDeliveryModel.channel)
+                )
+            )
+    assert completion_event is not None
+    assert [(row.channel, row.kind) for row in deliveries] == [
+        ("GMAIL", "ORDER_SYNC_COMPLETED"),
+        ("SLACK", "ORDER_SYNC_COMPLETED"),
+    ]
+    assert {row.trigger_audit_event_id for row in deliveries} == {completion_event.id}
+    gmail = next(row for row in deliveries if row.channel == "GMAIL")
+    assert gmail.payload["message_id"] == "persisted-gmail-source-message"
+    assert "synchronization is complete" in gmail.payload["body"].lower()
+
+
+def test_gmail_marker_without_message_id_creates_slack_only() -> None:
+    asyncio.run(_assert_gmail_marker_without_message_id_creates_slack_only())
+
+
+async def _assert_gmail_marker_without_message_id_creates_slack_only() -> None:
+    async with _sync_database(
+        full_receipts=True,
+        gmail_source=True,
+        gmail_message_id=None,
+    ) as (
+        session_factory,
+        order_id,
+    ):
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        async with session_factory() as session:
+            await complete_order_sync(session, order_id, claim.claim_token)
+        async with session_factory() as session:
+            deliveries = tuple(
+                await session.scalars(
+                    select(NotificationDeliveryModel).where(
+                        NotificationDeliveryModel.order_id == order_id
+                    )
+                )
+            )
+    assert [(row.channel, row.kind) for row in deliveries] == [("SLACK", "ORDER_SYNC_COMPLETED")]
+
+
+def test_stale_completion_claim_creates_no_audit_or_notification_intents() -> None:
+    asyncio.run(_assert_stale_completion_claim_creates_no_intents())
+
+
+async def _assert_stale_completion_claim_creates_no_intents() -> None:
+    async with _sync_database(full_receipts=True) as (session_factory, order_id):
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        await _expire_claim(session_factory, order_id)
+        async with session_factory() as session:
+            with pytest.raises(StaleOrderSyncClaimError):
+                await complete_order_sync(session, order_id, claim.claim_token)
+        async with session_factory() as session:
+            order = await session.get(OrderModel, order_id)
+            events = tuple(
+                await session.scalars(
+                    select(AuditEventModel).where(
+                        AuditEventModel.order_id == order_id,
+                        AuditEventModel.event_type == "ORDER_SYNC_COMPLETED",
+                    )
+                )
+            )
+            deliveries = tuple(
+                await session.scalars(
+                    select(NotificationDeliveryModel).where(
+                        NotificationDeliveryModel.order_id == order_id
+                    )
+                )
+            )
+    assert order is not None and order.state == OrderState.SYNCING.value
+    assert events == () and deliveries == ()
+
+
+def test_completion_from_non_syncing_state_creates_no_audit_or_intents() -> None:
+    asyncio.run(_assert_non_syncing_completion_creates_no_intents())
+
+
+async def _assert_non_syncing_completion_creates_no_intents() -> None:
+    invalid_claim = uuid4()
+    async with _sync_database(
+        state=OrderState.APPROVED,
+        full_receipts=True,
+        claim_token=invalid_claim,
+    ) as (session_factory, order_id):
+        async with session_factory() as session:
+            with pytest.raises(StaleOrderSyncClaimError):
+                await complete_order_sync(session, order_id, invalid_claim)
+        async with session_factory() as session:
+            order = await session.get(OrderModel, order_id)
+            completion_count = await session.scalar(
+                select(func.count())
+                .select_from(AuditEventModel)
+                .where(
+                    AuditEventModel.order_id == order_id,
+                    AuditEventModel.event_type == "ORDER_SYNC_COMPLETED",
+                )
+            )
+            delivery_count = await session.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.order_id == order_id)
+            )
+    assert order is not None and order.state == OrderState.APPROVED.value
+    assert completion_count == 0 and delivery_count == 0
+
+
+def test_notification_insert_failure_rolls_back_completion_audit_and_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(_assert_notification_insert_failure_rolls_back(monkeypatch))
+
+
+async def _assert_notification_insert_failure_rolls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opsflow.notifications.contracts import NotificationChannel
+
+    real_create = order_sync_module.create_notification_intent
+
+    async def fail_after_gmail_insert(*args: object, **kwargs: object) -> None:
+        await real_create(*args, **kwargs)  # type: ignore[arg-type]
+        if kwargs["channel"] is NotificationChannel.GMAIL:
+            raise RuntimeError("synthetic completion-intent failure")
+
+    monkeypatch.setattr(order_sync_module, "create_notification_intent", fail_after_gmail_insert)
+    async with _sync_database(full_receipts=True, gmail_source=True) as (
+        session_factory,
+        order_id,
+    ):
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        async with session_factory() as session:
+            with pytest.raises(RuntimeError, match="synthetic completion-intent failure"):
+                await complete_order_sync(session, order_id, claim.claim_token)
+        async with session_factory() as session:
+            order = await session.get(OrderModel, order_id)
+            sync_row = await session.get(OrderSyncModel, order_id)
+            completion_events = tuple(
+                await session.scalars(
+                    select(AuditEventModel).where(
+                        AuditEventModel.order_id == order_id,
+                        AuditEventModel.event_type == "ORDER_SYNC_COMPLETED",
+                    )
+                )
+            )
+            deliveries = tuple(
+                await session.scalars(
+                    select(NotificationDeliveryModel).where(
+                        NotificationDeliveryModel.order_id == order_id
+                    )
+                )
+            )
+    assert order is not None and order.state == OrderState.SYNCING.value
+    assert sync_row is not None and sync_row.claim_token == claim.claim_token
+    assert completion_events == () and deliveries == ()
+
+
+def test_racing_completion_workers_create_one_event_and_one_intent_per_channel() -> None:
+    asyncio.run(_assert_racing_completion_workers_create_one_set())
+
+
+async def _assert_racing_completion_workers_create_one_set() -> None:
+    async with _sync_database(full_receipts=True, gmail_source=True) as (
+        session_factory,
+        order_id,
+    ):
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        async with session_factory() as first, session_factory() as second:
+            results = await asyncio.gather(
+                complete_order_sync(first, order_id, claim.claim_token),
+                complete_order_sync(second, order_id, claim.claim_token),
+                return_exceptions=True,
+            )
+        async with session_factory() as session:
+            completion_events = tuple(
+                await session.scalars(
+                    select(AuditEventModel).where(
+                        AuditEventModel.order_id == order_id,
+                        AuditEventModel.event_type == "ORDER_SYNC_COMPLETED",
+                    )
+                )
+            )
+            deliveries = tuple(
+                await session.scalars(
+                    select(NotificationDeliveryModel).where(
+                        NotificationDeliveryModel.order_id == order_id
+                    )
+                )
+            )
+    assert sum(not isinstance(result, BaseException) for result in results) == 1
+    assert sum(isinstance(result, StaleOrderSyncClaimError) for result in results) == 1
+    assert len(completion_events) == 1
+    assert {(row.channel, row.kind) for row in deliveries} == {
+        ("GMAIL", "ORDER_SYNC_COMPLETED"),
+        ("SLACK", "ORDER_SYNC_COMPLETED"),
+    }
+    assert {row.trigger_audit_event_id for row in deliveries} == {completion_events[0].id}
+
+
+def test_gmail_retry_exhaustion_does_not_suppress_slack_completion() -> None:
+    asyncio.run(_assert_gmail_retry_exhaustion_does_not_suppress_slack())
+
+
+def test_slack_completion_can_deliver_while_gmail_is_delayed() -> None:
+    asyncio.run(_assert_slack_can_deliver_while_gmail_is_delayed())
+
+
+async def _assert_slack_can_deliver_while_gmail_is_delayed() -> None:
+    async with _sync_database(full_receipts=True, gmail_source=True) as (
+        session_factory,
+        order_id,
+    ):
+        async with session_factory() as session:
+            sync_claim = await claim_next_order_sync(session)
+        assert sync_claim is not None
+        async with session_factory() as session:
+            await complete_order_sync(session, order_id, sync_claim.claim_token)
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(NotificationDeliveryModel)
+                .where(
+                    NotificationDeliveryModel.order_id == order_id,
+                    NotificationDeliveryModel.channel == "GMAIL",
+                )
+                .values(next_attempt_at=func.now() + text("interval '1 day'"))
+            )
+        async with session_factory() as session:
+            notification_claim = await claim_next_notification(session)
+        assert notification_claim is not None
+        assert notification_claim.channel.value == "SLACK"
+        async with session_factory() as session:
+            slack_outcome = await record_notification_outcome(
+                session,
+                notification_claim.notification_id,
+                NotificationOutcome(
+                    claim_token=notification_claim.claim_token,
+                    kind=NotificationOutcomeKind.DELIVERED,
+                    provider_reference="synthetic-slack-reference",
+                ),
+            )
+        async with session_factory() as session:
+            gmail = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == order_id,
+                    NotificationDeliveryModel.channel == "GMAIL",
+                )
+            )
+    assert slack_outcome.status is NotificationStatus.DELIVERED
+    assert gmail is not None and gmail.status == NotificationStatus.PENDING.value
+    assert gmail.attempt_count == 0
+
+
+async def _assert_gmail_retry_exhaustion_does_not_suppress_slack() -> None:
+    async with _sync_database(full_receipts=True, gmail_source=True) as (
+        session_factory,
+        order_id,
+    ):
+        async with session_factory() as session:
+            sync_claim = await claim_next_order_sync(session)
+        assert sync_claim is not None
+        async with session_factory() as session:
+            await complete_order_sync(session, order_id, sync_claim.claim_token)
+        async with session_factory() as session:
+            deliveries = tuple(
+                await session.scalars(
+                    select(NotificationDeliveryModel).where(
+                        NotificationDeliveryModel.order_id == order_id
+                    )
+                )
+            )
+        gmail = next(row for row in deliveries if row.channel == "GMAIL")
+        slack = next(row for row in deliveries if row.channel == "SLACK")
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.id == slack.id)
+                .values(next_attempt_at=func.now() + text("interval '1 day'"))
+            )
+
+        for attempt in range(1, 4):
+            async with session_factory() as session:
+                notification_claim = await claim_next_notification(session)
+            assert notification_claim is not None
+            assert notification_claim.notification_id == gmail.id
+            async with session_factory() as session:
+                outcome = await record_notification_outcome(
+                    session,
+                    gmail.id,
+                    NotificationOutcome(
+                        claim_token=notification_claim.claim_token,
+                        kind=NotificationOutcomeKind.FAILED,
+                        failure_code=NotificationFailureCode.UNKNOWN_FAILURE,
+                    ),
+                )
+            assert outcome.attempt_count == attempt
+            assert outcome.status is (
+                NotificationStatus.FAILED_FINAL if attempt == 3 else NotificationStatus.PENDING
+            )
+            if attempt < 3:
+                async with session_factory() as session, session.begin():
+                    await session.execute(
+                        update(NotificationDeliveryModel)
+                        .where(NotificationDeliveryModel.id == gmail.id)
+                        .values(next_attempt_at=func.now() - text("interval '1 second'"))
+                    )
+
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.id == slack.id)
+                .values(next_attempt_at=func.now() - text("interval '1 second'"))
+            )
+        async with session_factory() as session:
+            slack_claim = await claim_next_notification(session)
+        assert slack_claim is not None and slack_claim.notification_id == slack.id
+        async with session_factory() as session:
+            slack_outcome = await record_notification_outcome(
+                session,
+                slack.id,
+                NotificationOutcome(
+                    claim_token=slack_claim.claim_token,
+                    kind=NotificationOutcomeKind.DELIVERED,
+                    provider_reference="synthetic-slack-reference",
+                ),
+            )
+        assert slack_outcome.status is NotificationStatus.DELIVERED
+
+
+def test_lost_provider_ack_reclaims_same_completion_intent_at_least_once() -> None:
+    asyncio.run(_assert_lost_ack_reclaims_same_completion_intent())
+
+
+async def _assert_lost_ack_reclaims_same_completion_intent() -> None:
+    async with _sync_database(full_receipts=True, gmail_source=True) as (
+        session_factory,
+        order_id,
+    ):
+        async with session_factory() as session:
+            sync_claim = await claim_next_order_sync(session)
+        assert sync_claim is not None
+        async with session_factory() as session:
+            await complete_order_sync(session, order_id, sync_claim.claim_token)
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(NotificationDeliveryModel)
+                .where(
+                    NotificationDeliveryModel.order_id == order_id,
+                    NotificationDeliveryModel.channel == "SLACK",
+                )
+                .values(next_attempt_at=func.now() + text("interval '1 day'"))
+            )
+        async with session_factory() as session:
+            first_claim = await claim_next_notification(session)
+        assert first_claim is not None and first_claim.channel.value == "GMAIL"
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.id == first_claim.notification_id)
+                .values(claim_expires_at=func.now() - text("interval '1 second'"))
+            )
+        async with session_factory() as session:
+            replay_claim = await claim_next_notification(session)
+            row = await session.get(NotificationDeliveryModel, first_claim.notification_id)
+        assert replay_claim is not None
+        assert replay_claim.notification_id == first_claim.notification_id
+        assert replay_claim.claim_token != first_claim.claim_token
+        assert replay_claim.attempt_number == 2
+        assert row is not None and row.kind == "ORDER_SYNC_COMPLETED"
 
 
 @asynccontextmanager
 async def _sync_database(
-    *, state: OrderState = OrderState.APPROVED, full_receipts: bool = False
+    *,
+    state: OrderState = OrderState.APPROVED,
+    full_receipts: bool = False,
+    gmail_source: bool = False,
+    gmail_message_id: str | None = "persisted-gmail-source-message",
+    untrusted_message_id: bool = False,
+    claim_token: UUID | None = None,
 ) -> AsyncIterator[tuple[async_sessionmaker[AsyncSession], UUID]]:
     _run_alembic("upgrade", "head")
     engine = create_async_engine(Settings().database_url)
@@ -532,8 +1026,10 @@ async def _sync_database(
         session.add(
             OrderSyncModel(
                 order_id=order_id,
-                claim_token=None,
-                claim_expires_at=None,
+                claim_token=claim_token,
+                claim_expires_at=(
+                    datetime.now(UTC) + timedelta(minutes=5) if claim_token is not None else None
+                ),
                 attempt_count=0,
                 retry_generation=0,
                 next_attempt_at=datetime(1970, 1, 1, tzinfo=UTC),
@@ -550,6 +1046,25 @@ async def _sync_database(
                 updated_at=_NOW,
             )
         )
+        if gmail_source or untrusted_message_id:
+            session.add(
+                SourceDocumentModel(
+                    id=uuid4(),
+                    order_id=order_id,
+                    position=0,
+                    document_type="EMAIL_BODY",
+                    name="synthetic-email.txt",
+                    mime_type="text/plain",
+                    sha256="a" * 64,
+                    message_id=(gmail_message_id if gmail_source else "arbitrary-message-id"),
+                    storage_reference=None,
+                    metadata_=(
+                        [["source_system", "GMAIL"]]
+                        if gmail_source
+                        else [["source_system", "UPLOAD"]]
+                    ),
+                )
+            )
         await session.commit()
     try:
         yield session_factory, order_id

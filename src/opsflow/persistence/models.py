@@ -339,7 +339,8 @@ class NotificationDeliveryModel(Base):
             name="ck_notification_deliveries_channel",
         ),
         CheckConstraint(
-            "kind IN ('REVIEW_REQUIRED', 'APPROVAL_READY', 'PROCESSING_FAILED', 'ORDER_APPROVED')",
+            "kind IN ('REVIEW_REQUIRED', 'APPROVAL_READY', 'PROCESSING_FAILED', "
+            "'ORDER_APPROVED', 'ORDER_SYNC_COMPLETED')",
             name="ck_notification_deliveries_kind",
         ),
         CheckConstraint(

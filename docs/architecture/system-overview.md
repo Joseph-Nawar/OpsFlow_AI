@@ -46,17 +46,15 @@ Gmail label trigger or authenticated intake request
               explicit authorized approval
                   /                  \
                  v                    v
-    current approval-time intents    approved-order sync
+    approval-time intents       approved-order sync
       Slack: ORDER_APPROVED             |
       Gmail: ORDER_APPROVED             v
       with Gmail provenance       Odoo, then HubSpot
       (delivery does not gate sync)      |
                                   durable receipts
                                           |
-                                    COMPLETED
-                                          |
-                            M12B planned completion intents
-                              Gmail + Slack (not implemented)
+                       COMPLETED + ORDER_SYNC_COMPLETED
+                         + Slack intent + eligible Gmail intent
 ```
 
 Slack `REVIEW_REQUIRED`, `APPROVAL_READY`, and `PROCESSING_FAILED` intents are also created for their corresponding state events. Approval-time notification delivery and retry do not gate synchronization.
@@ -77,9 +75,9 @@ The domain states, transition rules, and invariants are defined in the [domain m
 
 ## Current notification behavior and M12B boundary
 
-The current durable notification outbox supports Slack events for `REVIEW_REQUIRED`, `APPROVAL_READY`, `PROCESSING_FAILED`, and `ORDER_APPROVED`. Gmail delivery is a sender-only reply to the original thread for `ORDER_APPROVED`, and it requires persisted Gmail-source provenance. The approval reply says the order was approved for processing; it does not claim that synchronization completed. Each channel has separate durable outcomes and bounded retries, with at-least-once external delivery semantics. Notification delivery does not change order state or gate the approved order's ERP/CRM synchronization.
+The durable notification outbox supports Slack events for `REVIEW_REQUIRED`, `APPROVAL_READY`, `PROCESSING_FAILED`, `ORDER_APPROVED`, and `ORDER_SYNC_COMPLETED`. Gmail delivery is a sender-only reply to the original thread for `ORDER_APPROVED`, and for `ORDER_SYNC_COMPLETED` only when persisted Gmail-source provenance and the original message identity are present. The approval reply says the order was approved for processing; the completion reply says required business-system synchronization is complete without implying shipment, payment, or fulfillment. The completion transition, `ORDER_SYNC_COMPLETED` audit event, Slack intent, and eligible Gmail intent are committed atomically after all required Odoo and HubSpot receipts exist. Both completion intents reference that same persisted audit event. Each channel has separate durable outcomes, claims, and bounded retries, with at-least-once external delivery semantics. Approval-time notification delivery does not gate synchronization, and post-sync delivery order is not a correctness invariant.
 
-**Post-sync completion notifications are not implemented.** M12B has an approved design contract for creating separate Gmail and Slack completion intents only after successful Odoo and HubSpot synchronization with durable receipts. Gmail would reply to the original sender/thread when persisted Gmail provenance exists. Slack would independently report successful synchronization; neither channel's delivery eligibility depends on the other's delivery. Both outcomes would be required by the Phase 12 full-demo acceptance criterion, but their external delivery order is not a correctness invariant. M12B remains NOT STARTED and needs separate implementation authorization and review. See the [approved Phase 12 design](../superpowers/specs/2026-10-12-phase-12-portfolio-release-design.md) and [implementation plan](../superpowers/plans/2026-10-12-phase-12-portfolio-release.md).
+M12B's completion-notification implementation is ready for independent technical review. The generic n8n dispatcher routes each durable intent by channel and records its authenticated outcome; it does not impose cross-channel ordering. No live Gmail, Slack, Odoo, or HubSpot operation was performed for this implementation. The full Phase 12 live demonstration and its provider evidence remain pending. See the [approved Phase 12 design](../superpowers/specs/2026-10-12-phase-12-portfolio-release-design.md) and [implementation plan](../superpowers/plans/2026-10-12-phase-12-portfolio-release.md).
 
 ## Technology and current status
 
@@ -89,7 +87,7 @@ The current durable notification outbox supports Slack events for `REVIEW_REQUIR
 - **Workflow:** self-hosted n8n Community 2.40.5.
 - **Integrations:** Gemini adapter; Gmail intake and approval reply; Slack notification dispatch; Odoo ERP; HubSpot CRM.
 
-Phases 0–11 are COMPLETE. Phase 12 is IN PROGRESS. M12A — Portfolio Framing and Onboarding is COMPLETE, independently reviewed at implementation SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199` and human-approved; M12B–M12F remain NOT STARTED. The design and implementation plan are APPROVED. The authoritative current tracker is the [project roadmap](../roadmap/project-roadmap.md).
+Phases 0–11 are COMPLETE. Phase 12 is IN PROGRESS. M12A — Portfolio Framing and Onboarding is COMPLETE, independently reviewed at implementation SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199` and human-approved. M12B — Approved Completion-Notification Behavior is IN PROGRESS and READY FOR INDEPENDENT REVIEW; M12C–M12F remain NOT STARTED. The design and implementation plan are APPROVED. The authoritative current tracker is the [project roadmap](../roadmap/project-roadmap.md).
 
 ## Related documentation
 

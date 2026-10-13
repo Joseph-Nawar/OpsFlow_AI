@@ -4,8 +4,9 @@
 
 Phases 0–11 are `COMPLETE`. Phase 12 is `IN PROGRESS`; M12A — Portfolio
 Framing and Onboarding is `COMPLETE`, independently reviewed at implementation
-SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199` and human-approved, while
-M12B–M12F remain `NOT STARTED`. The Phase 12 design and implementation plan
+SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199` and human-approved. M12B —
+Approved Completion-Notification Behavior is `IN PROGRESS` and `READY FOR
+INDEPENDENT REVIEW`; M12C–M12F remain `NOT STARTED`. The Phase 12 design and implementation plan
 are approved. The [roadmap](../roadmap/project-roadmap.md) is the current status source; the
 [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md)
 and [Phase 11 audit](../audits/phase-11-audit.md) preserve detailed historical

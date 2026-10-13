@@ -79,7 +79,7 @@ from opsflow.validation.policy import ValidationPolicy
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
-PHASE_10B_HEAD = "0007_phase7_intake_ownership"
+PHASE_10B_HEAD = "0008_phase12_completion_notifications"
 REVIEWER_TOKEN = "synthetic-reviewer-integration-credential"
 APPROVER_TOKEN = "synthetic-approver-integration-credential"
 REVIEWER = OperatorContext("reviewer-integration", OperatorRole.REVIEWER)

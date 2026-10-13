@@ -33,7 +33,7 @@ from opsflow.settings import DevelopmentOperatorConfig, Settings
 from opsflow.validation import BusinessDataLookupRequest, TrustedBusinessData
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
-PHASE_10B_HEAD = "0007_phase7_intake_ownership"
+PHASE_10B_HEAD = "0008_phase12_completion_notifications"
 _TOKEN = "test-review-reader-credential"
 
 

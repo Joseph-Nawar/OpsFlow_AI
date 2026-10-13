@@ -12,6 +12,16 @@ For provider account setup, use the [Odoo M9C sandbox guide](odoo-m9c-sandbox.md
 and [HubSpot M9D sandbox guide](hubspot-m9d-sandbox.md). This document covers
 only the local orchestration and the synthetic cross-provider proof.
 
+The current M12B implementation now creates `ORDER_SYNC_COMPLETED` notification
+intents atomically with the completed order and audit event after all required
+receipts are durable. Slack is independent of Gmail delivery; a Gmail reply is
+created only when persisted Gmail-source provenance and its original message
+ID are present. Both intents use the existing n8n notification dispatcher and
+authenticated outcome contract. The historical M9E runs described below
+predate this behavior and do not count as evidence of post-sync notifications.
+The full Phase 12 live demo procedure and evidence capture remain pending M12C;
+no provider calls were made for the M12B implementation.
+
 ## Prerequisites and isolation
 
 Use Git, Docker with Compose, Python 3.12, `uv`, and Node/npm only when using

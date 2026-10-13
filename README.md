@@ -8,9 +8,9 @@ OpsFlow is a locally runnable portfolio project for freelance clients and Applie
 
 ## Current capabilities and demo status
 
-Implemented capabilities include canonical processing of email text, CSV, XLSX, and PDF inputs; structured extraction through a provider interface; deterministic validation; a React human-review application; PostgreSQL-backed state and audit history; authenticated n8n orchestration; Gmail intake and approval-time notifications; and Odoo/HubSpot synchronization with durable receipts and recovery controls.
+Implemented capabilities include canonical processing of email text, CSV, XLSX, and PDF inputs; structured extraction through a provider interface; deterministic validation; a React human-review application; PostgreSQL-backed state and audit history; authenticated n8n orchestration; Gmail intake; separate approval-time and post-sync Gmail/Slack notification intents; and Odoo/HubSpot synchronization with durable receipts and recovery controls.
 
-Phases 0–11 are complete. Phase 12 is in progress: M12A — Portfolio Framing and Onboarding is **complete**, independently reviewed at implementation SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199`, and human-approved. M12B–M12F have not started. The Phase 11 provider-free reference passed **36/36 synthetic cases and all five correctness and safety gates**, with zero Gemini calls. The new Phase 12 end-to-end portfolio demonstration—including post-sync Gmail and Slack completion notifications—has not yet been captured. No Phase 12 video or screenshots are available yet. See the [roadmap](docs/roadmap/project-roadmap.md), [Phase 11 evaluation reference](docs/evaluation/reference/phase-11-provider-free-baseline.md), and [Phase 11 audit](docs/audits/phase-11-audit.md) for status and evidence.
+Phases 0–11 are complete. Phase 12 is in progress: M12A — Portfolio Framing and Onboarding is **complete**, independently reviewed at implementation SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199`, and human-approved. M12B — Approved Completion-Notification Behavior is **in progress and ready for independent technical review**; M12C–M12F have not started. The Phase 11 provider-free reference passed **36/36 synthetic cases and all five correctness and safety gates**, with zero Gemini calls. The new Phase 12 end-to-end portfolio demonstration—including actual post-sync Gmail and Slack delivery—has not yet been captured or externally verified. No Phase 12 video or screenshots are available yet. See the [roadmap](docs/roadmap/project-roadmap.md), [Phase 11 evaluation reference](docs/evaluation/reference/phase-11-provider-free-baseline.md), and [Phase 11 audit](docs/audits/phase-11-audit.md) for status and evidence.
 
 ## How it works
 
@@ -29,9 +29,15 @@ Gmail intake / email text / CSV / XLSX / PDF
                \                 /
                 human review and approval
                          |
+          approval-time notification intents
+          (delivery does not gate sync)
+                         |
                 Odoo, then HubSpot
                          |
-             PostgreSQL state and receipts
+       durable receipts + completed audit
+                         |
+           post-sync completion intents
+          Slack + Gmail (Gmail provenance)
 ```
 
 Python owns processing, extraction orchestration, validation, policy, persisted state transitions, and ERP/CRM integration contracts. n8n handles workflow triggers, sequencing, authenticated API calls, provider transport, and simple routing. The [architecture overview](docs/architecture/system-overview.md) describes the implemented boundaries and current notification behavior.
@@ -42,7 +48,7 @@ Python owns processing, extraction orchestration, validation, policy, persisted 
 - Exceptions go to the review application. Review edits are revalidated; an authorized human explicitly approves or rejects an order.
 - PostgreSQL persists order state, review history, audit events, integration receipts, and notification intents. Approval and synchronization transitions use guarded state and durable records.
 - Stable identities, idempotent intake, claims, fencing, retries, and exact-source replay protect against duplicate logical orders and ERP/CRM objects. External calls can still have ambiguous acknowledgements; do not interpret these controls as physical exactly-once delivery.
-- Current Gmail and Slack notifications report review, approval, or processing events. The Gmail approval reply targets the original sender/thread when persisted Gmail provenance is available. These are **not** post-sync completion notifications. M12B plans separate Gmail and Slack completion events tied to successful Odoo and HubSpot synchronization; that behavior is not implemented yet.
+- Approval-time notifications still report review, approval, or processing events; their delivery does not gate synchronization. After successful Odoo and HubSpot synchronization with durable receipts, the backend now creates a separate Slack completion intent and, for persisted Gmail-origin orders, a reply to the original Gmail sender/thread. Both intents share the actual completion audit event and have independent outcomes and retries. This implementation is ready for independent review; actual provider delivery has not been demonstrated in the Phase 12 end-to-end run.
 
 ## Evaluation and limitations
 

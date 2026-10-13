@@ -213,6 +213,15 @@ def test_channel_switch_sends_only_supported_channel_and_defers_unknown_channels
     assert _targets(workflow, "Route Notification Channel", 2) == ["Unsupported Channel Deferred"]
     assert not _reachable(workflow, "Unsupported Channel Deferred", "Send Slack Notification")
     assert not _reachable(workflow, "Unsupported Channel Deferred", "Reply to Gmail Sender")
+
+
+def test_channel_transport_has_no_cross_delivery_prerequisite() -> None:
+    workflow = _workflow()
+
+    assert not _reachable(workflow, "Reply to Gmail Sender", "Send Slack Notification")
+    assert not _reachable(workflow, "Send Slack Notification", "Reply to Gmail Sender")
+    assert not _reachable(workflow, "Normalize Gmail Failure", "Send Slack Notification")
+    assert not _reachable(workflow, "Normalize Slack Failure", "Reply to Gmail Sender")
     assert (
         _assignment(_nodes(workflow)["Unsupported Channel Deferred"], "operator_outcome")["value"]
         == "UNSUPPORTED_CHANNEL_DEFERRED"

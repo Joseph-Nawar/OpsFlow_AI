@@ -340,6 +340,25 @@ settings, workflow versions, and execution data were removed; local sandbox
 credentials/channel remain configured. No secrets or raw provider responses
 were retained in the repository or n8n execution history.
 
+## Post-sync completion notifications (M12B implementation)
+
+After Python commits order completion with all required Odoo and HubSpot
+receipts, it creates a separate `ORDER_SYNC_COMPLETED` Slack intent and, only
+for persisted Gmail-origin orders with an original message ID, a Gmail reply
+intent. Both reference the same completion audit event. The existing
+dispatcher consumes each intent through the same channel routing and
+authenticated outcome endpoint described above; no workflow JSON change or
+cross-channel scheduling rule is needed. Each channel has independent durable
+claims, retries, outcomes, and at-least-once delivery semantics. Slack may
+deliver even if Gmail is delayed or fails; the actual provider delivery order
+is recorded but is not a correctness requirement.
+
+The M12B implementation and local transport contracts are ready for
+independent review. No live post-sync provider operation was performed during
+M12B, and earlier Phase 8/9 integration records do not prove this behavior.
+The full live notification demonstration is part of the still-pending Phase
+12 demo milestone.
+
 ## Phase 8 Gmail approval replies (M8E complete)
 
 The dispatcher routes only backend claims with `channel=GMAIL` to one native
