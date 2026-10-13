@@ -1,10 +1,10 @@
 # Phase 12 Portfolio Release Implementation Plan
 
-> For agentic workers: use the repository's single-agent, sequential workflow. Execute one approved milestone at a time and stop at its review gate. This draft authorizes no implementation.
+> For agentic workers: use the repository's single-agent, sequential workflow. Execute one separately authorized milestone at a time and stop at its review gate. Planning approval authorizes no implementation.
 
 **Goal:** Make OpsFlow AI a locally reproducible, evidence-backed portfolio project with a truthful full sandbox demonstration and release-ready documentation.
 
-**Architecture:** Reuse the existing React review app, Python/FastAPI business services, PostgreSQL state and receipts, and n8n provider workflows. M12B is conditional on explicit owner approval of the completion-notification contract. The roadmap's full-demo sequence remains unchanged; use actual dedicated sandbox providers for every step described as live.
+**Architecture:** Reuse the existing React review app, Python/FastAPI business services, PostgreSQL state and receipts, and n8n provider workflows. M12B follows the owner-approved Option A completion-notification contract but needs separate implementation authorization. The full demo requires actual dedicated sandbox providers for every step described as live; Gmail and Slack post-sync delivery order is not a correctness invariant.
 
 **Tech stack:** Existing Python 3.12, uv, FastAPI, PostgreSQL 16, Docker Compose, React/TypeScript/Vite, Node.js 24/npm, n8n 2.40.5, current provider adapters, Make targets, CI, and pinned Gitleaks. No new framework or mandatory paid service.
 
@@ -12,7 +12,7 @@
 
 ## Plan status and execution gates
 
-This plan is DRAFT and awaits human review and approval. The approved starting main SHA is 17c155df3b2635f60f88c6596c1d74b02015fb2d. The planning branch is phase/12-portfolio-release. Phase 12 is IN PROGRESS for planning only; implementation is NOT STARTED.
+This plan is APPROVED for Phase 12 planning only by the human decision referencing planning SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`. The approved starting main SHA is 17c155df3b2635f60f88c6596c1d74b02015fb2d. The planning branch is phase/12-portfolio-release. Phase 12 is IN PROGRESS for approved planning; implementation and M12A–M12F are NOT STARTED. Planning approval does not authorize a milestone to begin; each implementation milestone requires separate authorization and its stated review gates.
 
 The work unit is one milestone. The next milestone cannot begin until its prerequisites, acceptance evidence, review, and human approval are recorded. All execution remains on the designated Phase 12 branch with a clean, reviewed diff. Do not use subagents or parallel agents unless the owner separately changes the repository's single-agent instruction.
 
@@ -35,7 +35,7 @@ The work unit is one milestone. The next milestone cannot begin until its prereq
 
 1. **Approval mistaken for completion:** completion mail and final Slack must refer to successful Odoo/HubSpot receipts, not ORDER_APPROVED.
 2. **Fake extraction presented as Gemini:** the roadmap requires extraction; this plan recommends one real Gemini request as a stronger demo. Provider identity must be visible; fake output remains rehearsal evidence.
-3. **Notification coupling or false ordering:** Phase 8 channels are independent and at-least-once. Option A reports completed sync independently of email delivery but cannot enforce Gmail-before-Slack. The roadmap sequence remains required unless amended by the owner.
+3. **Notification coupling or false ordering:** Phase 8 channels are independent and at-least-once. The owner selected Option A: both post-sync intents depend on successful Odoo/HubSpot completion, but Slack delivery is independent of Gmail delivery. Both actual deliveries are required for the full demo; relative delivery timing is not a correctness criterion.
 4. **Repeated or ambiguous live operations:** fresh local clone state is reproducibility evidence only. One approved transaction/replay does not authorize new calls, sends, or writes on a second clone or after an uncertain result.
 5. **Unsupported metrics, media, or license claims:** every public claim maps to evidence; required video/screens are sanitized and licensed; license terms remain an owner decision.
 
@@ -45,7 +45,7 @@ The work unit is one milestone. The next milestone cannot begin until its prereq
 
 **Objective:** Make the first README screen, architecture explanation, current status, and clean-checkout setup usable by a client or recruiter without replacing detailed technical guides.
 
-**Prerequisites:** Human approval of the Phase 12 design and this milestone. Keep Phase 12 status IN PROGRESS / planning-only until an implementation milestone is approved. Implementation remains NOT STARTED until authorization.
+**Prerequisites:** Human approval of the Phase 12 design and this milestone plan is recorded. This planning approval does not authorize M12A implementation; M12A begins only after separate explicit authorization. Keep Phase 12 status IN PROGRESS / approved planning until an implementation milestone is authorized. Implementation remains NOT STARTED until then.
 
 **Reuse:** README, system overview, domain model, development guide, Makefile, .env.example, Compose, workflow README, Phase 9 E2E, and Phase 8–11 audits.
 
@@ -79,29 +79,25 @@ The work unit is one milestone. The next milestone cannot begin until its prereq
 
 **External services and authorization:** None for docs. Do not start services, set up accounts, or invoke provider APIs.
 
-**Review gate:** Human review checks all current-status claims, audience clarity, command accuracy, and links. M12B cannot begin until its independent completion-notification contract decision is recorded.
+**Review gate:** Human review checks all current-status claims, audience clarity, command accuracy, and links. M12B cannot begin until M12A is accepted and separate M12B implementation authorization is recorded; its Option A behavior contract is already approved at design level.
 
 **Non-goals:** No feature work, demo capture, license selection, dependency changes, new setup framework, or cloud hosting.
 
-## Milestone M12B — Completion-notification decision and conditional path
+## Milestone M12B — Approved completion-notification behavior
 
-**Objective:** Resolve the missing post-sync completion events without confusing the roadmap's desired demo chronology with a business rule. Implement only a behavior contract that the owner explicitly selects and approves.
+**Objective:** Implement the owner-approved Option A post-sync completion-notification contract without adding a Gmail-before-Slack dependency.
 
-**Prerequisites:** M12A accepted. A separate owner decision on Option A, B, or C in the design proposal is mandatory. Phase 12 roadmap approval does not approve this production behavior change.
+**Prerequisites:** M12A accepted. Option A is approved at design level by the human decision referencing SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`; this does not authorize M12B implementation. A separate explicit implementation authorization and code-review gate are required. Options B and C remain documented alternatives, not approved paths.
 
 **Reuse:** Existing Phase 8 notification intent/outcome contract, stable event/channel/kind uniqueness, five-minute claims, bounded retries and final failure, Gmail sender-only approval reply, independent Slack payload, n8n transport, Phase 9 `complete_order_sync()` receipt checks and transaction, and existing database-safety guards.
 
-**Options requiring a decision:**
+**Approved behavior contract:** In the existing successful completion transaction, reuse the `ORDER_SYNC_COMPLETED` audit event identity and durable notification outbox to insert independent Gmail and Slack completion intents only after Odoo and HubSpot durable receipts pass and the order is completed. Gmail is eligible only with persisted Gmail-source provenance and replies to the original sender/thread. Slack reports successful synchronization regardless of Gmail delivery. Preserve stable event/channel/kind uniqueness for logical-intent idempotency, independent durable outcomes and bounded retries, and at-least-once external delivery semantics. Existing approval-time notifications remain separate. Do not introduce channel-priority scheduling, new operator APIs, or a generalized notification framework solely to order the demo.
 
-- **Option A (recommended):** In the existing successful completion transaction, reuse the `ORDER_SYNC_COMPLETED` audit event identity and insert independently retriable Gmail and Slack completion intents. Gmail is eligible only with persisted Gmail provenance. Slack reports successful Odoo/HubSpot synchronization regardless of email delivery. Reuse stable event/channel/kind uniqueness for replay idempotency. This preserves independent channel outcomes and at-least-once limits. It does not enforce Gmail-before-Slack; the demo must record actual acknowledgement timestamps and fails the roadmap sequence criterion if they are out of order.
-- **Option B:** For Gmail-provenance orders, make Slack claim eligibility depend on matching Gmail `DELIVERED`. This provides durable acknowledgement ordering only, not physical exactly-once. Permanent Gmail failure withholds Slack after bounded attempts; timeout or lost acknowledgement can lead to duplicate email before release. The current API has no operator requeue/reconciliation action, so recovery semantics and supported operator controls must be designed explicitly before implementation. For non-Gmail sources, explicitly decide whether Slack is released at sync completion (recommended) because no Gmail row can satisfy the gate, or is withheld indefinitely. The tradeoff is coupling an operations signal for completed sync to customer-email delivery.
-- **Option C:** No application behavior change. Any narrower demonstration requires an explicit separate roadmap acceptance amendment; until that amendment is approved, the current full demo is incomplete. Do not relabel approval notifications or historical evidence as post-sync events.
+**Alternatives assessed, not selected:** Option B would gate Slack eligibility on durable Gmail `DELIVERED`, withholding an operational sync signal on permanent Gmail failure and requiring recovery for timeout or lost acknowledgement; it adds coupling and does not prevent duplicate email after an ambiguous send. Option C would leave the application unchanged and cannot meet the approved full-demo requirement. The owner selected Option A and clarified that delivery order is not a correctness invariant, so neither B nor a roadmap amendment is needed.
 
-**Required deliverables for every option:** Record the selected option, owner approval, exact email/Slack meaning, Gmail provenance rule, retry/idempotency semantics, failure/recovery behavior, and impact on M12C acceptance in the M12B closeout. If C is selected, no application files change; route the proposed roadmap amendment for approval in the appropriate future planning task.
+**Required deliverables:** Implement only the approved contract. Record actual independent provider outcomes and preserve the Phase 8/9 transaction, stable identities, idempotency, retries, and at-least-once limits. Acceptance must prove that neither notification intent can exist before successful sync with both durable receipts; both channel outcomes remain independent. No test or acceptance criterion asserts relative Gmail/Slack delivery order.
 
-**Decision record:** Update this plan with the owner-approved selection and its approval reference before any conditional implementation begins. Do not treat the current recommendation as approval.
-
-**Conditional implementation files for A or B only:**
+**Anticipated implementation files for approved Option A (not authorized to modify yet):**
 
 - Modify: src/opsflow/application/order_sync.py
 - Modify: src/opsflow/notifications/contracts.py
@@ -120,29 +116,29 @@ The work unit is one milestone. The next milestone cannot begin until its prereq
 - Modify: workflows/n8n/README.md
 - Modify: docs/development/phase9-n8n-sync-e2e.md
 
-**Acceptance and verification if A or B is explicitly approved:**
+**Acceptance and verification after separate M12B implementation authorization:**
 
-- Add failing tests first for non-completed state, missing Odoo/HubSpot receipts, non-Gmail provenance, same-transaction creation, replay uniqueness, independent provider outcomes, bounded retries/final failure, and lost outcome acknowledgement. For B, also test that Slack is withheld on Gmail permanent/ambiguous failure and released only after durable Gmail `DELIVERED`, plus the approved recovery path.
+- Add failing tests first for non-completed state, missing Odoo/HubSpot receipts, Gmail provenance and original sender/thread routing, non-Gmail behavior (Slack intent remains eligible; Gmail reply is absent), same-transaction creation, reuse of `ORDER_SYNC_COMPLETED` identity, replay uniqueness, independent provider outcomes, bounded retries/final failure, Gmail permanent failure, Slack independence, and lost outcome acknowledgement.
 - Confirm expected failures, then implement only the approved narrow contract and a forward-only migration for the new notification kind.
 - Run focused notification and sync tests: `uv run pytest tests/unit/notifications tests/unit/workflows/test_phase8_notification_dispatch_contract.py -q --no-cov`.
 - Run isolated Phase 8/9 integration suites, including migration and transaction/claim tests, against fresh guarded disposable databases; all focused tests pass and no live-provider suite runs.
 - Run `uv run alembic upgrade head` and `uv run alembic current` against a fresh disposable database; expected head is `0008_phase12_completion_notifications`.
 - Run `docker compose config --quiet` and `make check` with newly identified disposable databases; expected configured quality gates pass.
-- Verify n8n transports backend-owned notification payloads and does not decide business eligibility. Under A, do not assert channel order in backend tests. Under B, test the backend eligibility prerequisite and recovery behavior.
+- Verify n8n transports backend-owned notification payloads and does not decide business eligibility. Tests must not assert channel delivery order. Test that Slack reports successful sync independently of Gmail delivery while each channel retains its own retry and durable outcome.
 
 **External services and authorization:** Local fakes and disposable PostgreSQL only for implementation verification. No real email, Slack, Odoo, HubSpot, Gemini, or potentially charged operation. Any later live demo calls/writes/sends need separate explicit authorization listing the provider, target, operation count/retry bound, and spend ceiling where applicable.
 
-**Review gate:** Before coding, the owner approves A/B/C and, for A/B, the exact behavior contract; this is an explicit M12B gate. After implementation, independent code review approves transaction safety, migration, Gmail provenance, replay identity, notification meanings, retry/failure semantics, and the at-least-once limitation. M12C requires both gates. Option A is not deemed to satisfy the observed demo order unless M12C evidence shows Gmail delivery before Slack delivery.
+**Review gate:** The design decision is already recorded, but it is not implementation authorization. Coding begins only after M12A acceptance and a separate explicit M12B implementation authorization. After implementation, independent code review approves transaction safety, migration, Gmail provenance, stable/replay identity, notification meanings, independent outcomes/retries, failure semantics, and the at-least-once limitation. M12C requires accepted M12B implementation. Relative external delivery order is not reviewed as a correctness requirement.
 
 **Optional enhancement:** None proposed. Do not add channel scheduling or operator APIs unless a separately reviewed design proves necessary for an approved contract.
 
 **Non-goals:** No new provider, generalized notification framework, changed approval authority, direct API provider call, exactly-once claim, workflow engine, silent roadmap relaxation, or implementation before owner approval.
 
-## Milestone M12C — Live sandbox demonstration and local reproducibility
+## Milestone M12C — Full sandbox demonstration and local reproducibility
 
 **Objective:** Verify clean-clone local infrastructure/configuration reproducibility separately from one newly authorized real sandbox transaction and its exact-source replay; gather the evidence once for M12D and M12E.
 
-**Prerequisites:** M12A accepted. The owner must approve the M12B completion-notification contract before any behavior implementation or live run. Separately approve the demo environment and each live operation. The proposed Gemini call requires its own explicit one-request and spend-ceiling authorization. Verify the candidate SHA and all disposable targets before use.
+**Prerequisites:** M12A accepted and M12B implementation completed and independently accepted under its separate implementation authorization. The Option A behavior contract and delivery-order clarification are already approved at design level. Separately approve the demo environment and each live operation. The proposed Gemini call requires its own explicit one-request and spend-ceiling authorization. Verify the candidate SHA and all disposable targets before use.
 
 **Reuse:** Existing clean-clone setup and provider-specific procedures in `docs/development/phase9-n8n-sync-e2e.md`, `docs/development/odoo-m9c-sandbox.md`, `docs/development/hubspot-m9d-sandbox.md`, and `workflows/n8n/README.md`.
 
@@ -163,9 +159,9 @@ The work unit is one milestone. The next milestone cannot begin until its prereq
 
 - In one literal clean candidate clone at the frozen SHA, verify the clean tracked tree and fresh local state. Before any provider operation, positively verify the dedicated Gmail mailbox, Slack workspace/channel, disposable Odoo database, and HubSpot developer-test portal. Confirm unique synthetic identities and no conflicting records. Do not reset shared or whole accounts.
 - Configure distinct local orchestration, reviewer, and approver credentials; bind only approved external credentials. Disable n8n execution-data saving. Keep all secrets and raw provider data outside Git.
-- Process one synthetic email through the existing Gmail intake path: `POST /v1/orchestration/intakes` via `workflows/n8n/opsflow-gmail-intake.json`, preserving Gmail source/message identity and original bytes. Python document processing must run before extraction; deterministic validation remains authoritative; separate human review and approval are visible.
+- Show actual Gmail intake of one synthetic purchase order through the existing path: `workflows/n8n/opsflow-gmail-intake.json` to `POST /v1/orchestration/intakes`, preserving Gmail source/message identity and original bytes. Show application document processing and structured extraction with provider mode truthfully identified; deterministic validation remains authoritative; separate human review and approval are visible.
 - The roadmap requires an extraction stage but does not name a live Gemini request or count. Recommended stronger evidence is exactly one actual `GeminiProvider` generation request through this application path. Its authorization must state provider/model, at most one provider invocation, and a concrete maximum spend in currency; with no approved spend ceiling, make zero calls. Before invocation, verify that the existing n8n HTTP retry branches, idempotent redelivery, lease recovery, and human Retry action cannot cause a second provider invocation. If that bound cannot be established, stop and request a separately approved minimal control before any live call. If provider/credentials are unavailable at preflight, stop with zero calls. If timed out or ambiguous, deactivate/stop the intake and treat the budget as consumed. No fallback, manual retry, replay-triggered call, or additional call without fresh explicit authorization. If not authorized, label provider-free extraction as rehearsal evidence and leave live-Gemini evidence unavailable; never label it Gemini.
-- Verify actual Odoo and HubSpot sandbox records and durable receipts; completion requires all expected receipts. Then capture actual post-sync Gmail and Slack provider outcomes. The roadmap's observed sequence requires Gmail completion delivery before Slack completion delivery; with Option A this is an observed-run gate, not a backend guarantee. If timestamps fail or cannot be verified, mark that roadmap criterion incomplete. A manual timing workaround cannot be called automated sequencing.
+- Verify actual Odoo and HubSpot sandbox records and both durable receipts; only then is order completion confirmed. Capture actual post-sync Gmail confirmation and Slack completion deliveries using their dedicated sandboxes. Each must be causally tied to successful synchronization through the durable completion event/intents and receipts. Both successful deliveries are mandatory for the full demo; if either is missing or fails, the full-demo criterion fails. Record actual provider outcomes and timestamps; their relative delivery order is not a correctness invariant. Do not stage or simulate provider success, claim Gmail always delivers first, or use a manual timing workaround as evidence of automated sequencing.
 - Replay the exact same retained synthetic bytes through the authenticated intake with the original Gmail message ID and idempotency key; do not re-fetch Gmail. Confirm no second logical order, Odoo/HubSpot object, Gemini call, or new logical completion intent, and no additional provider read, send, or write. Record actual delivery counts honestly, retaining the at-least-once limitation.
 - Deactivate relevant workflows. Delete/archive uniquely identified synthetic ERP/CRM records, Gmail messages, or Slack posts, and revoke temporary keys, only under separate explicit authorization for those exact cleanup actions; otherwise preserve the state and report it. Remove only named disposable local volumes after verifying ownership. On timeout, ambiguous acknowledgement, or unexpected state, stop and reconcile before any fresh authorization.
 
@@ -173,9 +169,9 @@ The work unit is one milestone. The next milestone cannot begin until its prereq
 
 **Verification:** The runbook provides exact local commands and observable manual checks. Test local reproducibility independently from the one live transaction. Historical Phase 8/9 integration tests and provider-free demonstrations do not substitute for this run. The second clone must not be used to repeat external operations.
 
-**External services and authorization:** Live Gmail source retrieval, one proposed Gemini extraction, pre-sync approval and post-sync completion sends, Odoo/HubSpot lookups and mutations, cleanup/deletion, key revocation, and any potentially charged operation each need separate explicit authorization naming provider, target, operation/retry ceiling, and spend cap where applicable. Existing provider retry limits may repeat an attempt and must be included in the authorization. No operation is authorized by this draft. If the provider, credentials, target isolation, or spend rule is unavailable, stop safely and report incomplete evidence.
+**External services and authorization:** Live Gmail source retrieval, one proposed Gemini extraction, pre-sync approval and post-sync completion sends, Odoo/HubSpot lookups and mutations, cleanup/deletion, key revocation, and any potentially charged operation each need separate explicit authorization naming provider, target, operation/retry ceiling, and spend cap where applicable. Existing provider retry limits may repeat an attempt and must be included in the authorization. No operation is authorized by this approved planning document. If the provider, credentials, target isolation, or spend rule is unavailable, stop safely and report incomplete evidence.
 
-**Review gate:** Human reviews target verification and operation authorization before the live run, then reviews sanitized evidence, replay, cleanup, and actual notification timestamps before M12D. M12E uses this same recorded run; no new live operation is needed to produce media.
+**Review gate:** Human reviews target verification and operation authorization before the live run, then reviews successful order completion, durable receipts, both actual notification outcomes and their causal link to completion, exact-source replay, cleanup, and recorded timestamps before M12D. Notification timestamps are inspected as evidence, but their relative order is not a gate. M12E uses this same recorded run; no new live operation is needed to produce media.
 
 **Non-goals:** No production/customer account, shared Odoo database, production HubSpot portal, bulk live evaluation, second live run for capture, forced provider outage, lost-acknowledgement exercise, global reset, or mutation outside named synthetic records.
 
@@ -280,15 +276,15 @@ The work unit is one milestone. The next milestone cannot begin until its prereq
 **Audit coverage:**
 
 - Scope and roadmap traceability; status truth; no future product scope or unsupported claim.
-- M12B owner-selected completion contract and approval record; any implementation review. Option A's independent channel semantics and its lack of ordered-delivery guarantee remain explicit.
-- Clean-clone local infrastructure/configuration reproducibility separately from the one actual sandbox transaction and exact-source replay; verified sandbox identities, downstream provider records, actual Gmail/Slack acknowledgement order, replay counts, cleanup, and deviations.
+- M12B owner-approved Option A contract and separate implementation authorization/review; verify that both notification intents follow successful sync with durable Odoo/HubSpot receipts, Gmail provenance is enforced, Slack reports successful sync independently of Gmail, and each channel retains idempotent logical intents, bounded retries, durable outcomes, and at-least-once semantics.
+- Clean-clone local infrastructure/configuration reproducibility separately from the one actual sandbox transaction and exact-source replay; verified sandbox identities, downstream provider records, durable completion evidence, both actual post-sync notification outcomes and their causal tie to sync completion, actual provider timestamps without relative-order gating, replay counts, cleanup, and deviations.
 - Verify that no second clone, replay, or media edit is represented as authorization for additional Gemini calls, emails, Slack messages, or Odoo/HubSpot mutations.
 - Case-study metric-to-source mapping; provider-free/live distinction; limitations; pricing/token provenance; manual-step claim disposition.
 - License owner approval; dependency and media licenses; privacy, source assets, public Git history, ignored files, and current dependency advisories.
 - README/setup/architecture/evaluation coherence; links; required 90–120 second video and sanitized screenshots; selected storage/delivery; workflows; migrations; CI and applicable test results.
 - Open Critical/High/Medium/Low findings, accepted exceptions, and remediation proof.
 
-**Verification:** Independent reviewer validates the frozen source SHA, runs required docs/security checks, inspects actual demo evidence, provider outcomes/timestamps, video/screenshots, and privately retained audit record as authorized, and records exact commands/results. A failed required criterion remains FAIL/INCOMPLETE; it cannot be replaced with historical tests or simulated providers. Remediation is a separate approved implementation task followed by independent re-review. No status closeout is committed before human approval of the final audit PASS.
+**Verification:** Independent reviewer validates the frozen source SHA, runs required docs/security checks, inspects actual demo evidence, both provider outcomes and their durable causal relationship to completed sync, timestamps, replay proof, video/screenshots, and privately retained audit record as authorized, and records exact commands/results. Either missing or failed required notification makes the full-demo criterion FAIL/INCOMPLETE; relative delivery timing does not. Historical tests or simulated providers cannot replace live evidence. Remediation is a separate approved implementation task followed by independent re-review. No status closeout is committed before human approval of the final audit PASS.
 
 **Independence:** Follow the repository's single-agent workflow; the final audit reviewer must not be the implementation author. Arrange a human/senior reviewer for this gate rather than silently self-certifying or dispatching an agent contrary to repository instructions.
 

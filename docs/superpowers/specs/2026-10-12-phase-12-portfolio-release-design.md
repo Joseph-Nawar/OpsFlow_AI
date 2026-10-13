@@ -2,10 +2,13 @@
 
 ## Status and authority
 
-**Status: DRAFT — awaiting human review and approval.** This is a planning
-artifact only. It does not authorize implementation, live provider calls,
-external mutations, media production, licensing changes, publication, or
-deployment.
+**Status: APPROVED for Phase 12 planning only.** The human owner approved this
+design direction at planning SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`,
+subject to the completion-notification and full-demo acceptance clarifications
+recorded below. This approval does not authorize M12A–M12F implementation,
+live provider calls, external mutations, media production, licensing changes,
+publication, or deployment. Every implementation milestone remains NOT
+STARTED pending its separate authorization and review gate.
 
 The approved starting baseline is main SHA
 17c155df3b2635f60f88c6596c1d74b02015fb2d. Local main, origin/main, and the
@@ -16,9 +19,9 @@ The PR check rollup also reports successful Backend, Frontend, production
 dependency security, and Secret scan jobs.
 
 The Phase 12 planning branch is phase/12-portfolio-release. The canonical
-Phase 12 status is IN PROGRESS for planning only; implementation remains NOT
-STARTED. Phases 0–11 remain COMPLETE. Historical audit and milestone records
-are not rewritten.
+Phase 12 status is IN PROGRESS for approved planning; implementation and
+milestones M12A–M12F remain NOT STARTED. Phases 0–11 remain COMPLETE.
+Historical audit and milestone records are not rewritten.
 
 This proposal interprets the approved [Phase 12 roadmap](../../roadmap/project-roadmap.md)
 and the [Phase 11 design](2026-10-07-phase-11-evaluation-optimization-design.md)
@@ -79,11 +82,12 @@ Its Slack events cover review, approval, and failure; channel delivery rows
 have independent outcomes and at-least-once external delivery. Phase 9's sync
 completion transaction verifies durable Odoo and HubSpot receipts, transitions
 the order to `COMPLETED`, and records `ORDER_SYNC_COMPLETED` atomically, but it
-creates neither a completion email nor a completion Slack event. The roadmap's
-email-then-Slack wording is a required observable demo sequence. The current
-code does not make that sequence an enduring cross-provider business
-invariant, and the roadmap does not specify what Slack must do when customer
-email delivery fails.
+creates neither a completion email nor a completion Slack event. The original
+roadmap described confirmation email followed by Slack; the approved Phase 12
+clarification makes both actual post-sync notifications mandatory while
+explicitly removing relative external delivery order as a correctness
+invariant. Both events must be causally tied to completed Odoo/HubSpot
+synchronization and evidenced independently.
 
 The smallest candidate application change is **Option A**: in the existing
 Phase 9 completion transaction, reuse its `ORDER_SYNC_COMPLETED` audit event
@@ -94,26 +98,28 @@ customer-email delivery. Each row
 uses the existing durable claims, stable event/channel/kind identity,
 bounded retries and `FAILED_FINAL` handling. Reuse the completion audit-event
 identity and the existing uniqueness constraint to make replay idempotent.
-This would require a new notification kind, persistence constraint migration,
-backend-owned payloads and focused atomicity/replay tests, and needs explicit
-owner approval before implementation. It preserves current approval-time
-notification meanings and the known at-least-once delivery limit. If Gmail
-accepts the message but its durable acknowledgement is lost, its row may retry
-and duplicate the email; Slack may still independently report completed sync.
+This requires a new notification kind, persistence constraint migration,
+backend-owned payloads and focused atomicity/replay tests. The owner has
+approved this business contract at design level; that decision does not
+authorize implementation. It preserves current approval-time notification
+meanings and the known at-least-once delivery limit. If Gmail permanently
+fails or times out, Slack can still report completed synchronization. If
+Gmail accepts a message but its durable acknowledgement is lost, its row may
+retry and duplicate the email; Slack's eligibility remains independent.
 Python continues to own intent eligibility, durable claims, retries, and
-outcomes; n8n remains the thin provider-transport boundary.
+outcomes; n8n remains the thin provider-transport boundary. Both completion
+intents are created only after the Odoo and HubSpot durable receipts satisfy
+the existing completion transaction.
 
-Option A does **not** enforce Gmail-before-Slack delivery. The current
-dispatcher claims one due row ordered by eligibility time, creation time, and
-row identity; it has no channel-priority or prerequisite control. The demo may
-coordinate the desired chronology only through an already supported and
-truthful operational control. The current exported dispatcher has no
-channel-specific pause/claim control, so a manual timing trick must not be
-described as automated sequencing. Record actual provider acknowledgement
-times. If the Slack completion arrives before Gmail delivery, the run does
-not pass the roadmap's observed-sequence acceptance even though both events
-are valid. Do not add an unapproved control just to make the clip look
-ordered.
+Option A does **not** enforce Gmail-before-Slack delivery, and the approved
+demo contract does not require it. The current dispatcher claims due rows by
+eligibility time, creation time, and row identity; it has no channel-priority
+or prerequisite control, and no such control will be added solely to order
+the demonstration. Record actual provider outcomes and timestamps. Acceptance
+requires both genuine post-sync deliveries and durable evidence that their
+intents arose from successful Odoo/HubSpot completion; relative delivery
+timestamps do not affect correctness. Do not stage provider results or claim
+that one channel always delivers first.
 
 Option B would make Slack completion claim eligibility depend on the matching
 Gmail completion row reaching durable `DELIVERED`. This guarantees ordering of
@@ -138,16 +144,16 @@ demo acceptance. A narrower demo would require a separately approved roadmap
 acceptance amendment. It must not be silently substituted for the existing
 requirement.
 
-The design recommendation is Option A as the smallest defensible business
-contract: Slack independently reports successful synchronization, and
-Gmail independently confirms it to a genuinely Gmail-origin sender. The
-owner must approve this contract explicitly. Because Option A alone cannot
-guarantee the literal observed Gmail-then-Slack demo sequence, M12C must retain
-the roadmap's sequence criterion and report its actual evidence. If that
-sequence cannot be demonstrated with supported operational controls, the
-owner must choose Option B or approve a roadmap amendment under Option C
-before M12B can be accepted. A runbook or presentation edit cannot close the
-application behavior gap.
+The owner has selected and approved Option A at design level: Slack reports
+successful order synchronization independently of customer email delivery,
+while Gmail independently confirms completion to a genuinely Gmail-origin
+sender/thread. Both actual deliveries remain mandatory for the full demo and
+must be causally tied to successful Odoo/HubSpot synchronization. Record each
+provider outcome and timestamp, but do not gate acceptance on their relative
+order. This approved clarification changes the current Phase 12 acceptance
+wording only; it does not rewrite Phases 0–11. M12B implementation still needs
+its separate milestone authorization and independent code review. A runbook
+or presentation edit cannot substitute for the application behavior.
 
 ## 3. Audience and presentation
 
@@ -220,12 +226,12 @@ actual sandbox integrations for every provider step it claims as live:
 7. Subject to an explicitly approved M12B contract, after confirmed Odoo and
    HubSpot receipts Python creates a sender-only completion reply for the
    original Gmail message and an independent Slack completion event. Under
-   recommended Option A, either channel can be delivered or retried
-   independently; Slack reports completed synchronization even if Gmail is
-   delayed or fails. Capture actual provider outcomes and timestamps. If the
-   required observed Gmail-then-Slack order does not occur, the full demo
-   sequence remains incomplete. Only Option B would enforce acknowledgement
-   order, with the failure and recovery costs described above.
+   approved Option A, both intents are created only after successful Odoo and
+   HubSpot synchronization with durable receipts. Either channel can be
+   delivered or retried independently; Slack reports completed
+   synchronization even if Gmail is delayed or fails. Both actual deliveries
+   are required for the full demo. Capture their provider outcomes and
+   timestamps; relative delivery order is not an acceptance condition.
 
 The existing approval-time Gmail reply and Slack event can still occur before
 ERP/CRM synchronization. The demo must distinguish these from the final
@@ -284,7 +290,7 @@ than duplicate its detailed sandbox procedures.
 | Deterministic validation | UI shows the route and issue facts derived from trusted synthetic catalog/inventory and server rules. | LLM explanation alone or a prerecorded validation screen. |
 | Human review and approval | Reviewer correction/revalidation if needed, then separate approver credential and persisted approval audit event. | Direct SQL, n8n node, or shared reviewer/approver token. |
 | Odoo and HubSpot | Order state is COMPLETED; durable receipts exist; actual sandbox contains exactly one OpsFlow-identified sale order, one uniquely identified company/deal, and the expected association. | Fake adapters, mocked HTTP responses, or historical integration-test output. |
-| Completion email and Slack | After explicit approval of the M12B contract, capture the actual post-sync provider outcomes and acknowledgement timestamps. The roadmap's demo criterion requires Gmail completion delivery before the final Slack completion delivery. | Existing approval reply, approval Slack message, a local printout, an execution-test double, or any claim that Option A guarantees ordering. If timestamps are reversed or absent, record the sequence criterion as incomplete; a manual timing workaround is not automated behavior. |
+| Completion email and Slack | Both actual post-sync deliveries must be causally tied to successful Odoo/HubSpot synchronization and supported by durable completion receipts and notification outcomes. Capture each provider outcome and timestamp; relative delivery order is immaterial. | Existing approval reply, approval Slack message, a local printout, an execution-test double, staged provider success, or an assertion that one provider always delivers first. Missing or failed delivery on either channel fails the full-demo criterion. |
 | Replay | Re-submit the exact same original message identity and source; show no second logical order or CRM/ERP object and no new completion intent. | A fresh event ID or changed document bytes treated as a replay. |
 
 Evidence should retain only a synthetic demo run identifier, source and order
@@ -388,33 +394,35 @@ model cost remain unavailable without separately approved valid measurements.
 
 ## 6. Human decision register
 
-All entries below are recommendations for review, not approvals.
+The completion-notification contract and demo acceptance clarification below
+are approved at planning level. The remaining choices are recommendations for
+human decision, not approvals.
 
 | Decision | Recommended default | Tradeoff and downstream effect |
 | --- | --- | --- |
 | Project license | Choose explicitly between a permissive software license such as MIT or Apache-2.0, or intentionally keep the source unlicensed/all-rights-reserved while it remains publicly viewable. Use a separate documentation/media license only if the owner wants those assets reusable under different terms. Review the [MIT text](https://opensource.org/license/mit), [Apache-2.0 text](https://www.apache.org/licenses/LICENSE-2.0), and [GitHub licensing guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository); do not select terms in this plan. | MIT grants broad use subject to retaining its notice; Apache-2.0 provides an express patent license and requires preserving applicable notices; without a license, default copyright generally grants no reuse permission. The owner must choose. Review the Python/npm dependency licenses, Odoo bridge's declared LGPL-3, and all third-party assets/notices before adding a root LICENSE. |
 | Demo Gemini call | The roadmap requires an extraction stage but does not expressly mandate a live Gemini call. Recommend strengthening the portfolio demo with one actual Gemini generation request on the synthetic document. Before that request, require an explicit authorization naming provider/model, at most one request, and a concrete maximum spend in currency; if no spend ceiling is approved, do not call. | This is qualitative evidence only, not an accuracy evaluation. The existing SDK disables HTTP retries, but an ambiguous timeout still consumes the one-call budget. If credentials/provider are unavailable at preflight, stop with zero calls; do not fall back or retry without fresh authorization. No live quality, aggregate latency, authoritative tokens, or model cost becomes available from one call. |
-| Completion notification contract | Recommend Option A in Section 2: create independent post-sync Gmail and Slack intents in the completion transaction, with Slack truthfully reporting sync completion regardless of customer-email delivery. Require separate owner approval before any behavior change. | Preserves the outbox and avoids coupling the operations signal to email delivery. It does not enforce the roadmap's observed Gmail-before-Slack demo sequence; the current dispatcher has no channel-specific sequencing control. If actual timestamps do not satisfy the sequence, M12C stays incomplete until the owner approves Option B or separately amends the roadmap under Option C. |
+| Completion notification contract | **Approved: Option A.** After durable Odoo and HubSpot receipts pass in the existing completion transaction, reuse `ORDER_SYNC_COMPLETED` identity and the durable notification outbox to create a Gmail-source-provenance-bound reply to the original sender/thread and an independent Slack completion intent. Preserve independent bounded retry/outcomes, idempotent logical intents, and at-least-once external delivery. | Preserves approval-time semantics and lets Slack report successful sync independently of customer-email delivery. Both actual post-sync provider deliveries are mandatory for the full demo, but their relative delivery order is not a correctness invariant. No channel-priority scheduling, operator API, or generalized framework is approved. Implementation still requires a separate M12B authorization and code review. |
 | Demo environment | Prefer one full synthetic sandbox run: local Compose services, dedicated test Gmail/Slack, one authorized Gemini call, disposable Odoo Community database, and HubSpot developer-test portal. First verify targets and unique disposable identities. A second clone is a local setup check only. | Gives new end-to-end evidence but requires accounts, credentials, setup, and separately approved external operations. Existing provider retries can repeat attempts, so authorization must name targets, operation/retry ceilings, and any spend cap. Alternatives are a local provider-free rehearsal or historical Phase 8/9 evidence, each explicitly partial, or deferring live execution; none substitutes for the required full demo. |
-| Live Gemini evaluation | Retain the documented unavailable evidence by default. This draft does not request or authorize the full 36-case live evaluation. | The existing `make evaluate-live` command executes the complete 36-case evaluation corpus; it has no strict small-subset/cost-cap option. It must not be described as a limited measurement. If desired later, first approve a separate bounded measurement design and hard call/spend cap; then authorize that distinct live run. A single Gemini call in a demo is qualitative evidence, not evaluation. |
-| Media | Make a professionally edited, approximately 90–120 second public video a normal required portfolio deliverable, with readable capture of the actual user workflow and provider evidence, captions, and sanitized screenshots. Capture the authorized M12C run once for both demo verification and M12E editing. Use synthetic-data and sandbox disclosures, and keep an inspectable unedited run record privately where appropriate. | Keep raw captures out of Git. Do not use an arbitrary size cap that harms legibility. Recommend an optimized MP4 and VTT in the repository when practical; if repository size or playback is impractical, ask the owner to approve a suitable public external host after reviewing privacy, terms, availability, and possible cost. No media capture, upload, or production is authorized by this draft. Review every frame and asset license; no credentials, private identifiers, account details, or non-synthetic data. |
+| Live Gemini evaluation | Retain the documented unavailable evidence by default. This approved design does not request or authorize the full 36-case live evaluation. | The existing `make evaluate-live` command executes the complete 36-case evaluation corpus; it has no strict small-subset/cost-cap option. It must not be described as a limited measurement. If desired later, first approve a separate bounded measurement design and hard call/spend cap; then authorize that distinct live run. A single Gemini call in a demo is qualitative evidence, not evaluation. |
+| Media | Make a professionally edited, approximately 90–120 second public video a normal required portfolio deliverable, with readable capture of the actual user workflow and provider evidence, captions, and sanitized screenshots. Capture the authorized M12C run once for both demo verification and M12E editing. Use synthetic-data and sandbox disclosures, and keep an inspectable unedited run record privately where appropriate. | Keep raw captures out of Git. Do not use an arbitrary size cap that harms legibility. Recommend an optimized MP4 and VTT in the repository when practical; if repository size or playback is impractical, ask the owner to approve a suitable public external host after reviewing privacy, terms, availability, and possible cost. No media capture, upload, or production is authorized by this approved design. Review every frame and asset license; no credentials, private identifiers, account details, or non-synthetic data. |
 | Public security and privacy | Run pinned full-history Gitleaks and current-content checks, ignored-file checks, production and complete dependency advisory review, workflow/media/license review, and a final privacy/claims audit at the release candidate. Resolve findings or record a narrowly scoped, human-approved disposition. | The repository is already public, so review cannot make past visibility private. The current full npm audit has known High development-tree findings while the production-only audit is documented clean; recheck exact advisories and production exposure rather than claiming they are fixed. |
 
 ## 7. Risks, alternatives, and approval gates
 
 | Risk or gap | Recommended treatment | Gate |
 | --- | --- | --- |
-| Current app has no post-sync confirmation-email or completion-Slack event. | Evaluate Options A/B/C in Section 2. Keep the roadmap sequence criterion unchanged unless the owner separately amends it. Never call an approval reply a completion email. | Owner explicitly approves the behavior contract before M12B implementation; independent review approves transaction, idempotency, failure, and recovery semantics. |
+| Current app has no post-sync confirmation-email or completion-Slack event. | Implement only the owner-approved Option A contract at a separately authorized M12B implementation gate. Keep approval-time notifications distinct and never call an approval reply a completion email. | The design decision is approved at SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`; M12B implementation is not authorized by that approval. Independent review must approve transaction, idempotency, failure, retry, and recovery semantics. |
 | Sandbox credentials or accounts have expired or are unavailable. | Recreate/re-authorize dedicated accounts and repeat setup from the clean clone. If that is not possible, report a partial demo only. | Explicit authorization before each email/send/write or potentially charged call. |
 | Gemini provider-free fake can be mistaken for model output. | Recommend one actual Gemini generation request for stronger demo evidence, separately authorized with a one-request budget and explicit spend ceiling. Put provider mode in the run record and visible capture; a fake remains labeled as a rehearsal. | If unavailable before invocation, stop with zero calls; after timeout/ambiguity, do not retry. Claim review keeps quality, aggregate latency, tokens, and model cost unavailable absent valid separately approved measurement. |
 | A live service may retain or expose synthetic message/record data. | Use dedicated accounts, minimal scopes, unique synthetic identities, sanitized captures, and documented cleanup. | Operator confirms account ownership and cleanup target before actions. |
-| Gmail completion failure could suppress an operational Slack signal under strict sequencing. | Prefer independently retriable completion events under Option A; document that this does not enforce demo ordering. If Option B is selected, design operator recovery for permanent failure, timeout, and lost acknowledgement before coding. | Owner selects A/B/C. A does not pass the required sequence unless actual provider timestamps show the roadmap order; B requires independent review of withholding and recovery semantics. |
+| Independent notification delivery may produce different timing or a failure on either channel. | Under approved Option A, retain independent bounded delivery and durable outcomes. Both successful actual deliveries are required for the full demo, but Gmail does not gate Slack; record each outcome and timestamp without ordering claims. | The M12B implementation gate reviews atomic intent creation, Gmail provenance, stable identities, idempotency, retries, failure outcomes, and at-least-once behavior. No relative delivery-time requirement applies. |
 | Public licensing or asset rights are unclear. | Do not add third-party visuals or root license until the owner chooses terms and dependency/asset obligations are reviewed. | Human license decision before final public-ready audit. |
 | High development-tree npm advisories remain. | Recheck package paths and current advisory details; fix or record a defensible, approved non-production disposition. | Final audit requires documented disposition, not a silent pass. |
 
 No cloud deployment, public release upload, new provider account write, live
 Gemini call, live Gmail send, Slack message, Odoo mutation, HubSpot mutation,
-or media capture is part of this design task.
+or media capture is authorized by this planning approval.
 
 ## 8. Acceptance and definition of done
 
@@ -426,16 +434,18 @@ The Phase 12 implementation is complete only when:
 2. The demo has new evidence from one literal candidate clone and actual
    dedicated sandbox operations for the roadmap's email intake, Odoo,
    HubSpot, post-sync confirmation email, and Slack completion stages. It
-   exercises the application extraction and deterministic-validation stages
-   before review/approval. Actual provider identity and operation outcomes
-   are recorded; fakes and prior integration evidence cannot stand in for
-   claimed live steps. The proposed single live Gemini call is a separately
-   approved strengthening of the roadmap's extraction-stage requirement;
-   absent authorization it is not called or described as live. The roadmap's
-   Gmail-before-Slack observed sequence remains a pass criterion. Option A
-   does not guarantee it; if actual timestamps fail that sequence, the demo
-   is incomplete unless Option B is approved or the owner separately amends
-   the roadmap. A second clone verifies local setup only.
+   exercises the application document-processing and extraction stages,
+   deterministic validation, and human review/approval. Actual provider
+   identity and outcomes are recorded; fakes and prior integration evidence
+   cannot stand in for claimed live steps. The proposed single live Gemini
+   call is a separately authorized strengthening of the roadmap's extraction
+   stage; absent authorization it is not called or described as live. Both
+   actual post-sync Gmail confirmation and Slack completion deliveries are
+   required and causally tied to successful Odoo/HubSpot synchronization with
+   durable receipts. Record actual outcomes and timestamps; their relative
+   delivery order is not a correctness invariant. Missing or failed delivery
+   on either channel makes the full demo incomplete. A second clone verifies
+   local setup only.
 3. The same-source replay proves one logical order and unchanged actual ERP/CRM
    identity/counts. The case study distinguishes live results, fakes, and
    historical evidence.
@@ -468,8 +478,10 @@ manual evidence, limitations, costs, and any accepted residual risks.
 ## 9. Proposed milestone boundary
 
 The linked [implementation plan](../plans/2026-10-12-phase-12-portfolio-release.md)
-decomposes Phase 12 into sequential documentation, completion-notification
-decision/implementation, clean-clone demo, evidence/case-study,
-media/public-hygiene, and independent audit milestones. It keeps optional
+decomposes Phase 12 into M12A portfolio framing/onboarding, M12B approved
+completion-notification behavior, M12C full sandbox demonstration/local
+reproducibility, M12D evidence-backed case study, M12E media/licensing/privacy/
+public hygiene, and M12F independent release audit/closeout. It keeps optional
 live-Gemini evaluation separate from the proposed one-call qualitative demo
-evidence. This proposal remains a draft until human review and approval.
+evidence. This design is APPROVED for planning only; implementation remains
+NOT STARTED and separately gated.
