@@ -986,3 +986,151 @@ are not treated as production dependency findings.
 
 This disposition is independent-review evidence only. Human acceptance of
 M12C-2 remains pending; no M12C-3 activity is authorized by this review.
+
+### M12C-2 human acceptance and M12C-3 static readiness decision — 2026-10-14
+
+**M12C-2 is human-accepted.** M12C-1 static preflight was accepted at
+`7cf04966b7193d69ab1b04b91348c9e82ef33636`. M12C-2 ran against that candidate;
+its execution record is commit `14392b1b15ddb5e163eb20949bd04df388ea6eb5` and
+its independent PASS review is commit
+`4bb388fc2db930aa6810a78340f046b7b41292cb`. This section records the owner's
+acceptance. M12A and M12B remain COMPLETE; Phase 12 and M12C remain IN PROGRESS;
+M12C-3 and M12D–M12F remain NOT STARTED. This acceptance does not authorize
+provider operations, another rehearsal, or media capture.
+
+The two Low-severity review findings remain in the historical review table
+above. The stale README status is corrected in this documentation closeout.
+The M12C-2 private JSON run record contains a database-target field named
+`password`; its value was not inspected here. Keep the record outside Git and
+redact credential fields before any transfer. Do not publish the private run
+record. The frozen [Phase 11 provider-free reference](../evaluation/reference/phase-11-provider-free-baseline.md)
+and the separate post-M12B compatibility evaluation remain distinct and
+unchanged; neither establishes live Gemini quality or replaces the Phase 11
+reference.
+
+#### Gemini one-invocation decision
+
+**Recommendation: Option A, no live Gemini call for the M12C-3 run.** The
+approved full-demo criterion requires the real application extraction stage
+and truthful provider-mode evidence; it does not require Gemini accuracy
+evidence. Use the fixed provider only if it is selected and labeled as scripted
+FakeProvider output. This preserves a faithful full Gmail/ERP/CRM/notification
+demonstration without a model charge or a change to normal retry behavior.
+
+| Option | Correctness and failure handling | Persistence, retry impact, tests, and scope |
+| --- | --- | --- |
+| **A — No live Gemini** | No paid or ambiguous model request. Show the real application stage with the actual mode identified; scripted output is not extraction-accuracy evidence. | No schema or code change; normal human Retry and stale-lease recovery stay unchanged. Verify the local mode label and zero Gemini calls in the rehearsal. The full external sandbox transaction can still be demonstrated. |
+| **B — Durable single-use reservation** | Add a unique, durable reservation for the explicitly authorized source-document ID and byte hash. Commit it only after verifying the current intake ownership claim and immediately before the provider call. Make the call outside the database transaction. Once reserved, HTTP redelivery, lease recovery, human Retry, and exact-source replay must stand down. Timeout, crash, malformed response, or lost acknowledgement consumes the reservation; never fall back or call again. A crash after reservation but before sending means zero calls and a consumed reservation. This bounds one application-initiated request, not what Gemini may have processed after an ambiguous acknowledgement. | Requires a forward migration and an opt-in, source-scoped orchestration guard; do not apply it to ordinary orders or weaken their retry policy. Test PostgreSQL atomic reservation, competing workers, crash points, expired leases, HTTP retries, Human Retry, replay, and timeout/ambiguous response. Reconfirm the pinned SDK/transport path. It remains a separately authorized implementation and review. |
+| **C — Existing controls only** | No existing control proves the bound. `google-genai` is pinned to 2.24.0 and the adapter configures zero SDK retries, but application re-entry can invoke the provider again. Intake idempotency identifies the order/source; it is not a provider invocation reservation. | No database change, but inadequate acceptance evidence. A characterization test could demonstrate re-entry through lease recovery or human Retry; it cannot establish the required bound. Disabling SDK or n8n retries alone does not address these paths. |
+
+The existing seams are `create_order_with_disposition()` and
+`claim_intake_execution()` in `src/opsflow/application/orchestration.py` /
+`src/opsflow/orchestration/claims.py`, followed by the external
+`OrderExtractor.extract()` call in `src/opsflow/application/orchestration.py`.
+The source and claim are durable before that call, while extraction itself is
+outside a transaction. An eligible human Retry or expired 210-second intake
+lease can claim the same source again; a request timeout can be ambiguous.
+The existing idempotency key and 180-second request budget therefore do not
+prove one provider invocation. No Option B implementation is authorized here.
+The 36-case live Gemini evaluation remains unauthorized; live quality,
+aggregate latency, authoritative token totals, and model cost remain
+unmeasured.
+
+#### Pinned n8n execution and retry findings
+
+The tracked workflows pin n8n `2.40.5`. Static comparison with the [pinned Gmail Trigger source](https://github.com/n8n-io/n8n/blob/n8n%402.40.5/packages/nodes-base/nodes/Google/Gmail/GmailTrigger.node.ts),
+[Gmail request helper](https://github.com/n8n-io/n8n/blob/n8n%402.40.5/packages/nodes-base/nodes/Google/Gmail/GenericFunctions.ts),
+[Gmail v2 node](https://github.com/n8n-io/n8n/blob/n8n%402.40.5/packages/nodes-base/nodes/Google/Gmail/v2/GmailV2.node.ts),
+[Slack v2 node](https://github.com/n8n-io/n8n/blob/n8n%402.40.5/packages/nodes-base/nodes/Slack/V2/SlackV2.node.ts),
+and [n8n authentication request helper](https://github.com/n8n-io/n8n/blob/n8n%402.40.5/packages/core/src/execution-engine/node-execution-context/utils/request-helpers/authentication.ts)
+supports these boundaries:
+
+- `opsflow-gmail-intake.json` polls every minute with
+  `label:OpsFlow/Intake`, Gmail Trigger v1.4, and `simple=false`. It does not
+  set `maxResults`; the pinned node defaults its per-poll delivery budget to
+  10 messages. It paginates message listings, tracks cursor/boundary IDs, and
+  can retry a failed message fetch on later polls up to ten times before
+  dropping that fetch. Cursor and duplicate tracking reduce ordinary
+  re-emission but do not create an at-most-once provider-call guarantee. One
+  poll is not one Gmail request or necessarily one source. The exported node
+  does not set `retryOnFail`; the workflow also has up to four same-source API
+  submissions through its explicit retry/recovery branches. Those are local
+  API POSTs; intake idempotency does not fence repeated extraction.
+- The notification workflow runs every minute, claims one globally eligible
+  outbox row, then uses Gmail 2.2 Reply or Slack 2.7 Message/Post. The tracked
+  claim, send, and outcome nodes set `retryOnFail=false`. The pinned nodes call
+  provider request helpers, however, and the exact physical resend ceiling
+  through OAuth refresh and the underlying outbound transport was not proved
+  from the tracked node flags. **Gmail and Slack wire-level retry ceiling:
+  UNRESOLVED.** A backend intent can be claimed up to three times; an expired
+  five-minute claim or a lost provider/outcome acknowledgement can lead to an
+  at-least-once duplicate. A manual n8n execution retry could repeat a send
+  and is not part of the authorized procedure.
+- `opsflow-order-sync.json` schedules one backend `execute-next` API call every
+  five minutes; M9B, not n8n, owns synchronization retries. The notification
+  dispatcher is global rather than demo-order scoped. If any unrelated due
+  intent exists, it may be claimed. A fresh isolated DB and a positively
+  checked expected intent roster are required before enabling dispatch.
+
+For a future controlled poll, an imported local instance may set
+`maxResults=1`, use a dedicated mailbox/empty intake label with one controlled
+synthetic message, and be deactivated immediately after acceptance. This
+reduces message fanout but does **not** establish a strict physical Gmail read
+ceiling: the list/fetch sequence, failed-fetch retry, OAuth refresh, poll
+timing, and lower transport behavior still need a defensible bound. The
+physical retry limits for Gmail replies and Slack sends are likewise
+UNRESOLVED. Do not authorize those sends until the effective physical-attempt
+ceiling or a separately reviewed bound is supplied.
+
+#### Future operation authorization checklist
+
+The earlier [provider-operation authorization matrix](#provider-operation-authorization-matrix)
+remains the source for proposed targets, logical operation counts, and success
+evidence. This static review refines the attempt limits; a normal-path count is
+not a physical retry ceiling. No provider identity, credential, price, or
+account quota was checked. Each read—including target identity and
+existing-record conflict checks—requires explicit authorization before access.
+
+| Provider / workflow | Current limit finding | Readiness |
+| --- | --- | --- |
+| **n8n and Gmail intake** | The pinned Gmail Trigger defaults to at most 10 message items per poll, can retry a failed fetch over later polls, and does not provide a one-source physical-request bound. One workflow item can also submit up to four local API POSTs. | **BLOCKED** until the operator has a dedicated one-source window and a defensible provider-request ceiling. API idempotency does not limit extraction invocations. |
+| **Gmail replies** | The approval-time and completion intents allow up to six backend send-node executions total (three each); provider HTTP retries/ambiguous delivery remain unresolved. | **BLOCKED** until the physical attempt ceiling and exact mailbox/thread are approved. Reconcile an ambiguous send before any separately authorized retry. |
+| **Gemini** | Option A proposes zero calls. Current lease recovery and Human Retry can invoke the provider again; no spend ceiling is established. | **BLOCKED / zero calls authorized.** Option B requires a durable source fence, verified one-request transport bound, and explicit owner-set spend ceiling. No live evaluation. |
+| **Slack** | Four approval/review/completion intents allow up to twelve backend send-node executions; node retry is disabled, but physical transport retry and quota are unresolved. | **BLOCKED** pending physical attempt bound, exact workspace/channel approval, and any required spend ceiling. Reconcile an ambiguous acknowledgement before separately authorized retry. |
+| **Odoo and HubSpot** | Happy-path estimates are 36 Odoo and 8 HubSpot requests. Each sync generation permits up to three automatic failed attempts; manual retry can start another generation, so the total physical maximum is not established. | **BLOCKED** pending exact disposable targets and numeric ceilings. On an ambiguous create, stop and reconcile the stable external identity before retry. No price or account-limit claim is made. |
+
+All provider operations remain unauthorized. Before execution, the owner must
+separately approve (1) provider identity and exact target verification; (2)
+read-only conflict checks; (3) any synthetic setup writes; (4) one business
+transaction and its maximum automatic sync attempts; (5) approval-time
+Slack/Gmail sends as well as post-sync completion sends; (6) exact-source
+replay only after confirmed completion; and (7) cleanup, archive/delete, and
+credential revocation individually. The replay must deactivate Gmail intake
+first, then submit the exact retained source bytes with the original Gmail
+message identity and idempotency key to the local authenticated API after
+confirming COMPLETED and all receipts. It must not fetch Gmail again or invoke
+Gemini, Gmail, Slack, Odoo, or HubSpot. Replay before completion is a stop
+condition. A second clone grants no extra provider-operation budget.
+
+#### M12C-3 readiness and next gate
+
+**Readiness decision: NOT READY for live execution.** No sandbox target has
+been verified, no operation or spend ceiling is authorized, Gemini is not
+safe for a one-call claim under current application recovery, and Gmail/Slack
+physical request ceilings remain unresolved. No provider operation, cross-
+provider transaction, actual completion delivery, post-completion replay, or
+media capture has been demonstrated. These findings do not weaken the
+accepted full-demo criterion: M12C-3 must still prove actual Gmail intake,
+application extraction with provider mode truthfully identified,
+deterministic validation and distinct human review/approval, actual Odoo and
+HubSpot records with durable receipts, actual post-sync Gmail and Slack
+delivery tied to successful synchronization, one logical order and unchanged
+ERP/CRM object counts on exact-source replay, and sanitized inspectable
+evidence. Both post-sync notifications remain required.
+
+Recommended next task: owner chooses Option A (no live Gemini) or separately
+authorizes a scoped Option B design/implementation review; then authorize a
+focused static/runtime retry-ceiling review for the pinned Gmail/Slack paths
+and approve exact sandbox target types. Only after those controls are
+reviewed should the owner issue a separate operation-by-operation M12C-3
+authorization. This section is a readiness design, not that authorization.
