@@ -907,3 +907,82 @@ databases/accounts, send a message, create a provider record, call Gemini,
 capture media, or perform cleanup. M12C-2 was separately authorized and is
 recorded above. This runbook does not authorize M12C-3 provider operations,
 media capture, or cleanup; those still require separate human approval.
+
+### Independent M12C-2 review and disposition — 2026-10-14
+
+**Verdict: PASS — the local M12C-2 acceptance criteria are supported and are
+eligible for human acceptance.** This does not mark M12C complete or authorize
+M12C-3. M12C remains IN PROGRESS; M12C-3 and M12D–M12F remain NOT STARTED.
+
+The independent review covered the full M12C-2 documentation change at
+`14392b1b15ddb5e163eb20949bd04df388ea6eb5`, the preflight candidate
+`7cf04966b7193d69ab1b04b91348c9e82ef33636`, the approved Phase 12 criteria,
+and the relevant orchestration, provider-selection, review-authorization,
+order-sync, Compose, and n8n workflow contracts. The committed M12C-2 change is
+limited to this runbook and the roadmap. The original M12C-1 preflight remains
+distinct from the later execution record above.
+
+The temporary clone is detached at the candidate SHA with a clean tracked
+tree. Its ignored `.env` exists with owner-only permissions and is not tracked;
+credential values were not emitted. The retained UTF-8 synthetic source is
+owner-only, and its SHA-256 and byte length match the private JSON run record.
+The record itself was inspected only for selected sanitized fields; it was not
+copied into Git. Read-only Docker metadata confirms the rehearsal project's
+three containers are stopped and its two named volumes remain labeled to that
+project. Their creation times align with the run. The execution report states
+that the loopback migration target had zero public tables before migration;
+the recorded target and Alembic head are
+`0008_phase12_completion_notifications`. This review did not reconnect to
+the stopped database. The Compose definition uses project-scoped PostgreSQL
+and n8n volumes and loopback-published service ports.
+
+The effective API configuration evidence shows Gemini, Odoo, and HubSpot
+settings absent or empty. Source composition selects the fixed `FakeProvider`
+when no Gemini key is configured; the order-sync executor is absent unless the
+required adapters are configured, and the authenticated endpoint returns 503
+before executing sync when that executor is absent. The private record reports
+three imported workflows inactive, zero stored or bound provider credentials,
+zero workflow executions, zero provider-operation counters, and zero
+notification deliveries. These observations support that the application's
+provider paths were disabled; no packet capture was made, so this is not a
+claim about every possible outbound network request.
+
+The retained evidence supports direct authenticated local API intake of one
+synthetic `EMAIL_BODY`, with no Gmail source identity or message ID. The source
+hash matches the persisted source. The initial state and
+`DELIVERY_DATE_IN_PAST` issue, reviewer correction and revalidation to
+`READY_FOR_APPROVAL`, and a separate approver's `APPROVED` transition agree
+with the persisted audit summary. The scripted extraction is FakeProvider
+output and supplies no AI-accuracy evidence. The order-sync preclaim returned
+503 without receipts or completion. Exact-source replay returned an
+idempotent response for the same order; the recorded state remains
+`APPROVED`, with one source, one extraction snapshot, ten audit events, one
+idempotency record, and three pending Slack intents at zero attempts. The
+application claim path stands down for an approved order before document
+processing. These local observations do not prove Gmail intake, provider
+delivery, ERP/CRM completion, or the required post-completion Gmail-source
+replay.
+
+| Review finding | Severity and disposition |
+| --- | --- |
+| `README.md` line 13 still says “M12C–M12F have not started,” although the roadmap records M12C IN PROGRESS and M12C-1/M12C-2 progress. | **Low, non-blocking.** Correct the current-status wording during a separately authorized documentation update; README was outside this review's change scope. |
+| The private JSON run record has a database-target `password` field. Its value was not emitted or copied; the file is outside Git with mode `0600`. | **Low, non-blocking.** Keep the evidence private and redact credential fields before any transfer. No credential value was found in the tracked M12C-2 diff. |
+
+The following M12C-3 readiness blockers remain as recorded above: no verified
+live sandbox targets; Gmail Trigger read/retry ceilings are unresolved;
+provider notification wire-level retry behavior is not fully established;
+the at-most-one Gemini invocation bound is not yet safe; no live
+cross-provider transaction, completion delivery, or full-demo replay exists;
+and no media has been captured. These do not retroactively block M12C-2.
+
+Review checks were read-only. The 51 relative Markdown links and anchors in
+the changed runbook and roadmap resolve; `git diff --check` passes. GitHub CI
+run `38566991165` for this exact execution-record SHA completed successfully,
+including its pinned Gitleaks v8.28.0 secret-scan job. No application tests,
+services, migrations, database connections, local provider operations, or
+media capture were performed for this review. The rehearsal's recorded
+two-high-severity frontend development-tree advisories remain disclosed and
+are not treated as production dependency findings.
+
+This disposition is independent-review evidence only. Human acceptance of
+M12C-2 remains pending; no M12C-3 activity is authorized by this review.
