@@ -455,17 +455,18 @@ M9E does not add a new endpoint, workflow engine, queue, worker, provider
 logic in n8n, throughput loop, cloud deployment, or dashboard. M9F remains
 outside scope.
 
-## M12C PREPARATION — NOT EXECUTED
+## M12C-1 STATIC PREFLIGHT — ACCEPTED; NO PROVIDER RUN
 
-This section records M12C-1 static inspection and a proposed operator plan.
+This subsection records M12C-1 static inspection and its proposed operator plan.
 The inspected source baseline was the M12B documentation closeout at
-`93bef43c175c534b94537f40632188118bf0daee`; freeze the later, human-reviewed
-M12C-1 documentation commit as the candidate SHA before either future clone.
-No services were started, databases or provider accounts were read or changed,
-credentials were inspected, workflows activated, provider calls made, or media
-captured. M12C's approved end-to-end acceptance remains unchanged. M12C-2 local
-reproducibility/rehearsal and M12C-3's one live sandbox transaction each need
-their own human authorization; neither starts automatically from this plan.
+`93bef43c175c534b94537f40632188118bf0daee`; at that time the plan was to freeze
+the later, human-reviewed M12C-1 documentation commit before either future
+clone. M12C-1 was accepted at `7cf04966b7193d69ab1b04b91348c9e82ef33636`.
+During M12C-1 no services were started, databases or provider accounts were
+read or changed, credentials were inspected, workflows activated, provider
+calls made, or media captured. M12C's approved end-to-end acceptance remains
+unchanged. The separately authorized M12C-2 execution is recorded below;
+M12C-3 still needs its own authorization and has not started.
 
 ### Executable path and evidence map
 
@@ -589,13 +590,14 @@ provider reads to verify any identity before that authorization.
 
 ### Proposed M12C execution sequence
 
-Freeze the post-review M12C-1 commit SHA for both future clones; verify the
-tracked tree and feature branch are clean at that SHA. Any later code/config
-change requires a new candidate and approval before live activity. A second
-clone provides no additional external-operation or provider-call budget.
+This sequence was drafted during M12C-1. M12C-2 used the accepted candidate SHA
+`7cf04966b7193d69ab1b04b91348c9e82ef33636`; M12C-3 requires its own fresh,
+approved candidate and separate authorization. Any later code/config change
+requires review before live activity. A second clone provides no additional
+external-operation or provider-call budget.
 
-**M12C-2 — local reproducibility and provider-free rehearsal (not authorized or
-executed):**
+**M12C-2 — planned local reproducibility and provider-free rehearsal (recorded
+before execution; actual result follows below):**
 
 1. Make a literal clean clone of the frozen SHA. Choose a unique local
    Compose project name and set it as the local `PROJECT` variable. Proposed
@@ -635,6 +637,156 @@ executed):**
 5. Stop only this project's services while preserving its named volume unless
    later cleanup authorization explicitly identifies that exact project and
    volume. Do not call `down -v` on an unknown or shared project.
+
+### M12C-2 execution record — 2026-10-14
+
+**Result: provider-free local rehearsal executed; independent review pending.**
+Phase 12 remains IN PROGRESS. M12C-3 and all live-provider operations remain
+NOT STARTED and unauthorized. The run used candidate SHA
+`7cf04966b7193d69ab1b04b91348c9e82ef33636` in a literal clone at
+`/tmp/opsflow-m12c2.BtXcjT19/repo`; the clone was detached at that SHA, had a
+clean tracked tree, and had no copied `.env`. Private local observations and the
+exact synthetic source are retained outside Git under
+`/tmp/opsflow-m12c2.BtXcjT19/evidence/`; credentials and raw runtime data are
+not part of this repository.
+
+The observed toolchain was Python 3.12.15, uv 0.12.22, Node 24.21.0, npm
+11.19.0, Docker 29.7.2, Compose 5.4.0, PostgreSQL image 16, and n8n 2.40.5.
+The unique Compose project was `opsflow-m12c2-20261014-90ec21`; its new named
+volumes were `opsflow-m12c2-20261014-90ec21_postgres-data` and
+`opsflow-m12c2-20261014-90ec21_n8n-data`. Before startup, no container or
+volume carried that project label and loopback ports 5432, 8000, 5173, and 5678
+were free. No unrelated container was running. The two volumes remain
+preserved; no `down -v` or volume deletion was used.
+
+Commands executed in the clone included:
+
+```sh
+git clone --no-local --no-checkout https://github.com/Joseph-Nawar/OpsFlow_AI.git /tmp/opsflow-m12c2.BtXcjT19/repo
+git -C /tmp/opsflow-m12c2.BtXcjT19/repo checkout --detach 7cf04966b7193d69ab1b04b91348c9e82ef33636
+uv sync --frozen --dev
+npm --prefix web ci
+docker compose -p opsflow-m12c2-20261014-90ec21 config --quiet
+docker compose -p opsflow-m12c2-20261014-90ec21 up --wait postgres
+make migrate
+uv run alembic current
+docker compose -p opsflow-m12c2-20261014-90ec21 up --wait api n8n
+npm --prefix web run dev -- --host 127.0.0.1
+```
+
+The three workflow imports used the tracked exports and the n8n CLI's default
+inactive behavior:
+
+```sh
+docker compose -p opsflow-m12c2-20261014-90ec21 cp workflows/n8n/opsflow-gmail-intake.json n8n:/tmp/opsflow-gmail-intake.json
+docker compose -p opsflow-m12c2-20261014-90ec21 cp workflows/n8n/opsflow-order-sync.json n8n:/tmp/opsflow-order-sync.json
+docker compose -p opsflow-m12c2-20261014-90ec21 cp workflows/n8n/opsflow-notification-dispatch.json n8n:/tmp/opsflow-notification-dispatch.json
+docker compose -p opsflow-m12c2-20261014-90ec21 exec -T n8n n8n import:workflow --input=/tmp/opsflow-gmail-intake.json
+docker compose -p opsflow-m12c2-20261014-90ec21 exec -T n8n n8n import:workflow --input=/tmp/opsflow-order-sync.json
+docker compose -p opsflow-m12c2-20261014-90ec21 exec -T n8n n8n import:workflow --input=/tmp/opsflow-notification-dispatch.json
+```
+
+The local app operations were authenticated API calls: multipart `POST
+/v1/orchestration/intakes` with `document_type=EMAIL_BODY`; reviewer `GET
+/v1/review/orders/{order_id}` and `GET
+/v1/review/orders/{order_id}/reference-data`; reviewer `PUT
+/v1/review/orders/{order_id}/draft` with its current strong `If-Match`; a
+separate approver `GET` and `POST /v1/review/orders/{order_id}/approve` with
+the approver's strong `If-Match`; and `GET /v1/orders/{order_id}/audit`. The
+order-sync preclaim used authenticated `POST
+/v1/orchestration/order-sync/execute-next`. Replay repeated the intake POST
+with the same local key and exact bytes. Tokens were read from the ignored
+local `.env` only by the private client script and are not recorded here. The
+intake request was sent directly by that local client; although the persisted
+audit actor is `orchestration:n8n` under the existing auth contract, this was
+not an n8n workflow execution.
+
+The fresh `.env` was created only after confirming no file or symlink existed,
+using `.env.example` as its basis. New random orchestration, reviewer, approver,
+and n8n local values were generated in the clone; the file was mode 0600 and
+`git check-ignore` confirmed it is ignored. Its effective host migration target
+was verified without printing a password as
+`postgresql+asyncpg / localhost / 5432 / opsflow / opsflow`. A connection through
+the host-published loopback port returned database `opsflow`, user `opsflow`,
+server port 5432, and zero public tables before migration. Compose labels
+confirmed that the healthy container and new volume belong to the unique
+project. `make migrate` succeeded and `uv run alembic current` returned
+`0008_phase12_completion_notifications (head)`. The API container connects to
+its same-project PostgreSQL service over the isolated Compose network.
+
+Runtime checks established that Gemini was disabled and the fixed
+`FakeProvider` was selected; Odoo and HubSpot settings and adapters were absent,
+and `order_sync_step_executor` was `None`. Reviewer and approver had distinct
+generated local credentials and actors. The API `/ready`, Vite root, and n8n
+`/healthz` returned HTTP 200. The three tracked Gmail intake, order-sync, and
+notification-dispatch workflows imported through n8n's CLI with its default
+inactive import behavior. Export-back verified `active=false` and disabled
+successful, error, and manual execution-data retention for each. Their named
+credential references remained unbound; n8n's credential export reported
+“No credentials found.” No workflow was activated or executed. The local API
+bearer was used directly for local API requests, not installed as an n8n
+credential.
+
+One 392-byte synthetic `EMAIL_BODY` was submitted directly to the local
+authenticated intake API with idempotency key prefix `m12c2-local:`. The API's
+source contract accepts `GMAIL` or an omitted `source_system`; it does not
+accept a fabricated `LOCAL` provider value. Accordingly, this request omitted
+both `source_system` and `message_id`; it has no Gmail provenance. The retained
+synthetic source SHA-256 is
+`9e8e213f0c44fe71046ab20b5f0cf6962305ffac032a30188df8b90d93078fcc`.
+This was direct local API intake, not Gmail receipt or n8n intake.
+
+The local API returned `NEEDS_REVIEW`. The persisted draft came from the fixed
+FakeProvider, which ignores source content and emitted its scripted
+`2025-01-01` / `2025-01-08` dates; those values are not extraction-accuracy
+evidence. The actual deterministic validator reported
+`DELIVERY_DATE_IN_PAST` against the rehearsal date, 2026-10-14. The reviewer
+`local-m12c2-reviewer` read the detail/reference-data API and used Save &
+Revalidate to correct the dates to 2026-10-14 / 2026-10-21. The trusted local
+catalog returned active Acme Industries / `CUST-001` and active Widget /
+`SKU-001`, USD 10.00, available quantity 100. Revalidation returned
+`READY_FOR_APPROVAL` with zero validation issues. A separate authenticated
+`APPROVER`, `local-m12c2-approver`, then approved the order through the normal
+approval API. Persisted audit history has ten events through `ORDER_APPROVED`;
+one order, one source document, one extraction snapshot, and one idempotency
+record remained.
+
+The order has three pending Slack approval/review notification intents
+(`REVIEW_REQUIRED`, `APPROVAL_READY`, and `ORDER_APPROVED`), each at attempt
+count zero. It has no Gmail intent because it has no Gmail source provenance,
+and no completion intent because no ERP/CRM synchronization occurred. No
+notification was claimed or delivered. With both external adapters absent,
+the authenticated order-sync endpoint returned its safe preclaim HTTP 503; the
+order remained `APPROVED` and no receipts or completion event were created.
+
+The same retained bytes and local idempotency key were replayed after approval.
+The local API returned HTTP 200, `idempotent_replay=true`, the same order ID,
+and state `APPROVED`. Before/after observations were identical: one order,
+source, extraction snapshot, and idempotency record; ten audit events; three
+pending notification intents with zero attempts. This confirms local
+idempotency and no repeated extraction for this approved non-Gmail source. It
+is not the required post-completion exact Gmail-source replay and does not
+prove Gmail, Gemini, Slack, Odoo, or HubSpot behavior.
+
+| M12C-2 local acceptance check | Result |
+| --- | --- |
+| Literal clean clone, fresh isolated Compose project/volumes, safe DB target, migration head | PASS |
+| API/frontend readiness and inactive workflow import/retention configuration | PASS |
+| Fixed FakeProvider, local source processing, deterministic review, separate correction and approval | PASS |
+| Persisted audit, source, snapshot, idempotency, and pending notification intent evidence | PASS |
+| Adapter-free order-sync preclaim and exact local-source replay without duplicate extraction | PASS |
+| Gmail receipt, live Gemini extraction, Slack delivery, Odoo/HubSpot sync, post-sync sends, Gmail-source replay | NOT EXERCISED; requires separately authorized M12C-3 |
+| Screenshots/video | NOT CAPTURED; reserved for the authorized full run and M12E |
+
+The rehearsal used no live-provider credentials or calls, sent no message,
+mutated no provider account, and captured no media. No application tests were
+run. `npm ci` reported two high-severity frontend dependency-tree advisories
+and an `fsevents` install-script warning; this install did not modify tracked
+dependencies. The live Gemini single-invocation bound remains NOT YET SAFE under
+the existing retry/recovery paths. M12C-3 still requires separately supplied
+and verified sandbox targets, credentials, operation/retry ceilings, and
+authorization; it must not be replaced by this local rehearsal or run in this
+clone without fresh approval.
 
 **M12C-3 — one live synthetic sandbox transaction (not authorized or
 executed):**
@@ -740,9 +892,9 @@ is a readable, edited 90–120 second overview with sanitized screenshots.
   public-privacy review should decide whether that existing identifier is
   suitable to retain. A current identity or conflicting
   `CUST-001`/`SKU-001` record is a hard stop, not a reason to overwrite it.
-- M12C-2 was not executed; clean-clone startup, fresh volume ownership,
-  migration target, port availability, local roles, and n8n import were not
-  checked at runtime. Provider-free runtime rehearsal cannot prove completion
+- At M12C-1 preflight closeout, M12C-2 runtime checks had not yet been
+  performed. The separately authorized M12C-2 execution and its local-only
+  results are recorded above. Provider-free rehearsal cannot prove completion
   because the app intentionally preclaim-blocks sync without both adapters.
 - Actual post-sync Gmail and Slack delivery, Odoo/HubSpot mutations, case-study
   evidence, screenshots, and video remain unobserved. Any setup writes,
@@ -750,7 +902,8 @@ is a readable, edited 90–120 second overview with sanitized screenshots.
   authorization. The Phase 11 provider-free reference and `NO_OPTIMIZATION`
   are outside this M12C preflight and remain unchanged.
 
-This preparation is not authority to run any command that starts services,
-changes local databases/accounts, sends a message, creates a provider record,
-calls Gemini, captures media, or performs cleanup. It proposes a sequence for
-human review only.
+The M12C-1 preflight itself was not authority to start services, change local
+databases/accounts, send a message, create a provider record, call Gemini,
+capture media, or perform cleanup. M12C-2 was separately authorized and is
+recorded above. This runbook does not authorize M12C-3 provider operations,
+media capture, or cleanup; those still require separate human approval.
