@@ -39,7 +39,11 @@ on another project and do not remove its volumes.
 From a checkout of the implementation candidate, create ignored local config:
 
 ```sh
-cp .env.example .env
+if [ ! -e .env ] && [ ! -L .env ]; then
+  cp .env.example .env
+else
+  printf '%s\n' 'Existing .env path found; leaving it unchanged.'
+fi
 ```
 
 Set a unique random `OPSFLOW_ORCHESTRATION_TOKEN` locally. Set all six Odoo
@@ -71,19 +75,27 @@ before the live E2E.
 Start and migrate a fresh Compose project:
 
 ```sh
-docker compose -p opsflow-m9e-demo up -d --build postgres api n8n
 uv sync --frozen --dev
-uv run alembic upgrade head
+docker compose -p opsflow-m9e-demo up --wait postgres
+# Run the read-only effective database-target check in README.md before migration.
+make migrate
 uv run alembic current
+docker compose -p opsflow-m9e-demo up -d --build --wait api n8n
 curl --fail http://127.0.0.1:8000/ready
 ```
 
-The local `.env` database URL must point the host Alembic command to this
-project's PostgreSQL on `localhost:5432`. Compose configures the API's
-container-side database URL to `postgres:5432`. The API healthcheck gates n8n
-on `/ready`, which means the API and database can receive requests; it does
-not require optional provider settings to be complete. A provider-incomplete
-API can therefore stay healthy and return the documented preclaim 503.
+This sequence is for a later authorized local run; it was not executed during
+the M12C preflight. The `--wait` command waits for PostgreSQL's configured
+health check before migration. Immediately before `make migrate`, run the
+read-only effective-database-target check documented in the README's
+[local-development section](../../README.md#local-development). It parses the
+same settings URL Alembic uses, prints no credential, and must confirm
+`postgresql+asyncpg` at `localhost:5432`, database `opsflow`, user `opsflow`.
+The project name must be new and owned by this disposable run; if port 5432 is
+occupied or project/volume ownership is unclear, stop. Compose configures the
+API's container-side database URL to `postgres:5432`. The API healthcheck gates
+n8n on `/ready`; a provider-incomplete API can stay healthy while execute-next
+returns the documented preclaim 503.
 
 The API service alone receives the Odoo and HubSpot settings through explicit
 Compose variable mappings. The n8n service has no `.env_file`, receives no
@@ -278,6 +290,7 @@ PY
 
 The fixture matches the existing fake extraction payload; it does not alter
 the n8n Phase 9 workflow, OpsFlow validation policy, or live M9C adapter.
+
 Use the existing review contract to correct its sample's out-of-date order
 and requested-delivery dates before approval, if current date validation
 routes that deterministic sample to review.
@@ -441,3 +454,303 @@ evidence report.
 M9E does not add a new endpoint, workflow engine, queue, worker, provider
 logic in n8n, throughput loop, cloud deployment, or dashboard. M9F remains
 outside scope.
+
+## M12C PREPARATION — NOT EXECUTED
+
+This section records M12C-1 static inspection and a proposed operator plan.
+The inspected source baseline was the M12B documentation closeout at
+`93bef43c175c534b94537f40632188118bf0daee`; freeze the later, human-reviewed
+M12C-1 documentation commit as the candidate SHA before either future clone.
+No services were started, databases or provider accounts were read or changed,
+credentials were inspected, workflows activated, provider calls made, or media
+captured. M12C's approved end-to-end acceptance remains unchanged. M12C-2 local
+reproducibility/rehearsal and M12C-3's one live sandbox transaction each need
+their own human authorization; neither starts automatically from this plan.
+
+### Executable path and evidence map
+
+| Stage | Existing entry point and prerequisites | Success evidence and observation | External effects, retry, or ambiguity |
+| --- | --- | --- | --- |
+| Gmail intake | Inactive [`opsflow-gmail-intake.json`](../../workflows/n8n/opsflow-gmail-intake.json): Gmail Trigger polls `label:OpsFlow/Intake` every minute, downloads attachments, and selects one supported PDF/XLSX/CSV; absent one, it converts visible email body text to `EMAIL_BODY`. It preserves Gmail message ID, `source_system=GMAIL`, and `gmail:<message_id>` idempotency key, then posts multipart data to authenticated `POST /v1/orchestration/intakes`. | Persisted source-document SHA-256, Gmail provenance/message ID, order and idempotency record; bounded API response; audit history. Use a dedicated empty intake label and one controlled synthetic message. | Gmail reads occur in the trigger; export does not establish the trigger's exact Gmail API request/retry count. Each workflow event can submit the same source through up to three API POSTs (initial plus two 503/transport retries), then one additional delayed backend-recovery POST when the response supplies a recovery hint: up to four POSTs per workflow execution. A poll restart or later re-emission is also possible. Do not count API idempotency as an at-most-one provider-call guarantee. |
+| Document processing and extraction | `create_orchestration_intake_endpoint` → `execute_orchestration_intake` → `process_document` → `OrderExtractor.extract`. Supported canonical formats are EMAIL_BODY, PDF, XLSX, and CSV. Provider selection is in `build_orchestration_runtime`: no Gemini key selects a fixed `FakeProvider`; a configured key/model/timeout selects `GeminiProvider`; a configured-provider error does not fall back to FakeProvider. | Source hash/type, canonical processing result, persisted extraction snapshot, audit events, and visible provider-mode label in the run record. | The initial idempotency/order record and intake ownership claim precede extraction. An invocation can repeat after eligible human Retry or expired-lease recovery. A timeout can leave the provider outcome ambiguous. See the one-call decision below. |
+| Deterministic validation | `validate_order` uses the configured trusted-data provider, policy, and current date. With Odoo unconfigured the local runtime uses the existing synthetic provider; with Odoo configured it reads trusted customer/product data from Odoo. | Persisted deterministic issues, validation snapshot, resulting NEEDS_REVIEW or READY_FOR_APPROVAL state, and audit/notification intent. | Odoo trusted-data reads are real provider reads when configured. They are separate from later sync reads. No LLM output authorizes validation or an external write. |
+| Human review and approval | Review UI/API: reviewer reads the order, edits and Save & Revalidates; a separate APPROVER role issues `POST /v1/review/orders/{order_id}/approve`. Configure distinct local reviewer/approver credentials and the n8n-to-API orchestration token. | Review revision, fresh validation result, state transition, audit event, and approval-time Slack/Gmail notification intents. | Approval is an explicit human action. At approval the backend creates `ORDER_APPROVED` notifications; Gmail is eligible only with persisted Gmail provenance. Provider delivery is a separate outbox operation. |
+| Odoo synchronization | Inactive [`opsflow-order-sync.json`](../../workflows/n8n/opsflow-order-sync.json) schedules one authenticated `POST /v1/orchestration/order-sync/execute-next` every five minutes. Python's `Phase9OrderSyncExecutor` runs Odoo lookup and the idempotent sale-order bridge. API credentials/configuration are supplied only to the API. | Durable Odoo sale-order receipt on the OpsFlow sync row, plus matching synthetic order in the dedicated disposable Odoo database. | Validation and sync include Odoo reads; bridge creates/reconciles one logical sale order. The adapter uses bounded HTTP requests without a configured HTTPX retry transport. M9B allows at most three automatic failed sync attempts per retry generation, with delays; human Retry resets a generation and is not included in this proposal. A lost write acknowledgement can cause a later idempotent reconciliation call. |
+| HubSpot synchronization and completion | The same Python executor calls the HubSpot Company, Deal, and association steps only after preceding receipts. The HubSpot adapter checks the configured portal identity, upserts Company by trusted customer reference, creates/reconciles Deal by OpsFlow order UUID, then writes and verifies the association. | Durable Company, Deal, and association receipts; provider records checked against the same synthetic identity; `COMPLETED` state and one persisted `ORDER_SYNC_COMPLETED` audit event. | One happy path is one Company upsert, one Deal identity search plus create (or a reconciliation update/read), and one association write/read, with portal checks. These are bounded code paths, but M9B retries can repeat a failed step. Uncertain writes must be reconciled before any fresh authorization. |
+| Post-sync notifications | The atomic completion transaction creates independent Slack and eligible Gmail `ORDER_SYNC_COMPLETED` intents referencing that same audit event. Inactive [`opsflow-notification-dispatch.json`](../../workflows/n8n/opsflow-notification-dispatch.json) claims one intent per minute, uses channel-specific Gmail/Slack nodes, and reports outcome through the authenticated API. | Outbox intent/audit-event identity, durable attempt/outcome record, actual provider acknowledgement and timestamp. Both completion channels are mandatory for full-demo PASS; their delivery order is not a correctness condition. | Existing approval-time notification intents remain separate. Each intent permits up to three durable delivery attempts; lost acknowledgements can produce a duplicate external send (at-least-once). Node-level retry-on-fail is disabled in the export, but the provider node libraries' wire-level internal retry details were not verified here. |
+| Exact-source replay | After successful completion only, resubmit the privately retained exact submitted document bytes directly to the authenticated intake API with the original Gmail message ID, source_system, and Idempotency-Key. Do not use Gmail Trigger or fetch the source again. | `idempotent_replay=true`, same order identity and COMPLETED state, unchanged receipt/event/intent counts, and no new provider operation. Retain the submitted-byte SHA-256 for comparison. | A completed terminal order stands down from extraction. Replaying before completion, after a retryable failure, or with changed bytes can enter recovery or conflict; stop instead of replaying in those states. |
+
+The current notification contract is implemented: approval-time notifications
+are distinct from post-sync completion intents, and the latter are created only
+after all required durable Odoo/HubSpot receipts. Historical Phase 8/9 test
+results are supporting code evidence only; they are not a newly observed live
+run. The frozen Phase 11 provider-free corpus 3.0.0 result (36/36 cases and all
+five gates passing, zero Gemini calls, extraction quality NOT_APPLICABLE) is
+correctness/safety evidence only. It is not Gemini accuracy or live-provider
+evidence. The post-M12B compatibility evaluation is separate audit evidence,
+not a replacement for the frozen reference. `NO_OPTIMIZATION` remains
+unchanged.
+
+### Gemini one-call feasibility
+
+**Decision: NOT YET SAFE for an at-most-one actual Gemini invocation.** One
+`GeminiProvider.generate_structured()` call issues one Interactions request and
+the pinned SDK retry count is set to zero. That limits retries inside that one
+invocation; it does not fence repeated application invocations for one source.
+The application persists the order/idempotency identity and processing claim
+before extraction, but an eligible human Retry can resume processing or
+extraction, and a stale processing/extracted lease can be recovered after its
+210-second ownership lease. The HTTP intake operation also has bounded
+same-key resubmission/recovery paths. A provider timeout or lost acknowledgement
+does not prove that the request was not accepted. A repeated extraction after
+one of those paths can therefore make a second actual request. The existing
+idempotency key is a logical source/order identity, not a Gemini provider
+idempotency key.
+
+There is no automatic Gemini-to-Fake fallback on a configured Gemini failure,
+but leaving the Gemini key absent intentionally selects the fixed FakeProvider.
+Before any separately authorized Gemini run, the operator would need to verify
+the mode without printing the secret and fail closed if credentials/model are
+unavailable. On timeout or ambiguous result: stop intake, deactivate the
+workflow, treat the authorized call budget as consumed, and do not fall back,
+retry, recover, replay, or make another call without fresh explicit approval.
+
+The smallest additional control for a one-call promise is a durable,
+source-generation-specific single-use invocation reservation/fence committed
+before dispatch, with an ambiguous/dispatched reservation never reopened by
+HTTP redelivery, lease recovery, or human Retry. This requires a separately
+approved implementation and review; it is not part of this preflight. Until
+then, use the scripted provider and label it exactly as scripted rehearsal, or
+leave the Gemini demonstration out. If a later one-call path is authorized, it
+must specify the model, maximum one provider invocation, and a human-approved
+currency spend ceiling. The 36-case live Gemini evaluation remains
+unauthorized; Gemini quality, aggregate latency, authoritative token totals,
+and measured model cost remain unavailable.
+
+### Proposed synthetic purchase order
+
+Use a controlled synthetic sender and a dedicated intake mailbox. Set the
+subject to `[OpsFlow Demo] Synthetic purchase order` and send one plain-text
+email with no attachment, so the workflow constructs an `EMAIL_BODY` document
+from the body and avoids ambiguous attachment selection. Generate the two date
+values for the execution day; retain the exact UTF-8 document bytes that n8n
+submits and their SHA-256 outside Git.
+
+```text
+SYNTHETIC TRAINING ORDER — no real customer, payment, shipment, or fulfillment.
+Customer: Acme Industries
+Customer reference: CUST-001
+Purchase order: PO-SYNTHETIC
+Order date: <demo execution date, YYYY-MM-DD>
+Requested delivery date: <seven days after order date, YYYY-MM-DD>
+Currency: USD
+Line 1: SKU-001 — Widget
+Quantity: 1
+Unit price: USD 10.00
+Line total: USD 10.00
+Order total: USD 10.00
+```
+
+This matches the fixed local FakeProvider's customer, PO, SKU, quantity, and
+price fields and the existing synthetic Odoo seed recipe; the FakeProvider
+ignores the submitted text and emits its fixed 2025 dates. With the current
+date those dates deterministically produce `DELIVERY_DATE_IN_PAST`; a reviewer
+can correct both dates from the synthetic email and Save & Revalidate before a
+separate approval. Explicitly disclose that this is a scripted payload, not
+extraction accuracy. If Gemini is separately authorized, its output and
+validation route are not predictable; still require human review/approval and
+do not depend on a warning being generated. The Odoo `CUST-001` / `SKU-001`
+records and the HubSpot Company identity must be positively checked in the
+selected disposable sandboxes later; this document does not assert they exist.
+If those identities conflict, stop rather than changing business policy or
+overwriting an unrelated record.
+
+### Provider-operation authorization matrix
+
+All ceilings below are proposals for a later, separate authorization; current
+authorized live operations are **zero**. Provider identities/credentials were
+not read or verified during M12C-1. Exact low-level calls may depend on provider
+node libraries, so the stated n8n node-attempt limits are not proof of a
+wire-level retry bound.
+
+| Provider and target to verify later | Expected operation categories and normal-path count | Maximum possible attempts from inspected controls | Cost/authorization ceiling proposal | Evidence and stop/reconcile rule |
+| --- | --- | --- | --- | --- |
+| Gmail: dedicated intake mailbox plus a controlled synthetic sender; both identities must be verified later | Read one labeled synthetic message. Send two logical replies in the scripted path: one existing approval-time reply and one post-sync completion reply, both to original sender/thread. No cleanup/delete by default. | Gmail Trigger polls every minute; its export does not establish exact API request/retry counts, so provider-read maximum is presently unknown. Each Gmail notification intent has at most three durable dispatcher attempts: 2 intents × 3 = 6 Gmail node executions. Ambiguous acknowledgement can duplicate a reply; node library wire retries are not established. | Later authorization should cap one synthetic intake message and at most 6 logical Gmail send-node executions, contingent on resolving the trigger/node retry bound. No charge is assumed; quota/plan use is possible. Cleanup is zero unless separately authorized for exact message IDs. | Persisted Gmail source provenance, message/thread routing, separate approval and completion intents, actual acknowledgements/timestamps. On extra labeled mail, unknown retry, unexpected recipient, or ambiguous send: deactivate relevant workflow and reconcile before a new authorization. |
+| Gemini: one named model and app configuration | Optional single structured-extraction request; not required by the baseline full-demo contract if mode is truthfully identified. No account reads or writes. | `GeminiProvider` makes one request per invocation with SDK retries disabled, but repeat application invocations via lease recovery/Retry/redelivery mean no finite at-most-one provider-call ceiling exists today. **Not authorizable as one-call under current controls.** | Current ceiling 0. If the source-generation fence is separately implemented/reviewed, propose at most 1 invocation, with the model and explicit owner-set maximum spend in currency supplied before any call. No live 36-case evaluation. | Qualitative-only sample response with provider mode identified. Ambiguous timeout consumes any approved budget; no fallback or second call. |
+| Slack: dedicated test workspace and one synthetic destination channel | Send four logical events in the scripted review path: REVIEW_REQUIRED, APPROVAL_READY after correction, ORDER_APPROVED, ORDER_SYNC_COMPLETED. No account reads or cleanup by default. | At most 3 durable attempts per intent = 12 Slack send-node executions. Provider-client internal wire retries are not established; lost acknowledgement can lead to a duplicate on later retry. | Later authorization should cap the four named event kinds / 12 send-node executions. No per-message fee is assumed; workspace quota/plan exposure remains possible. No channel/account identifiers in Git. | Intent/event identity, backend outcome, provider acknowledgement reference/time; completion must reference completed sync audit. Stop and reconcile on missing/ambiguous outcome before manually resending. |
+| Odoo: dedicated disposable Community database, company/warehouse/pricelist and synthetic records; exact target not yet supplied/verified | Happy path with one customer and one SKU: two validation/revalidation lookups, sync preflight, bridge identity lookup + fresh lookup + create-or-get, and trusted-customer lookup during HubSpot Company upsert. This is 36 Odoo JSON-2 requests (35 reads, one bridge operation) and one logical sale order. Missing synthetic trusted-record setup writes require separate authorization. | M9B allows at most three automatic failed sync attempts per retry generation; the failing checkpoint can repeat its multi-request group. HTTPX has no retry transport configured. Intake validation reads can also repeat after recovery or human Retry, outside the sync counter; do not manually retry. A human sync Retry starts another generation and is excluded from this ceiling. The idempotent bridge can be called again after uncertain acknowledgement. | Later authorization should name the exact disposable database and permit only the required read operations plus one stable-UUID sale-order create/reconcile path, with no setup/cleanup writes unless separately approved. Cap one automatic sync generation at three attempts. No paid service is assumed; quotas/hosting costs may apply. | Read target identity first after authorization; verify company/SKU/stock and expected stable identity. Require durable Odoo receipt and exact record. On any unknown target, conflict, or ambiguous create, stop and reconcile by stable order UUID. |
+| HubSpot: dedicated developer-test portal with expected portal identity, pipeline/stage and approved properties | Happy path is eight API requests: one portal check + Company upsert; one portal check + Deal identity search + create; one portal check + association write + association read. This creates/reconciles one Company, one Deal, and their association. No schema setup or cleanup in demo transaction. | One Company step includes portal check + upsert. Deal includes portal check + search + create/reconcile. Association includes portal check + write + read. M9B allows at most three automatic failed sync attempts per retry generation; no HTTPX retry transport is configured. | Later authorization should name the developer-test portal and allow only the synthetic Company identity, one order-UUID Deal, and their association, up to one three-attempt sync generation. Schema/setup, archive/delete, and key revocation require separate explicit authorization. Quota/plan limits may apply. | Durable Company/Deal/association receipts and read-back of expected synthetic identity. Stop on portal mismatch, existing conflicting identity, unclear association, or ambiguous write until reconciled read-only under authorization. |
+| n8n/provider workflows: one newly named local project/volume and only the three tracked workflows | Local control/API calls are not external provider operations. Gmail intake, order-sync, and notification-dispatch exports are all inactive. Order-sync makes one API call per five-minute tick; notification dispatch claims one intent per minute; Gmail intake polls once per minute when activated. | Intake can submit one source through up to three explicit HTTP attempts plus one backend-recovery POST, at most four API POSTs per workflow event; order-sync n8n HTTP node has retry disabled while Python owns at most three automatic sync failures per generation; dispatch claims one notification and has node retry disabled while the outbox allows at most three attempts. Provider trigger/node internal retries are unresolved as noted above. | No additional live operations beyond individually authorized rows. Import workflows inactive; do not activate any unrelated schedule. Use a fresh n8n volume so old credentials/executions cannot run. | Before dispatch, require a fresh DB and an exact expected notification roster; any unrelated/pending intent or active unknown workflow means stop. Deactivate the relevant workflow after the one-order run and preserve only sanitized evidence. |
+
+Setup writes, cleanup/deletion, archive operations, and credential revocation are
+**zero-authorized by default**. Each later operation needs its own target,
+purpose, count/retry bound, and explicit human authorization. Do not perform
+provider reads to verify any identity before that authorization.
+
+### Proposed M12C execution sequence
+
+Freeze the post-review M12C-1 commit SHA for both future clones; verify the
+tracked tree and feature branch are clean at that SHA. Any later code/config
+change requires a new candidate and approval before live activity. A second
+clone provides no additional external-operation or provider-call budget.
+
+**M12C-2 — local reproducibility and provider-free rehearsal (not authorized or
+executed):**
+
+1. Make a literal clean clone of the frozen SHA. Choose a unique local
+   Compose project name and set it as the local `PROJECT` variable. Proposed
+   read-only checks for pre-existing containers/volumes are:
+
+   ```sh
+   docker compose -p "$PROJECT" ps --all
+   docker volume ls --filter "label=com.docker.compose.project=$PROJECT"
+   ```
+
+   Use fresh PostgreSQL/n8n volumes; do not reuse another project's volume
+   or local `.env`. Use the guarded `.env` creation above. Start only PostgreSQL with the documented
+   `docker compose -p ... up --wait postgres` command, verify that project owns
+   the healthy service/volume and loopback port, then run the README's
+   read-only migration-target verifier. Apply migrations only after those
+   checks pass; verify Alembic head `0008_phase12_completion_notifications`
+   and local `/ready`. Follow the pinned Python/Node/Compose prerequisites in
+   the README.
+2. Configure a random local orchestration token and distinct local reviewer
+   and approver credentials. Do not configure provider credentials. Import
+   the tracked n8n workflows inactive, bind only the local OpsFlow bearer
+   credential, run the existing `npm --prefix web ci` and
+   `npm --prefix web run dev` commands for the review UI, and verify execution
+   data retention remains disabled.
+3. A proposed provider-free rehearsal may post the synthetic body directly to
+   the local intake API with a unique local idempotency key and no Gmail
+   `source_system`; this does not exercise Gmail or prove a live Gmail source.
+   Use FakeProvider, inspect the review warning, correct dates, Save &
+   Revalidate, then approve under the separate local role. Keep the Gmail,
+   Slack, order-sync, and notification provider workflows inactive. Local
+   intents can be inspected, but not sent.
+4. With Odoo/HubSpot unconfigured, execute-next is expected to return a bounded
+   preclaim 503. This current runtime has no full provider-free business-sync
+   demo mode, so M12C-2 cannot prove COMPLETED, live notifications, or the full
+   cross-provider flow. Do not substitute provider-free tests or historical
+   M9E evidence for M12C-3.
+5. Stop only this project's services while preserving its named volume unless
+   later cleanup authorization explicitly identifies that exact project and
+   volume. Do not call `down -v` on an unknown or shared project.
+
+**M12C-3 — one live synthetic sandbox transaction (not authorized or
+executed):**
+
+1. Obtain separate explicit authorization for provider, exact target by type,
+   operation categories, maximum attempts, and spend ceiling where applicable.
+   Only then verify account identity and synthetic-record conflicts. No target
+   or credential is verified in this preflight. If Gmail's trigger read bound
+   or Gemini's single-invocation requirement remains unresolved, do not enable
+   that operation.
+2. Use a separate fresh clean clone at the same frozen SHA and new named
+   Compose volumes; do not repeat the run in M12C-2's clone. Verify DB identity
+   and migration head. Configure local operator roles. Keep only the three
+   required workflows imported and inactive. Store Gmail/Slack credentials in
+   n8n and Odoo/HubSpot/Gemini configuration only in the API runtime; never in
+   Git. Verify no unrelated pending outbox intents exist.
+3. Ensure only the controlled source message has the intake label; activate
+   Gmail intake for one bounded poll window and deactivate it immediately
+   after the one synthetic source is accepted. Record the actual source ID
+   privately and the exact submitted document bytes/hash. Show provider mode.
+   If any unexpected source appears, stop.
+4. Review and revalidate as a REVIEWER, then separately approve as APPROVER.
+   Observe the approval audit/intents and actual approval-time notification
+   outcomes under the approved Gmail/Slack ceilings. Confirm the outbox contains
+   only the expected intents for this synthetic run; unrelated work blocks the
+   dispatcher. Do not delay or gate order sync on approval-notification
+   delivery; record actual outcomes independently.
+5. Activate the order-sync workflow for this one eligible order. Observe
+   Odoo, HubSpot and durable receipts, then the shared completion audit event
+   and `COMPLETED` state. Deactivate the order-sync workflow after completion.
+   If an adapter result is failed, stale, or ambiguous, stop and reconcile; do
+   not invoke human Retry without new authorization.
+6. Verify exactly the eligible post-sync Gmail and Slack completion intents
+   reference the completion event, then enable the notification dispatcher
+   under its named ceiling. Record actual outcomes and timestamps for both;
+   both must succeed for full-demo PASS. Their relative delivery order is not
+   a correctness invariant. On any ambiguous acknowledgement, deactivate the
+   dispatcher and reconcile before further attempts.
+7. After completion and both notification outcomes, replay the exact retained
+   submitted bytes directly to the same intake endpoint with the original
+   Gmail message ID, `source_system=GMAIL`, and `gmail:<message_id>` key. Do
+   not fetch Gmail, activate intake, run extraction again, or repeat external
+   reads/writes/sends. Compare replay result, order count, stable ERP/CRM
+   identities, receipts, audit identity, intent counts, and provider operation
+   counts. Any change or unexpected provider call is a failed replay gate.
+8. Deactivate all relevant workflows. Preserve provider records and credentials
+   unless exact cleanup/archive/revocation actions and targets receive their
+   own approval. Clean local named volumes only under separate explicit
+   authorization after confirming project ownership.
+
+No manual workaround may be described as automated end-to-end behavior.
+Historical integration tests and provider-free rehearsal are not live-provider
+evidence. Missing either actual completion delivery fails the roadmap's full
+demo criterion; a failed or incomplete run remains a reported failure rather
+than a staged success.
+
+### Evidence and media checklist for the one future run
+
+Capture only if the operator separately approves recording during M12C-3; this
+preflight grants no capture permission. Coordinate M12C evidence with M12E so
+the transaction is not repeated for footage. M12E's planned public deliverable
+is a readable, edited 90–120 second overview with sanitized screenshots.
+
+- Private run record: frozen candidate SHA; local runtime versions; fresh
+  Compose project/volume names; migration head; provider mode; privately
+  retained synthetic source bytes and SHA-256; local audit/order/receipt and
+  outbox counts; actual provider operation counts, outcome codes, and times;
+  replay response and before/after counts; stop/reconciliation/cleanup status.
+- Capture the Gmail synthetic message and intake outcome without mailbox
+  address, message/thread ID, account profile, unrelated inbox items, or full
+  private headers. Show the normalized synthetic body and the explicit
+  “synthetic” label.
+- Capture canonical processing/extraction and deterministic validation with
+  provider mode visibly labeled; show the review issue, reviewer correction
+  and revalidation, and distinct approval action without exposing tokens.
+- Capture Odoo sale-order evidence and HubSpot Company, Deal, association,
+  and durable OpsFlow receipts using sanitized views. Then show COMPLETED,
+  the completion audit/event linkage, and actual Gmail/Slack completion
+  outcomes with timestamps but without provider account IDs or private URLs.
+- Capture the exact-source replay response and unchanged logical order/receipt/
+  intent counts; do not show credentials, private logs, raw execution data,
+  sensitive URLs, real customer data, or unfiltered provider responses.
+- Retain an unedited, inspectable run record privately where appropriate;
+  public outputs must use only synthetic content and sanitized evidence. M12E
+  must review source/asset licenses, captions, and storage/delivery choice.
+  Do not put raw footage, credentials, or private run records in Git.
+
+### Readiness blockers and authorization still required
+
+- No provider target or credential has been read or verified; dedicated Gmail,
+  Slack, disposable Odoo, and HubSpot test targets must be supplied/approved
+  and verified only in a later authorized operation.
+- The Gmail Trigger's provider-level read/retry ceiling is not established by
+  its export. Confirm a bounded single-message polling procedure and node
+  behavior before authorizing the read.
+- At-most-one Gemini invocation is not enforceable with current intake
+  recovery/retry controls. A separate design/implementation review is needed
+  before any one-call promise; otherwise use and label scripted extraction.
+- Historical synthetic sandbox guides do not prove that their accounts or
+  records still exist or are safe targets.
+- The existing HubSpot sandbox guide records a historical numeric portal
+  identifier. It was not copied here or treated as a current target; M12E's
+  public-privacy review should decide whether that existing identifier is
+  suitable to retain. A current identity or conflicting
+  `CUST-001`/`SKU-001` record is a hard stop, not a reason to overwrite it.
+- M12C-2 was not executed; clean-clone startup, fresh volume ownership,
+  migration target, port availability, local roles, and n8n import were not
+  checked at runtime. Provider-free runtime rehearsal cannot prove completion
+  because the app intentionally preclaim-blocks sync without both adapters.
+- Actual post-sync Gmail and Slack delivery, Odoo/HubSpot mutations, case-study
+  evidence, screenshots, and video remain unobserved. Any setup writes,
+  cleanup, deletion/archive, or key revocation require separate exact-target
+  authorization. The Phase 11 provider-free reference and `NO_OPTIMIZATION`
+  are outside this M12C preflight and remain unchanged.
+
+This preparation is not authority to run any command that starts services,
+changes local databases/accounts, sends a message, creates a provider record,
+calls Gemini, captures media, or performs cleanup. It proposes a sequence for
+human review only.
