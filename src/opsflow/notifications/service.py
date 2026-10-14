@@ -67,8 +67,10 @@ async def create_notification_intent(
         message_id = _gmail_message_id(order)
         payload = render_gmail_approval_payload(order, message_id)
     elif channel is NotificationChannel.GMAIL and kind is NotificationKind.ORDER_SYNC_COMPLETED:
-        message_id = _gmail_message_id(order)
-        payload = render_gmail_completion_payload(order, message_id)
+        completion_message_id = gmail_completion_message_id(order)
+        if completion_message_id is None:
+            raise ValueError("Gmail notification requires persisted Gmail provenance")
+        payload = render_gmail_completion_payload(order, completion_message_id)
     else:
         raise ValueError("notification channel and kind are not supported together")
 
@@ -214,9 +216,29 @@ def _retry_delay_seconds(
 
 
 def _gmail_message_id(order: Order) -> str:
+    message_id = _select_gmail_message_id(order, continue_after_missing_id=False)
+    if message_id is not None:
+        return message_id
+    raise ValueError("Gmail notification requires persisted Gmail provenance")
+
+
+def gmail_completion_message_id(order: Order) -> str | None:
+    """Return the first eligible persisted Gmail target for completion replies."""
+
+    return _select_gmail_message_id(order, continue_after_missing_id=True)
+
+
+def _select_gmail_message_id(
+    order: Order,
+    *,
+    continue_after_missing_id: bool,
+) -> str | None:
+    """Select an ID only from Gmail-marked persisted sources, in source order."""
+
     for source in order.source_documents:
         if ("source_system", "GMAIL") in source.metadata:
             if isinstance(source.message_id, str) and source.message_id.strip():
                 return source.message_id
-            break
-    raise ValueError("Gmail notification requires persisted Gmail provenance")
+            if not continue_after_missing_id:
+                return None
+    return None

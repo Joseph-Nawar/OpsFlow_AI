@@ -177,3 +177,56 @@ async def _gmail_completion_reply_uses_original_message_id_and_completion_event(
     assert row.channel == "GMAIL" and row.kind == "ORDER_SYNC_COMPLETED"
     assert row.payload["message_id"] == "original-gmail-message-id"
     assert "synchronization is complete" in row.payload["body"].lower()
+
+
+def test_approval_reply_keeps_first_gmail_source_thread_selection_contract() -> None:
+    asyncio.run(_approval_reply_keeps_first_gmail_source_thread_selection_contract())
+
+
+async def _approval_reply_keeps_first_gmail_source_thread_selection_contract() -> None:
+    order = Order(
+        id=uuid4(),
+        source_documents=(
+            SourceDocument(
+                id=uuid4(),
+                document_type=SourceDocumentType.EMAIL_BODY,
+                name="first-synthetic-email.txt",
+                mime_type="text/plain",
+                sha256="a" * 64,
+                message_id=None,
+                storage_reference=None,
+                metadata=(("source_system", "GMAIL"),),
+            ),
+            SourceDocument(
+                id=uuid4(),
+                document_type=SourceDocumentType.EMAIL_BODY,
+                name="second-synthetic-email.txt",
+                mime_type="text/plain",
+                sha256="b" * 64,
+                message_id="later-gmail-message-id",
+                storage_reference=None,
+                metadata=(("source_system", "GMAIL"),),
+            ),
+        ),
+        state=OrderState.APPROVED,
+    )
+    event = AuditEvent(
+        id=uuid4(),
+        order_id=order.id,
+        event_type="ORDER_APPROVED",
+        actor="reviewer",
+        occurred_at=datetime(2026, 10, 14, 12, tzinfo=UTC),
+        description="Order approved for processing.",
+    )
+    session = _CaptureSession()
+
+    with pytest.raises(ValueError, match="Gmail"):
+        await create_notification_intent(
+            session,
+            order=order,
+            event=event,
+            channel=NotificationChannel.GMAIL,
+            kind=NotificationKind.ORDER_APPROVED,
+            review_base_url="http://localhost:5173",
+        )
+    assert session.rows == []

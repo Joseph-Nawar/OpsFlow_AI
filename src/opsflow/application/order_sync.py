@@ -14,7 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsflow.domain import AuditEvent, Order, OrderState
 from opsflow.notifications.contracts import NotificationChannel, NotificationKind
-from opsflow.notifications.service import create_notification_intent
+from opsflow.notifications.service import (
+    create_notification_intent,
+    gmail_completion_message_id,
+)
 from opsflow.order_sync.contracts import (
     ExecuteNextKind,
     HubSpotAssociationReceipt,
@@ -368,12 +371,7 @@ async def complete_order_sync(
             kind=NotificationKind.ORDER_SYNC_COMPLETED,
             review_base_url=review_base_url,
         )
-        if any(
-            ("source_system", "GMAIL") in source.metadata
-            and isinstance(source.message_id, str)
-            and source.message_id.strip()
-            for source in order.source_documents
-        ):
+        if gmail_completion_message_id(order) is not None:
             await create_notification_intent(
                 session,
                 order=completed,

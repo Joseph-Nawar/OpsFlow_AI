@@ -641,6 +641,170 @@ def test_gmail_marker_without_message_id_creates_slack_only() -> None:
     asyncio.run(_assert_gmail_marker_without_message_id_creates_slack_only())
 
 
+def test_completion_skips_gmail_source_without_id_and_uses_next_eligible_source() -> None:
+    asyncio.run(_assert_completion_uses_next_eligible_gmail_source())
+
+
+async def _assert_completion_uses_next_eligible_gmail_source() -> None:
+    async with _sync_database(
+        full_receipts=True,
+        gmail_source=True,
+        gmail_message_id=None,
+    ) as (session_factory, order_id):
+        async with session_factory() as session, session.begin():
+            session.add(
+                SourceDocumentModel(
+                    id=uuid4(),
+                    order_id=order_id,
+                    position=1,
+                    document_type="EMAIL_BODY",
+                    name="second-synthetic-email.txt",
+                    mime_type="text/plain",
+                    sha256="b" * 64,
+                    message_id="second-valid-gmail-message",
+                    storage_reference=None,
+                    metadata_=[["source_system", "GMAIL"]],
+                )
+            )
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+
+        completion_error: Exception | None = None
+        try:
+            async with session_factory() as session:
+                await complete_order_sync(session, order_id, claim.claim_token)
+        except Exception as error:
+            completion_error = error
+
+        async with session_factory() as session:
+            order = await session.get(OrderModel, order_id)
+            events = tuple(
+                await session.scalars(
+                    select(AuditEventModel).where(
+                        AuditEventModel.order_id == order_id,
+                        AuditEventModel.event_type == "ORDER_SYNC_COMPLETED",
+                    )
+                )
+            )
+            deliveries = tuple(
+                await session.scalars(
+                    select(NotificationDeliveryModel).where(
+                        NotificationDeliveryModel.order_id == order_id
+                    )
+                )
+            )
+
+    assert order is not None
+    if completion_error is not None:
+        assert order.state == OrderState.SYNCING.value
+        assert events == () and deliveries == ()
+    assert completion_error is None, (
+        "a later persisted Gmail source with a valid message ID must not make "
+        "completion roll back; "
+        f"state={order.state}, completion_events={len(events)}, intents={len(deliveries)}, "
+        f"error={completion_error!r}"
+    )
+    assert order.state == OrderState.COMPLETED.value
+    assert len(events) == 1
+    assert {(row.channel, row.kind) for row in deliveries} == {
+        ("GMAIL", "ORDER_SYNC_COMPLETED"),
+        ("SLACK", "ORDER_SYNC_COMPLETED"),
+    }
+    assert {row.trigger_audit_event_id for row in deliveries} == {events[0].id}
+    gmail = next(row for row in deliveries if row.channel == "GMAIL")
+    assert gmail.payload["message_id"] == "second-valid-gmail-message"
+
+
+def test_completion_skips_non_gmail_source_and_uses_gmail_source() -> None:
+    asyncio.run(_assert_completion_skips_non_gmail_source())
+
+
+async def _assert_completion_skips_non_gmail_source() -> None:
+    async with _sync_database(full_receipts=True, untrusted_message_id=True) as (
+        session_factory,
+        order_id,
+    ):
+        await _add_source_document(
+            session_factory,
+            order_id=order_id,
+            position=1,
+            source_system="GMAIL",
+            message_id="later-gmail-message",
+        )
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        async with session_factory() as session:
+            await complete_order_sync(session, order_id, claim.claim_token)
+        async with session_factory() as session:
+            gmail = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == order_id,
+                    NotificationDeliveryModel.channel == "GMAIL",
+                )
+            )
+    assert gmail is not None
+    assert gmail.payload["message_id"] == "later-gmail-message"
+
+
+def test_multiple_gmail_sources_select_first_eligible_in_persisted_order() -> None:
+    asyncio.run(_assert_multiple_gmail_sources_select_first_eligible())
+
+
+async def _assert_multiple_gmail_sources_select_first_eligible() -> None:
+    async with _sync_database(full_receipts=True, gmail_source=True) as (
+        session_factory,
+        order_id,
+    ):
+        await _add_source_document(
+            session_factory,
+            order_id=order_id,
+            position=1,
+            source_system="GMAIL",
+            message_id="later-gmail-message",
+        )
+        async with session_factory() as session:
+            claim = await claim_next_order_sync(session)
+        assert claim is not None
+        async with session_factory() as session:
+            await complete_order_sync(session, order_id, claim.claim_token)
+        async with session_factory() as session:
+            gmail = await session.scalar(
+                select(NotificationDeliveryModel).where(
+                    NotificationDeliveryModel.order_id == order_id,
+                    NotificationDeliveryModel.channel == "GMAIL",
+                )
+            )
+    assert gmail is not None
+    assert gmail.payload["message_id"] == "persisted-gmail-source-message"
+
+
+async def _add_source_document(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    order_id: UUID,
+    position: int,
+    source_system: str,
+    message_id: str | None,
+) -> None:
+    async with session_factory() as session, session.begin():
+        session.add(
+            SourceDocumentModel(
+                id=uuid4(),
+                order_id=order_id,
+                position=position,
+                document_type="EMAIL_BODY",
+                name=f"synthetic-source-{position}.txt",
+                mime_type="text/plain",
+                sha256=f"{position + 1:064x}",
+                message_id=message_id,
+                storage_reference=None,
+                metadata_=[["source_system", source_system]],
+            )
+        )
+
+
 async def _assert_gmail_marker_without_message_id_creates_slack_only() -> None:
     async with _sync_database(
         full_receipts=True,
