@@ -5,9 +5,18 @@
 Phases 0–11 are `COMPLETE`. Phase 12 is `IN PROGRESS`; M12A — Portfolio
 Framing and Onboarding is `COMPLETE`, independently reviewed at implementation
 SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199` and human-approved. M12B —
-Approved Completion-Notification Behavior is `IN PROGRESS` and `READY FOR
-INDEPENDENT REVIEW`; M12C–M12F remain `NOT STARTED`. The Phase 12 design and implementation plan
-are approved. The [roadmap](../roadmap/project-roadmap.md) is the current status source; the
+Approved Completion-Notification Behavior is `COMPLETE` at technical
+implementation/remediation SHA `282a0ae6a7db4ab989f6b2c768142cf34c21098c`,
+independently audited `PASS` at `78a05c5f904d94d77f71622164bf252ed7c1c1ad`,
+and human-approved. M12B-AUD-01 and M12B-F01 are resolved; the Low-severity
+M12B-AUD-02 migration downgrade precondition remains. M12C–M12F remain
+`NOT STARTED`. A separate post-M12B provider-free compatibility run on corpus
+`3.0.0` passed 36/36 cases and all five gates with zero Gemini calls and
+provider-free extraction quality `NOT_APPLICABLE`; it does not replace the
+frozen Phase 11 reference. The full Phase 12 sandbox demonstration and live
+Gmail, Slack, Odoo, HubSpot, and Gemini evidence remain pending. The Phase 12
+design and implementation plan are approved. See the [M12B independent audit](../audits/phase-12-m12b-review.md) for detailed evidence and known development-tree dependency advisories. The
+[roadmap](../roadmap/project-roadmap.md) is the current status source; the
 [Phase 11 implementation plan](../superpowers/plans/2026-10-07-phase-11-evaluation-optimization.md)
 and [Phase 11 audit](../audits/phase-11-audit.md) preserve detailed historical
 evidence and limitations. The Phase 12 [design](../superpowers/specs/2026-10-12-phase-12-portfolio-release-design.md)
