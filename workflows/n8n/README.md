@@ -353,11 +353,19 @@ claims, retries, outcomes, and at-least-once delivery semantics. Slack may
 deliver even if Gmail is delayed or fails; the actual provider delivery order
 is recorded but is not a correctness requirement.
 
-The M12B implementation and local transport contracts are ready for
-independent review. No live post-sync provider operation was performed during
-M12B, and earlier Phase 8/9 integration records do not prove this behavior.
-The full live notification demonstration is part of the still-pending Phase
-12 demo milestone.
+The M12B implementation and local transport contracts were independently
+reviewed and human-approved. M12B itself included no live post-sync provider
+operation, and earlier Phase 8/9 integration records did not prove this
+behavior. M12C is COMPLETE under the owner-approved limited-scope amendment
+after independent PASS review and human acceptance. In the 2026-10-18 M12C-3
+transaction, the two post-sync completion intents were delivered and recorded
+after successful Odoo/HubSpot receipts. That transaction remains factually
+PARTIAL: its Gmail Trigger intake POST returned HTTP 401 and the original
+source required owner-assisted recovery. Automated Gmail Trigger-to-OpsFlow
+intake remains NOT DEMONSTRATED. The run used scripted FakeProvider extraction,
+not live Gemini, and all later screenshots are POST-RUN INSPECTION captures.
+M12D, M12E, and M12F remain NOT STARTED. See the [M12C runbook](../../docs/development/phase9-n8n-sync-e2e.md)
+and [review disposition](../../docs/audits/phase-12-m12c-review.md).
 
 ## Phase 8 Gmail approval replies (M8E complete)
 

@@ -19,8 +19,16 @@ created only when persisted Gmail-source provenance and its original message
 ID are present. Both intents use the existing n8n notification dispatcher and
 authenticated outcome contract. The historical M9E runs described below
 predate this behavior and do not count as evidence of post-sync notifications.
-The full Phase 12 live demo procedure and evidence capture remain pending M12C;
-no provider calls were made for the M12B implementation.
+The owner-approved M12C-3 sandbox transaction and its limited-scope evidence
+disposition are recorded at the end of this runbook. Twelve supplied raw
+post-run screenshots and separate sanitized derivatives are privately
+prepared for review; they are not contemporaneous transaction footage. The
+M12B implementation
+itself made no live provider calls. The M12C-3 transaction did make the
+separately authorized synthetic sandbox operations described in its record;
+it remains factually PARTIAL because the first Gmail Trigger intake POST
+returned HTTP 401 and the same original source required owner-assisted
+recovery. Automated Gmail Trigger-to-OpsFlow intake is NOT DEMONSTRATED.
 
 ## Prerequisites and isolation
 
@@ -465,8 +473,9 @@ clone. M12C-1 was accepted at `7cf04966b7193d69ab1b04b91348c9e82ef33636`.
 During M12C-1 no services were started, databases or provider accounts were
 read or changed, credentials were inspected, workflows activated, provider
 calls made, or media captured. M12C's approved end-to-end acceptance remains
-unchanged. The separately authorized M12C-2 execution is recorded below;
-M12C-3 still needs its own authorization and has not started.
+unchanged. The separately authorized M12C-2 execution is recorded below. As
+of this 2026-10-14 M12C-1 preflight, M12C-3 still needed its own authorization
+and had not started; the later run is recorded below.
 
 ### Executable path and evidence map
 
@@ -788,8 +797,7 @@ and verified sandbox targets, credentials, operation/retry ceilings, and
 authorization; it must not be replaced by this local rehearsal or run in this
 clone without fresh approval.
 
-**M12C-3 — one live synthetic sandbox transaction (not authorized or
-executed):**
+**Historical M12C-3 proposal — written before authorization and execution:**
 
 1. Obtain separate explicit authorization for provider, exact target by type,
    operation categories, maximum attempts, and spend ceiling where applicable.
@@ -1112,14 +1120,132 @@ confirming COMPLETED and all receipts. It must not fetch Gmail again or invoke
 Gemini, Gmail, Slack, Odoo, or HubSpot. Replay before completion is a stop
 condition. A second clone grants no extra provider-operation budget.
 
-#### M12C-3 readiness and next gate
+### M12C-3 transaction record and owner-approved limited-scope disposition — 2026-10-18
 
-**Readiness decision: NOT READY for live execution.** No sandbox target has
+**Status:** The owner approved a limited-scope acceptance amendment on
+2026-10-18. Independent review returned PASS against that amended scope with
+zero Critical, High, or Medium findings, and the owner accepted M12C and
+authorized documentation closeout on 2026-10-20. M12C is **COMPLETE under the
+approved limited-scope amendment**. The M12C-3 run itself remains factually
+**PARTIAL**: automated Gmail Trigger-to-OpsFlow intake is **NOT DEMONSTRATED**.
+See the [sanitized independent review and human acceptance disposition](../audits/phase-12-m12c-review.md).
+No second live transaction is authorized or needed.
+
+**Source intake and failure history:** One approved synthetic email was sent
+once to the dedicated sandbox mailbox. The real Gmail Trigger detected it and
+attempted `POST /v1/orchestration/intakes`; OpsFlow returned HTTP 401. The
+original failure record is preserved. The owner downloaded the same original
+MIME message and the recovery used the tracked Gmail normalization/intake
+path, original Gmail API message identity, Gmail provenance, and its
+`gmail:<message_id>` idempotency identity. One authenticated recovery POST
+returned HTTP 201 and created the intended single order and source document.
+The body bytes from the failed 401 request were not retained; byte-for-byte
+equality to that failed request is not claimed. This was owner-assisted
+recovery, not uninterrupted automated Gmail intake. The accepted scope
+explicitly leaves automated Gmail Trigger-to-OpsFlow intake
+**NOT DEMONSTRATED** for this Phase 12 run.
+
+**Processing and downstream results:** The application used its FakeProvider
+path and scripted extraction output, not live Gemini inference or an accuracy
+measurement. Deterministic validation ran; a distinct reviewer corrected the
+synthetic order date to `2026-10-18` and requested delivery date to `2026-10-25`,
+then saved and revalidated; a distinct approver approved the order.
+Persisted evidence records one order reaching COMPLETED, one Odoo sale order
+receipt, HubSpot receipts for reuse/upsert of the existing synthetic Company,
+one Deal, and their association. Four Slack and two Gmail notification
+intents reached DELIVERED. The two post-sync completion intents refer to the
+same persisted `ORDER_SYNC_COMPLETED` event and follow durable Odoo/HubSpot
+receipts; their actual delivery timestamps differ and no ordering claim is
+made. Delivery remains at-least-once. Exact-source replay used the original
+Gmail API message ID and recovered canonical document bytes; the authenticated
+request returned HTTP 200 with `idempotent_replay=true` and unchanged logical
+counts. The replay did not create another order, source, extraction, sync
+row, audit event, notification, or completion intent. Private evidence retains
+the actual provider references and timestamps; public documentation omits
+private account and provider IDs.
+
+**Evidence boundary:** The protected run record, original HTTP 401 record,
+owner-assisted recovery evidence, database cross-check, durable provider
+receipts/outcomes, and replay record were reviewed read-only. The supplied
+12-image capture set and its sanitized derivatives are recorded in a private
+inventory for independent review; every derivative is labeled POST-RUN
+INSPECTION. The earlier `post-run-inspection-20261018/capture-index.json`
+remains an accurate zero-capture record as of its 2026-10-18T13:41:11Z
+timestamp and was not rewritten. The supplied images are later inspections,
+not contemporaneous footage. Historical
+Phase 8 evidence is separate: [`workflows/n8n/README.md`](../../workflows/n8n/README.md)
+records M8C Gmail sandbox cases A–I and M8E primary and clean-clone live
+Gmail intake through review/approval with Slack and original-thread approval
+replies; the [Phase 8 audit](../audits/phase-8-audit.md) says M8F reused those
+records and made no live provider sends. Phase 8 predates Phase 9 sync and
+M12B post-sync completion notifications. It may be cited only with that scope
+and cannot be combined with M12C-3 to claim end-to-end automated Gmail intake.
+
+#### Original owner capture checklist — requirements retained for audit
+
+This checklist predates the supplied captures. The owner has now supplied 12
+raw images in a private `manual-captures-20261019` directory and separate
+sanitized derivatives in a private review directory. The inventory records
+source application, filename timestamp, raw and derivative hashes, claim
+coverage, and redactions. The derivatives are visibly labeled POST-RUN
+INSPECTION; none is treated as transaction footage. The requirements below
+are retained as the original capture criteria, not as remaining capture tasks.
+
+1. Create a new timestamped directory below
+   `~/.local/share/opsflow-ai/m12c3/evidence/` named
+   `post-run-inspection-<UTC timestamp>`. Set the directory to mode `0700` and
+   each raw capture/manifest to `0600`. Save directly to that protected path;
+   do not leave raw images on Desktop, in Downloads, or in the repository.
+2. Use a non-secret capture index to record capture timestamp, candidate SHA
+   `fc70d37fd004847fab0a4c42499e75afe1d6198b`, screen/source, and the label
+   **POST-RUN INSPECTION — 2026-10-18 transaction**. Record a hash for each
+   retained raw image. Keep the raw captures private and unedited.
+3. Capture the current OpsFlow order view showing `COMPLETED` and its persisted
+   history/review evidence for the distinct reviewer and approver. Show the
+   scripted FakeProvider mode only if the actual view exposes it; do not
+   reconstruct the earlier warning or edit state.
+4. In read-only mode, capture the already persisted Odoo synthetic sale order
+   and the HubSpot synthetic Company, Deal, and association. Make clear in
+   later captions that the Company was reused. Do not include portal, company,
+   deal, or other private provider identifiers in any public derivative.
+5. Capture the existing Gmail source thread with the two delivered replies
+   and the existing Slack synthetic notifications. Crop/blur sandbox mailbox,
+   account/workspace/channel identifiers, URLs, profile details, unrelated
+   content, and message/provider IDs in sanitized derivatives. Keep enough
+   synthetic subject/body and notification wording to identify the evidence.
+6. If visual replay evidence is useful, capture an unaltered read-only view of
+   the retained replay record and label it as a run-record excerpt; do not
+   fabricate a product screen or replay result. Prefer the actual persisted
+   UI/database evidence for counts and state.
+7. Review each raw frame privately, then create sanitized derivatives for
+   owner review. Add visible **POST-RUN INSPECTION** labels to any derivative
+   that could otherwise be mistaken for contemporaneous footage. Do not put
+   raw captures or sanitized media into Git yet. Retain the private evidence
+   directory for audit; publication, hosting, and license decisions remain
+   subject to their later approval gates.
+
+**M12C closeout:** The amended documentation, protected run evidence, and
+sanitized captures received independent PASS review and human acceptance.
+M12C is COMPLETE under the limited-scope amendment; this does not change the
+M12C-3 factual PARTIAL result or the explicit NOT DEMONSTRATED automated Gmail
+intake limitation. M12D, M12E, and M12F remain NOT STARTED. The independent
+review recorded two Low findings covering the private artifact and public-media handling: a private `.DS_Store`
+artifact remains contained by directory permissions; redact the HubSpot
+“Sales Hub Enterprise” label before public use; and explicitly caption
+scripted FakeProvider extraction in any public media.
+
+#### Historical M12C-3 pre-run readiness decision — 2026-10-14
+
+This was the pre-authorization decision recorded before the 2026-10-18 run.
+The later transaction and current evidence disposition above supersede it as
+the current status; this section is retained as a historical decision record.
+
+**Historical readiness decision: NOT READY for live execution.** No sandbox target had
 been verified, no operation or spend ceiling is authorized, Gemini is not
 safe for a one-call claim under current application recovery, and Gmail/Slack
-physical request ceilings remain unresolved. No provider operation, cross-
-provider transaction, actual completion delivery, post-completion replay, or
-media capture has been demonstrated. These findings do not weaken the
+physical request ceilings remain unresolved. At that pre-run point, no provider operation, cross-provider transaction,
+actual completion delivery, post-completion replay, or media capture had been
+demonstrated. These findings do not weaken the
 accepted full-demo criterion: M12C-3 must still prove actual Gmail intake,
 application extraction with provider mode truthfully identified,
 deterministic validation and distinct human review/approval, actual Odoo and

@@ -2,13 +2,19 @@
 
 ## Status and authority
 
-**Status: APPROVED for Phase 12 planning only.** The human owner approved this
-design direction at planning SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`,
-subject to the completion-notification and full-demo acceptance clarifications
-recorded below. This approval does not authorize M12A–M12F implementation,
-live provider calls, external mutations, media production, licensing changes,
-publication, or deployment. Every implementation milestone remains NOT
-STARTED pending its separate authorization and review gate.
+**Status: APPROVED.** The human owner approved this design direction at
+planning SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`, subject to the
+completion-notification and demo clarifications recorded here. On 2026-10-18,
+the owner approved the limited-scope M12C acceptance and retrospective
+evidence/media amendment in §8 and its runbook record. Following independent
+PASS review and human approval on 2026-10-20, current status is Phases 0–11
+COMPLETE; Phase 12 IN PROGRESS; M12A–M12C COMPLETE, with M12C accepted under
+the limited-scope amendment; M12D–M12F NOT STARTED. M12C-3 remains factually
+PARTIAL for the original uninterrupted automated Gmail intake criterion.
+This planning approval does not authorize further provider operations, begin
+M12D/M12E, select a license,
+publish media, or deploy the project. Historical audit and milestone records
+are not rewritten.
 
 The approved starting baseline is main SHA
 17c155df3b2635f60f88c6596c1d74b02015fb2d. Local main, origin/main, and the
@@ -18,10 +24,11 @@ successfully at [GitHub Actions run 38294788043](https://github.com/Joseph-Nawar
 The PR check rollup also reports successful Backend, Frontend, production
 dependency security, and Secret scan jobs.
 
-The Phase 12 planning branch is phase/12-portfolio-release. The canonical
-Phase 12 status is IN PROGRESS for approved planning; implementation and
-milestones M12A–M12F remain NOT STARTED. Phases 0–11 remain COMPLETE.
-Historical audit and milestone records are not rewritten.
+The Phase 12 planning branch is phase/12-portfolio-release. Current status is
+Phase 12 IN PROGRESS; M12A–M12C COMPLETE, with M12C accepted under the
+2026-10-18 owner-approved limited-scope amendment; M12D–M12F NOT STARTED.
+Phases 0–11 remain COMPLETE. Historical audit and milestone records are not
+rewritten.
 
 This proposal interprets the approved [Phase 12 roadmap](../../roadmap/project-roadmap.md)
 and the [Phase 11 design](2026-10-07-phase-11-evaluation-optimization-design.md)
@@ -151,9 +158,10 @@ sender/thread. Both actual deliveries remain mandatory for the full demo and
 must be causally tied to successful Odoo/HubSpot synchronization. Record each
 provider outcome and timestamp, but do not gate acceptance on their relative
 order. This approved clarification changes the current Phase 12 acceptance
-wording only; it does not rewrite Phases 0–11. M12B implementation still needs
-its separate milestone authorization and independent code review. A runbook
-or presentation edit cannot substitute for the application behavior.
+wording only; it does not rewrite Phases 0–11. M12B was separately authorized,
+implemented, independently reviewed PASS, and human-approved. A runbook or
+presentation edit is not a substitute for its implemented application
+behavior.
 
 ## 3. Audience and presentation
 
@@ -239,6 +247,49 @@ post-sync completion notifications. External notification delivery remains
 at-least-once; the demo and case study must not claim physically exactly-once
 email or Slack delivery.
 
+### Owner-approved M12C-3 acceptance amendment — 2026-10-18
+
+The original target sequence above remains the system's intended automated
+path. For this one portfolio release, the owner accepts a **segmented
+integration demonstration** based on the actual 2026-10-18 run. The Gmail
+Trigger detected the original synthetic message, but its intake POST returned
+HTTP 401. The owner-assisted recovery used that same original message source,
+the tracked normalization/intake path, and one authenticated submission. The
+recovery produced the single order used for the downstream transaction. The
+initial failure and recovery must remain visible in the evidence record.
+Automated end-to-end Gmail-to-OpsFlow intake is **NOT DEMONSTRATED**; the run
+must never be presented as an uninterrupted automated end-to-end PASS. The
+failed request's document bytes were not retained, so no byte-for-byte match
+to that failed request may be claimed.
+
+The accepted run used the application's FakeProvider and scripted extraction
+output; it is not live LLM inference or extraction-accuracy evidence. It then
+showed distinct human review/approval, actual Odoo and HubSpot synchronization
+with durable receipts, four Slack and two Gmail delivered notification
+outcomes, and an exact-source replay with unchanged logical record counts.
+Completion notifications are tied to the successful completion event and
+durable sync receipts. The existing synthetic HubSpot Company was reused; do
+not claim Company creation. Historical Phase 8 evidence may be cited only as a
+separate run with its recorded scope: [`workflows/n8n/README.md`](../../../workflows/n8n/README.md)
+records M8C Gmail sandbox cases A–I and M8E live primary and clean-clone
+Gmail intake through review and approval with Slack delivery and original-
+thread Gmail approval replies; the [Phase 8
+audit](../../audits/phase-8-audit.md) says M8F reused these records and made
+no live sends. Phase 8 predates Odoo/HubSpot sync and M12B post-sync
+notifications and cannot be combined with this run to claim automated Phase
+12 intake.
+
+The run was not recorded contemporaneously. The owner-approved amendment
+permits authenticated, read-only post-run captures of genuine persisted
+sandbox state and an evidence-backed narrated/captioned 90–120-second
+walkthrough instead of an uninterrupted live recording. The reviewed captures
+are labeled **POST-RUN INSPECTION**. Preserve provenance, privacy, security,
+licensing, synthetic data disclosure, and independent review requirements.
+M12C is COMPLETE under the limited-scope amendment after independent PASS and
+human acceptance; its run remains factually PARTIAL for uninterrupted intake.
+See the [M12C review disposition](../../audits/phase-12-m12c-review.md). No
+new live transaction is authorized.
+
 ### Services, accounts, and trusted synthetic data
 
 Required local components are Git, Docker Compose, PostgreSQL 16, the API,
@@ -284,7 +335,7 @@ than duplicate its detailed sandbox procedures.
 
 | Stage | Live evidence to capture | Evidence that is not a substitute |
 | --- | --- | --- |
-| Gmail intake | Dedicated mailbox contains the synthetic message; the real Gmail workflow selected its source and the OpsFlow source provenance refers to that message. | A curl/local webhook or fake Gmail message labeled as live Gmail. |
+| Gmail intake | Target path: dedicated mailbox, real Gmail workflow, and persisted original source provenance. In the accepted M12C-3 run, the Trigger detected the message but its intake POST returned HTTP 401; the same source was subsequently recovered by the owner and submitted once through the tracked normalization/intake path. Label this as owner-assisted recovery. | The recovery is not proof that automated Gmail Trigger-to-OpsFlow intake succeeded. Do not claim an uninterrupted automated end-to-end run or compare bytes with the failed request whose body was not retained. |
 | Document processing | API/order evidence identifies the original source and document hash; the committed processor supports and parses the synthetic file format before extraction. | A manually prepared prompt or a provider-only call that skips the application's document processor. |
 | Extraction | Review UI shows the persisted untrusted extracted draft and source evidence; show the provider mode explicitly. | Provider-free 36/36 results or fake-provider output presented as Gemini accuracy. |
 | Deterministic validation | UI shows the route and issue facts derived from trusted synthetic catalog/inventory and server rules. | LLM explanation alone or a prerecorded validation screen. |
@@ -292,6 +343,9 @@ than duplicate its detailed sandbox procedures.
 | Odoo and HubSpot | Order state is COMPLETED; durable receipts exist; actual sandbox contains exactly one OpsFlow-identified sale order, one uniquely identified company/deal, and the expected association. | Fake adapters, mocked HTTP responses, or historical integration-test output. |
 | Completion email and Slack | Both actual post-sync deliveries must be causally tied to successful Odoo/HubSpot synchronization and supported by durable completion receipts and notification outcomes. Capture each provider outcome and timestamp; relative delivery order is immaterial. | Existing approval reply, approval Slack message, a local printout, an execution-test double, staged provider success, or an assertion that one provider always delivers first. Missing or failed delivery on either channel fails the full-demo criterion. |
 | Replay | Re-submit the exact same original message identity and source; show no second logical order or CRM/ERP object and no new completion intent. | A fresh event ID or changed document bytes treated as a replay. |
+
+This amendment permits the recovered-source segmented sequence for this run;
+it does not change the factual classification to a full automated pass.
 
 Evidence should retain only a synthetic demo run identifier, source and order
 identities approved for public display, state/event sequence, provider receipt
@@ -365,15 +419,17 @@ provider sandbox types, individual authorized operation counts/outcomes,
 completion timestamps, exact replay result, cleanup disposition, and
 deviations. If footage is approved, capture the M12C run once for both
 verification and M12E editing; do not repeat external operations just to
-collect media. Historical Phase 8 and Phase 9 clean-clone evidence and
-provider-free demonstrations remain useful context but do not replace a new
-whole-flow Phase 12 run.
+collect media. Under the owner-approved 2026-10-18 amendment, authentic
+post-run read-only views may be used instead of contemporaneous footage.
+Historical Phase 8 and Phase 9 clean-clone evidence and provider-free
+demonstrations remain separately attributed context; they cannot be merged
+with this run to imply uninterrupted Phase 12 automation.
 
 ## 5. Evidence-to-claim contract
 
 | Claim area | Reusable evidence and proposed presentation | Limits and unavailable evidence |
 | --- | --- | --- |
-| Automated PO processing | A newly recorded live sandbox trace links Gmail source provenance to persisted order state and actual Odoo/HubSpot receipts. Say the workflow automates intake, draft extraction, deterministic routing, and approved synchronization. | Human approval remains required. The live all-provider run has not yet been captured. |
+| PO processing (segmented M12C-3 evidence) | The retained run record links the original Gmail source identity, owner-assisted recovery intake, persisted order, distinct review/approval, actual Odoo/HubSpot receipts, completion notifications, and exact-source replay. Claims must name the owner-assisted intake boundary. | Automated Gmail Trigger-to-OpsFlow intake is NOT DEMONSTRATED in this run. Do not claim an uninterrupted all-provider flow. Human approval remains required. |
 | Structured extraction | Show one live demo extraction only if the actual Gemini provider was used and the screen/source confirms it. Link the [Phase 11 live-Gemini unavailable record](../../evaluation/reference/phase-11-live-gemini-unavailable.md) for current status. | Real Gemini quality is unmeasured. One illustrative extraction is not an accuracy metric. Provider-free extraction status stays NOT_APPLICABLE. |
 | Deterministic validation | The [committed Phase 11 provider-free reference](../../evaluation/reference/phase-11-provider-free-baseline.md) reports 7/7 deterministic-violation routes; its 36/36 run passes the hard gates. Attribute these to the Phase 11 corpus and reference, not live Gemini. | Does not prove that Gemini extracts correctly or that all real business data is covered. |
 | Human authority and exception routing | The [provider-free reference](../../evaluation/reference/phase-11-provider-free-baseline.md) reports zero invalid orders executed (0/13), 100% deterministic-violation routing (7/7), safe malformed/security handling (4/4), and zero direct LLM side effects (0/36). The UI/audit trail shows separate review and approval. | The unit of evidence is this synthetic corpus and these tested boundaries. |
@@ -394,35 +450,39 @@ model cost remain unavailable without separately approved valid measurements.
 
 ## 6. Human decision register
 
-The completion-notification contract and demo acceptance clarification below
-are approved at planning level. The remaining choices are recommendations for
-human decision, not approvals.
+The M12B completion-notification contract and original demo acceptance were
+approved at planning level. The owner separately approved the limited-scope
+M12C-3 disposition and retrospective capture amendment dated 2026-10-18,
+recorded in §4 and §8. Other choices in this register remain recommendations
+for human decision, not approvals.
 
 | Decision | Recommended default | Tradeoff and downstream effect |
 | --- | --- | --- |
 | Project license | Choose explicitly between a permissive software license such as MIT or Apache-2.0, or intentionally keep the source unlicensed/all-rights-reserved while it remains publicly viewable. Use a separate documentation/media license only if the owner wants those assets reusable under different terms. Review the [MIT text](https://opensource.org/license/mit), [Apache-2.0 text](https://www.apache.org/licenses/LICENSE-2.0), and [GitHub licensing guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository); do not select terms in this plan. | MIT grants broad use subject to retaining its notice; Apache-2.0 provides an express patent license and requires preserving applicable notices; without a license, default copyright generally grants no reuse permission. The owner must choose. Review the Python/npm dependency licenses, Odoo bridge's declared LGPL-3, and all third-party assets/notices before adding a root LICENSE. |
-| Demo Gemini call | The roadmap requires an extraction stage but does not expressly mandate a live Gemini call. Recommend strengthening the portfolio demo with one actual Gemini generation request on the synthetic document. Before that request, require an explicit authorization naming provider/model, at most one request, and a concrete maximum spend in currency; if no spend ceiling is approved, do not call. | This is qualitative evidence only, not an accuracy evaluation. The existing SDK disables HTTP retries, but an ambiguous timeout still consumes the one-call budget. If credentials/provider are unavailable at preflight, stop with zero calls; do not fall back or retry without fresh authorization. No live quality, aggregate latency, authoritative tokens, or model cost becomes available from one call. |
-| Completion notification contract | **Approved: Option A.** After durable Odoo and HubSpot receipts pass in the existing completion transaction, reuse `ORDER_SYNC_COMPLETED` identity and the durable notification outbox to create a Gmail-source-provenance-bound reply to the original sender/thread and an independent Slack completion intent. Preserve independent bounded retry/outcomes, idempotent logical intents, and at-least-once external delivery. | Preserves approval-time semantics and lets Slack report successful sync independently of customer-email delivery. Both actual post-sync provider deliveries are mandatory for the full demo, but their relative delivery order is not a correctness invariant. No channel-priority scheduling, operator API, or generalized framework is approved. Implementation still requires a separate M12B authorization and code review. |
-| Demo environment | Prefer one full synthetic sandbox run: local Compose services, dedicated test Gmail/Slack, one authorized Gemini call, disposable Odoo Community database, and HubSpot developer-test portal. First verify targets and unique disposable identities. A second clone is a local setup check only. | Gives new end-to-end evidence but requires accounts, credentials, setup, and separately approved external operations. Existing provider retries can repeat attempts, so authorization must name targets, operation/retry ceilings, and any spend cap. Alternatives are a local provider-free rehearsal or historical Phase 8/9 evidence, each explicitly partial, or deferring live execution; none substitutes for the required full demo. |
-| Live Gemini evaluation | Retain the documented unavailable evidence by default. This approved design does not request or authorize the full 36-case live evaluation. | The existing `make evaluate-live` command executes the complete 36-case evaluation corpus; it has no strict small-subset/cost-cap option. It must not be described as a limited measurement. If desired later, first approve a separate bounded measurement design and hard call/spend cap; then authorize that distinct live run. A single Gemini call in a demo is qualitative evidence, not evaluation. |
-| Media | Make a professionally edited, approximately 90–120 second public video a normal required portfolio deliverable, with readable capture of the actual user workflow and provider evidence, captions, and sanitized screenshots. Capture the authorized M12C run once for both demo verification and M12E editing. Use synthetic-data and sandbox disclosures, and keep an inspectable unedited run record privately where appropriate. | Keep raw captures out of Git. Do not use an arbitrary size cap that harms legibility. Recommend an optimized MP4 and VTT in the repository when practical; if repository size or playback is impractical, ask the owner to approve a suitable public external host after reviewing privacy, terms, availability, and possible cost. No media capture, upload, or production is authorized by this approved design. Review every frame and asset license; no credentials, private identifiers, account details, or non-synthetic data. |
+| M12C Gemini call | The owner selected zero live Gemini calls for the M12C-3 run; the application used scripted FakeProvider output. | This is not live model inference or accuracy evidence. Any later Gemini request requires fresh explicit authorization and a spend ceiling; it is outside this run. Live quality, aggregate latency, token totals, and model cost remain unavailable. |
+| Completion notification contract | **Approved and implemented: Option A.** After durable Odoo and HubSpot receipts pass in the existing completion transaction, reuse `ORDER_SYNC_COMPLETED` identity and the durable notification outbox to create a Gmail-source-provenance-bound reply to the original sender/thread and an independent Slack completion intent. Preserve independent bounded retry/outcomes, idempotent logical intents, and at-least-once external delivery. | M12B was separately authorized, implemented, independently reviewed PASS, and human-approved. The 2026-10-18 run records both actual post-sync deliveries causally tied to sync completion; their relative order is not a correctness invariant. No channel-priority scheduling, operator API, or generalized framework was added. |
+| Demo environment | The 2026-10-18 owner-approved M12C-3 run is accepted as a segmented synthetic sandbox demonstration: Gmail Trigger detection and HTTP 401 are preserved, then the same source is recovered with owner assistance; FakeProvider is labeled scripted; actual review/approval, Odoo/HubSpot sync receipts, both notification channels, and replay are evidenced separately. | The run remains factually PARTIAL because automated Gmail Trigger-to-OpsFlow intake was not demonstrated. Historical Phase 8 evidence can be cited separately within its exact scope, but cannot fill that gap. No repeat provider operations are needed or authorized to obtain capture footage. |
+| Live Gemini evaluation | Retain the documented unavailable evidence. This approved design does not request or authorize the full 36-case live evaluation. | The existing `make evaluate-live` command executes the complete 36-case evaluation corpus; it has no strict small-subset/cost-cap option. It must not be described as a limited measurement. If desired later, first approve a separate bounded measurement design and hard call/spend cap; then authorize that distinct live run. A single Gemini call in a demo is qualitative evidence, not evaluation. |
+| Media | A professionally edited, approximately 90–120 second public video remains required, with readable authentic workflow/provider evidence, captions, and sanitized screenshots. For this run, use owner-approved authenticated read-only post-run captures of persisted state and truthful narration/captions; visibly label these views POST-RUN INSPECTION and disclose the Gmail 401/recovery and FakeProvider mode. Keep an inspectable unedited run record privately where appropriate. | No contemporaneous footage exists and no uninterrupted-recording claim is allowed. Keep raw captures out of Git; do not use an arbitrary size cap that harms legibility. Recommend an optimized MP4 and VTT in the repository when practical; if size/playback is impractical, ask the owner to approve an external host after privacy, terms, availability, and cost review. No video editing, upload, publication, or license choice is authorized by this amendment. Review every frame and asset license; exclude credentials, private identifiers, account details, and non-synthetic data. |
 | Public security and privacy | Run pinned full-history Gitleaks and current-content checks, ignored-file checks, production and complete dependency advisory review, workflow/media/license review, and a final privacy/claims audit at the release candidate. Resolve findings or record a narrowly scoped, human-approved disposition. | The repository is already public, so review cannot make past visibility private. The current full npm audit has known High development-tree findings while the production-only audit is documented clean; recheck exact advisories and production exposure rather than claiming they are fixed. |
 
 ## 7. Risks, alternatives, and approval gates
 
 | Risk or gap | Recommended treatment | Gate |
 | --- | --- | --- |
-| Current app has no post-sync confirmation-email or completion-Slack event. | Implement only the owner-approved Option A contract at a separately authorized M12B implementation gate. Keep approval-time notifications distinct and never call an approval reply a completion email. | The design decision is approved at SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`; M12B implementation is not authorized by that approval. Independent review must approve transaction, idempotency, failure, retry, and recovery semantics. |
+| M12B post-sync completion notifications | The approved Option A contract has been implemented with atomic completion-event/intents, authoritative Gmail provenance, and independent Slack/Gmail delivery semantics. Keep approval-time notifications distinct from post-sync confirmations. | M12B was separately authorized, independently reviewed PASS, and human-approved. The M12C-3 run has actual post-sync delivery evidence; automated Gmail Trigger intake remains unproven because that POST returned HTTP 401. |
 | Sandbox credentials or accounts have expired or are unavailable. | Recreate/re-authorize dedicated accounts and repeat setup from the clean clone. If that is not possible, report a partial demo only. | Explicit authorization before each email/send/write or potentially charged call. |
-| Gemini provider-free fake can be mistaken for model output. | Recommend one actual Gemini generation request for stronger demo evidence, separately authorized with a one-request budget and explicit spend ceiling. Put provider mode in the run record and visible capture; a fake remains labeled as a rehearsal. | If unavailable before invocation, stop with zero calls; after timeout/ambiguity, do not retry. Claim review keeps quality, aggregate latency, tokens, and model cost unavailable absent valid separately approved measurement. |
+| Scripted extraction may be mistaken for model output. | M12C-3 used FakeProvider, clearly labeled as scripted. Do not present it as Gemini inference or accuracy. | No live model quality, token usage, provider latency, or Gemini cost is established. Any future Gemini request needs separate explicit authorization and a spend ceiling; the 36-case live evaluation remains unauthorized. |
 | A live service may retain or expose synthetic message/record data. | Use dedicated accounts, minimal scopes, unique synthetic identities, sanitized captures, and documented cleanup. | Operator confirms account ownership and cleanup target before actions. |
-| Independent notification delivery may produce different timing or a failure on either channel. | Under approved Option A, retain independent bounded delivery and durable outcomes. Both successful actual deliveries are required for the full demo, but Gmail does not gate Slack; record each outcome and timestamp without ordering claims. | The M12B implementation gate reviews atomic intent creation, Gmail provenance, stable identities, idempotency, retries, failure outcomes, and at-least-once behavior. No relative delivery-time requirement applies. |
+| Independent notification delivery may produce different timing or a failure on either channel. | Under approved Option A, retain independent bounded delivery and durable outcomes. Both successful actual deliveries are required for the accepted M12C evidence; Gmail does not gate Slack. Record each outcome and timestamp without ordering claims. | M12B's independent review verified atomic intent creation, Gmail provenance, stable identities, idempotency, retries, failure outcomes, and at-least-once behavior. No relative delivery-time requirement applies. |
 | Public licensing or asset rights are unclear. | Do not add third-party visuals or root license until the owner chooses terms and dependency/asset obligations are reviewed. | Human license decision before final public-ready audit. |
 | High development-tree npm advisories remain. | Recheck package paths and current advisory details; fix or record a defensible, approved non-production disposition. | Final audit requires documented disposition, not a silent pass. |
 
-No cloud deployment, public release upload, new provider account write, live
-Gemini call, live Gmail send, Slack message, Odoo mutation, HubSpot mutation,
-or media capture is authorized by this planning approval.
+The original planning approval alone authorized no live operations. The
+separately authorized M12C-3 transaction has since been executed. The
+2026-10-18 amendment permits authenticated read-only post-run captures only;
+it authorizes no further provider operation, video editing, upload/publication,
+or license choice.
 
 ## 8. Acceptance and definition of done
 
@@ -431,21 +491,22 @@ The Phase 12 implementation is complete only when:
 1. The README and linked architecture/setup/evaluation material accurately
    describe the business problem, implemented behavior, operator boundary,
    $0 mandatory-development-cost posture, and limitations.
-2. The demo has new evidence from one literal candidate clone and actual
-   dedicated sandbox operations for the roadmap's email intake, Odoo,
-   HubSpot, post-sync confirmation email, and Slack completion stages. It
-   exercises the application document-processing and extraction stages,
-   deterministic validation, and human review/approval. Actual provider
-   identity and outcomes are recorded; fakes and prior integration evidence
-   cannot stand in for claimed live steps. The proposed single live Gemini
-   call is a separately authorized strengthening of the roadmap's extraction
-   stage; absent authorization it is not called or described as live. Both
-   actual post-sync Gmail confirmation and Slack completion deliveries are
-   required and causally tied to successful Odoo/HubSpot synchronization with
-   durable receipts. Record actual outcomes and timestamps; their relative
-   delivery order is not a correctness invariant. Missing or failed delivery
-   on either channel makes the full demo incomplete. A second clone verifies
-   local setup only.
+2. M12C's one-run demonstration evidence meets the owner-approved 2026-10-18
+   limited-scope amendment: it records the initial Gmail Trigger intake HTTP
+   401 and owner-assisted recovery of the same original source; exercises
+   application processing with provider mode truthfully labeled, deterministic
+   validation, distinct human review/approval, actual Odoo/HubSpot sandbox
+   synchronization with durable receipts, both actual post-sync notification
+   deliveries, and exact-source replay without another logical order or
+   duplicate ERP/CRM objects. The run is a **segmented demonstration** and
+   remains factually PARTIAL: uninterrupted automated Gmail-to-OpsFlow intake
+   is NOT DEMONSTRATED. The successful downstream transaction cannot erase the
+   initial intake failure. FakeProvider output is scripted and is not live LLM
+   inference or accuracy evidence. Historical Phase 8 live Gmail evidence may
+   be cited separately with its exact documented scope and cannot be combined
+   to claim this run was uninterrupted. The proposed one-call Gemini request
+   remains optional and was not part of this run; no Gemini call is authorized
+   by this design. A second clone verifies local setup only.
 3. The same-source replay proves one logical order and unchanged actual ERP/CRM
    identity/counts. The case study distinguishes live results, fakes, and
    historical evidence.
@@ -454,11 +515,16 @@ The Phase 12 implementation is complete only when:
    deployment are unavailable unless separately measured and authorized. A
    live extraction shown in the demo is qualitative evidence only.
 5. Required media includes sanitized screenshots and a professionally edited
-   approximately 90–120 second public demo video captured from the same
-   authorized M12C run. It contains only synthetic, sanitized, licensed
-   content, clear sandbox disclosures, and no unsupported metrics. Raw source
-   footage and inspectable execution records remain private where appropriate;
-   owner approves repo or external delivery and storage.
+   approximately 90–120 second evidence-backed public walkthrough. Because no
+   contemporaneous footage was captured in this run, authenticated read-only
+   post-run captures of genuine persisted sandbox state are permitted under
+   the owner-approved amendment and are labeled **POST-RUN INSPECTION**. The
+   narrated/captioned walkthrough must disclose the initial Gmail 401,
+   owner-assisted source recovery, FakeProvider mode, and missing automated
+   Gmail intake proof. It contains only synthetic, sanitized, licensed content,
+   clear sandbox disclosures, and no unsupported metrics. Raw captures and
+   inspectable execution records remain private where appropriate; owner
+   approves repo or external delivery and storage.
 6. A human-approved licensing disposition (including an intentional
    all-rights-reserved/no-license choice) and all dependency/asset obligations
    are recorded; privacy, history, ignored files, security advisories,
@@ -468,7 +534,10 @@ The Phase 12 implementation is complete only when:
    pass at the final candidate SHA.
 8. A reviewer independent of the implementation authors a Phase 12 audit with
    no unresolved release-blocking findings; human approval and status closeout
-   are recorded only after that PASS.
+   are recorded only after that PASS. M12C's separate limited-scope closeout
+   has been accepted after independent PASS review and human approval; its
+   original uninterrupted Gmail intake criterion remains PARTIAL/NOT
+   DEMONSTRATED. See the [M12C review disposition](../../audits/phase-12-m12c-review.md).
 
 The repository remains understandable and locally runnable; no cloud host,
 new framework, or required paid provider service is introduced. The final
@@ -479,9 +548,10 @@ manual evidence, limitations, costs, and any accepted residual risks.
 
 The linked [implementation plan](../plans/2026-10-12-phase-12-portfolio-release.md)
 decomposes Phase 12 into M12A portfolio framing/onboarding, M12B approved
-completion-notification behavior, M12C full sandbox demonstration/local
+completion-notification behavior, M12C sandbox demonstration/local
 reproducibility, M12D evidence-backed case study, M12E media/licensing/privacy/
 public hygiene, and M12F independent release audit/closeout. It keeps optional
 live-Gemini evaluation separate from the proposed one-call qualitative demo
-evidence. This design is APPROVED for planning only; implementation remains
-NOT STARTED and separately gated.
+evidence. This design remains APPROVED. Phase 12 implementation is IN PROGRESS;
+M12C is COMPLETE under the limited-scope amendment, and M12D–M12F remain NOT
+STARTED and separately gated.
