@@ -12,7 +12,7 @@
 
 ## Plan status and execution gates
 
-This plan was approved for Phase 12 planning by the human decision referencing planning SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`. The approved starting main SHA is `17c155df3b2635f60f88c6596c1d74b02015fb2d`; the designated branch is `phase/12-portfolio-release`. Current status: Phases 0–11 are COMPLETE; Phase 12 is IN PROGRESS; M12A–M12C are COMPLETE, with M12C accepted under the owner-approved limited-scope amendment after independent PASS review and human approval; M12D–M12F are NOT STARTED. M12C-3 remains factually PARTIAL for the original uninterrupted automated Gmail intake criterion. See the [M12C review disposition](../../audits/phase-12-m12c-review.md). The original planning gate still governs future work: each next milestone requires its stated review gate and separate authorization.
+This plan was approved for Phase 12 planning by the human decision referencing planning SHA `90b33e7b041f11796b755e9bd5e9bf0d835d0ae7`. The approved starting main SHA is `17c155df3b2635f60f88c6596c1d74b02015fb2d`; the designated branch is `phase/12-portfolio-release`. Current status: Phases 0–11 are COMPLETE; Phase 12 is IN PROGRESS; M12A–M12C are COMPLETE, with M12C accepted under the owner-approved limited-scope amendment after independent PASS review and human approval; M12D — Case study and evidence-backed claims is COMPLETE after independent PASS review and human acceptance on 2026-10-21; see the [M12D review disposition](../../audits/phase-12-m12d-review.md). M12E–M12F are NOT STARTED. M12C-3 remains factually PARTIAL for the original uninterrupted automated Gmail intake criterion. See the [M12C review disposition](../../audits/phase-12-m12c-review.md). The original planning gate still governs future work: each next milestone requires its stated review gate and separate authorization.
 
 The work unit is one milestone. The next milestone cannot begin until its prerequisites, acceptance evidence, review, and human approval are recorded. All execution remains on the designated Phase 12 branch with a clean, reviewed diff. Do not use subagents or parallel agents unless the owner separately changes the repository's single-agent instruction.
 
@@ -218,6 +218,8 @@ Historical Phase 8 evidence may be cited separately and only for its recorded sc
 **External services and authorization:** Provider-free evidence requires no live model. No full live evaluation is authorized. Any future bounded live measurement, new evaluation mode, or changed pricing input requires a separate design approval and explicit call/spend authorization.
 
 **Review gate:** A technically literate human checks the case-study evidence map and all public claims before media production.
+
+**Closeout (2026-10-21):** M12D is COMPLETE after independent PASS review with zero Critical, High, or Medium findings and human acceptance. The reviewed implementation commit `5511e148197128c53259eac69185a1a953230f54` was amended to correct attribution as `b270dd105980df47d860c0f42abf4fed6b4e9586`; its tree and README/case-study blobs are unchanged. See the [M12D review disposition](../../audits/phase-12-m12d-review.md).
 
 **Non-goals:** No ROI assumptions, synthetic results presented as customer data, new evaluation framework, baseline rewrite, or optimization.
 
