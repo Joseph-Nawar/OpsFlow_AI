@@ -1,0 +1,11 @@
+{
+  "name": "opsflow-phase12-evidence-capture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.65.1"
+  }
+}

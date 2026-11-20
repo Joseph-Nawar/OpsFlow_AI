@@ -5,15 +5,22 @@ from uuid import UUID
 
 from pydantic import AnyHttpUrl
 
-from opsflow.domain import Order, ValidationIssue
+from opsflow.domain import Order, OrderState, ValidationIssue
 from opsflow.notifications.contracts import NotificationKind
 
 _GMAIL_APPROVAL_BODY = "Your purchase order has been approved for processing."
+_GMAIL_COMPLETION_BODY = (
+    "Your purchase order has been processed, and the required "
+    "business-system synchronization is complete."
+)
 _SLACK_SUMMARIES = {
     NotificationKind.REVIEW_REQUIRED: None,
     NotificationKind.APPROVAL_READY: "Order entered READY_FOR_APPROVAL.",
     NotificationKind.PROCESSING_FAILED: "Order processing failed; operator review may be required.",
     NotificationKind.ORDER_APPROVED: "Order approved for processing.",
+    NotificationKind.ORDER_SYNC_COMPLETED: (
+        "Order synchronization completed in the required business systems."
+    ),
 }
 
 
@@ -60,3 +67,13 @@ def render_gmail_approval_payload(order: Order, raw_message_id: str) -> dict[str
     if not isinstance(raw_message_id, str) or not raw_message_id.strip():
         raise ValueError("Gmail approval payload requires a nonblank message ID")
     return {"message_id": raw_message_id, "body": _GMAIL_APPROVAL_BODY}
+
+
+def render_gmail_completion_payload(order: Order, raw_message_id: str) -> dict[str, object]:
+    """Render a fixed completion reply without implying fulfillment or payment."""
+
+    if order.state is not OrderState.COMPLETED:
+        raise ValueError("Gmail completion payload requires a completed order")
+    if not isinstance(raw_message_id, str) or not raw_message_id.strip():
+        raise ValueError("Gmail completion payload requires a nonblank message ID")
+    return {"message_id": raw_message_id, "body": _GMAIL_COMPLETION_BODY}

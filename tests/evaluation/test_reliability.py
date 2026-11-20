@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from db_support import clear_m11c_application_data
@@ -21,6 +21,7 @@ from opsflow.evaluation.corpus import load_catalog, load_manifest
 from opsflow.evaluation.doubles import ScriptedProviderFactory
 from opsflow.evaluation.models import EvaluationMode
 from opsflow.evaluation.runner import (
+    _notification_authority_observation,
     run_approval_sync_scenario,
     run_case,
     run_duplicate_scenario,
@@ -446,17 +447,184 @@ def test_approved_sync_recovery_uses_real_review_and_phase9_receipts(
     assert authority.external_sync_executor_reached is True
     assert authority.external_execution_authorized is True
     assert authority.external_execution_probe == "PASS"
+    assert authority.notification_probe == "PASS"
+    assert authority.notification_transition_count == 3
+    assert authority.notification_intent_count == 3
+    assert authority.direct_authority_violation_count == 0
 
-    async def approval_actor():
+    async def persisted_completion_notifications():
         async with isolated_m11c_session_factory() as session:
-            return await session.scalar(
+            recognized_transition_count = await session.scalar(
+                select(func.count())
+                .select_from(AuditEventModel)
+                .where(
+                    AuditEventModel.order_id == outcome.order_id,
+                    AuditEventModel.event_type.in_(runner_module._NOTIFICATION_EVENT_KIND),
+                )
+            )
+            completion_events = tuple(
+                (
+                    await session.scalars(
+                        select(AuditEventModel).where(
+                            AuditEventModel.order_id == outcome.order_id,
+                            AuditEventModel.event_type == "ORDER_SYNC_COMPLETED",
+                        )
+                    )
+                ).all()
+            )
+            notifications = tuple(
+                (
+                    await session.scalars(
+                        select(NotificationDeliveryModel).where(
+                            NotificationDeliveryModel.order_id == outcome.order_id
+                        )
+                    )
+                ).all()
+            )
+            approval_actor = await session.scalar(
                 select(AuditEventModel.actor).where(
                     AuditEventModel.order_id == outcome.order_id,
                     AuditEventModel.event_type == "ORDER_APPROVED",
                 )
             )
 
-    assert asyncio.run(approval_actor()) == "m11c-approver"
+            return completion_events, notifications, approval_actor, recognized_transition_count
+
+    completion_events, notifications, approval_actor, recognized_transition_count = asyncio.run(
+        persisted_completion_notifications()
+    )
+    assert approval_actor == "m11c-approver"
+    assert len(notifications) == 3
+    assert recognized_transition_count == authority.notification_transition_count == 3
+    assert len(completion_events) == 1
+    completion_event = completion_events[0]
+    completion_intents = tuple(
+        intent for intent in notifications if intent.kind == "ORDER_SYNC_COMPLETED"
+    )
+    assert len(completion_intents) == 1
+    assert completion_intents[0].channel == "SLACK"
+    assert completion_intents[0].trigger_audit_event_id == completion_event.id
+
+
+@pytest.mark.parametrize(
+    ("event_type", "intent_kind", "event_on_observed_order", "expected_status"),
+    (
+        ("ORDER_SYNC_COMPLETED", None, True, "FAIL"),
+        ("ORDER_SYNC_COMPLETED", "ORDER_APPROVED", True, "FAIL"),
+        ("UNRECOGNIZED_BUSINESS_EVENT", "ORDER_SYNC_COMPLETED", True, "FAIL"),
+        ("ORDER_SYNC_COMPLETED", "ORDER_SYNC_COMPLETED", False, "FAIL"),
+        ("ORDER_SYNC_COMPLETED", "ORDER_SYNC_COMPLETED", True, "PASS"),
+    ),
+)
+def test_notification_authority_probe_requires_matching_persisted_transition(
+    isolated_m11c_session_factory,
+    event_type: str,
+    intent_kind: str | None,
+    event_on_observed_order: bool,
+    expected_status: str,
+) -> None:
+    async def seed_and_persist():
+        async with isolated_m11c_session_factory() as session, session.begin():
+            observed_order = OrderModel(state=OrderState.COMPLETED.value)
+            event_order = (
+                observed_order
+                if event_on_observed_order
+                else OrderModel(state=OrderState.COMPLETED.value)
+            )
+            session.add(observed_order)
+            if event_order is not observed_order:
+                session.add(event_order)
+            await session.flush()
+            event = AuditEventModel(
+                id=uuid4(),
+                order_id=event_order.id,
+                event_type=event_type,
+                actor="m12b-authority-regression",
+                occurred_at=datetime.now(UTC),
+                description="Persisted evaluator authority probe fixture.",
+            )
+            session.add(event)
+            await session.flush()
+            if intent_kind is not None:
+                session.add(
+                    NotificationDeliveryModel(
+                        order_id=observed_order.id,
+                        trigger_audit_event_id=event.id,
+                        channel="SLACK",
+                        kind=intent_kind,
+                        payload={"source": "m12b-authority-regression"},
+                    )
+                )
+            return observed_order.id
+
+    async def seed_and_observe():
+        order_id = await seed_and_persist()
+        return await _notification_authority_observation(isolated_m11c_session_factory, order_id)
+
+    status, observed, transition_count, intent_count = asyncio.run(seed_and_observe())
+    assert status == expected_status
+    assert observed is True
+    assert transition_count == int(event_type == "ORDER_SYNC_COMPLETED" and event_on_observed_order)
+    assert intent_count == int(intent_kind is not None)
+
+
+@pytest.mark.parametrize("notification_kind", ("ORDER_SYNC_COMPLETED", "UNSUPPORTED_KIND"))
+def test_notification_authority_probe_rejects_missing_event_reference_or_unknown_kind(
+    notification_kind: str,
+) -> None:
+    order_id = uuid4()
+    event_id = uuid4()
+    event = AuditEventModel(
+        id=event_id,
+        order_id=order_id,
+        event_type="ORDER_SYNC_COMPLETED",
+        actor="m12b-authority-regression",
+        occurred_at=datetime.now(UTC),
+        description="Loaded probe fixture.",
+    )
+    intent = NotificationDeliveryModel(
+        order_id=order_id,
+        trigger_audit_event_id=(
+            uuid4() if notification_kind == "ORDER_SYNC_COMPLETED" else event_id
+        ),
+        channel="SLACK",
+        kind=notification_kind,
+        payload={"source": "m12b-authority-regression"},
+    )
+
+    class _Rows:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def all(self):
+            return self.rows
+
+    class _Session:
+        def __init__(self):
+            self.query_count = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            return None
+
+        async def scalars(self, statement):
+            self.query_count += 1
+            rows = (event,) if self.query_count == 1 else (intent,)
+            return _Rows(rows)
+
+    class _SessionFactory:
+        def __call__(self):
+            return _Session()
+
+    status, observed, transition_count, intent_count = asyncio.run(
+        _notification_authority_observation(_SessionFactory(), order_id)  # type: ignore[arg-type]
+    )
+    assert status == "FAIL"
+    assert observed is True
+    assert transition_count == 1
+    assert intent_count == 1
 
 
 def test_unauthorized_approval_is_rejected_by_phase6_without_state_change(

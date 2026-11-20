@@ -17,6 +17,7 @@ from opsflow.notifications.contracts import NotificationKind
 from opsflow.notifications.payloads import (
     build_review_url,
     render_gmail_approval_payload,
+    render_gmail_completion_payload,
     render_slack_payload,
 )
 
@@ -161,6 +162,22 @@ def test_slack_order_approved_payload_is_truthful() -> None:
     _assert_no_untrusted_source_data(payload)
 
 
+def test_slack_completion_payload_reports_sync_without_channel_dependency() -> None:
+    payload = render_slack_payload(
+        NotificationKind.ORDER_SYNC_COMPLETED,
+        _order(OrderState.COMPLETED),
+        (),
+        REVIEW_BASE,
+    )
+
+    assert payload["summary"] == "Order synchronization completed in the required business systems."
+    assert payload["state"] == "COMPLETED"
+    assert "gmail" not in str(payload).lower()
+    assert "shipment" not in str(payload).lower()
+    assert "payment" not in str(payload).lower()
+    _assert_no_untrusted_source_data(payload)
+
+
 def test_gmail_approval_payload_contains_raw_message_id_and_exact_body() -> None:
     payload = render_gmail_approval_payload(_order(OrderState.APPROVED), "gmail-id-raw")
 
@@ -168,6 +185,21 @@ def test_gmail_approval_payload_contains_raw_message_id_and_exact_body() -> None
         "message_id": "gmail-id-raw",
         "body": "Your purchase order has been approved for processing.",
     }
+
+
+def test_gmail_completion_payload_targets_original_message_and_describes_sync_only() -> None:
+    payload = render_gmail_completion_payload(_order(OrderState.COMPLETED), "gmail-id-raw")
+
+    assert payload == {
+        "message_id": "gmail-id-raw",
+        "body": (
+            "Your purchase order has been processed, and the required "
+            "business-system synchronization is complete."
+        ),
+    }
+    assert "shipment" not in str(payload).lower()
+    assert "payment" not in str(payload).lower()
+    _assert_no_untrusted_source_data(payload)
 
 
 def test_slack_top_level_text_is_bounded_by_unicode_code_points() -> None:

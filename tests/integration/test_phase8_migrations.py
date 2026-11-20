@@ -26,7 +26,7 @@ from opsflow.persistence.models import (
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_6_REVISION = "0004_phase6_review_revisions"
 PHASE_8_REVISION = "0005_phase8_notification_deliveries"
-CURRENT_HEAD_REVISION = "0007_phase7_intake_ownership"
+CURRENT_HEAD_REVISION = "0008_phase12_completion_notifications"
 _NOW = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
 
 
@@ -37,6 +37,15 @@ def test_phase8_migration_revision_is_child_of_phase6_head() -> None:
 
     assert migration["revision"] == PHASE_8_REVISION
     assert migration["down_revision"] == PHASE_6_REVISION
+
+
+def test_phase12_migration_is_child_of_current_head() -> None:
+    migration = runpy.run_path(
+        str(REPOSITORY_ROOT / "alembic/versions/0008_phase12_completion_notifications.py")
+    )
+
+    assert migration["revision"] == CURRENT_HEAD_REVISION
+    assert migration["down_revision"] == "0007_phase7_intake_ownership"
 
 
 def test_clean_upgrade_and_notification_schema_constraints(
@@ -60,10 +69,27 @@ def test_phase8_downgrade_and_reupgrade_preserve_phase6_rows(
     _run_alembic(migration_test_database_url, "downgrade", PHASE_6_REVISION)
     assert PHASE_6_REVISION in _run_alembic(migration_test_database_url, "current")
     assert asyncio.run(_revision_exists(migration_test_database_url, revision_id))
-
     _run_alembic(migration_test_database_url, "upgrade", "head")
     assert CURRENT_HEAD_REVISION in _run_alembic(migration_test_database_url, "current")
     assert asyncio.run(_revision_exists(migration_test_database_url, revision_id))
+
+
+def test_phase12_migration_preserves_deliveries_and_allows_only_new_kind(
+    migration_test_database_url: str,
+) -> None:
+    _run_alembic(migration_test_database_url, "downgrade", "base")
+    _run_alembic(migration_test_database_url, "upgrade", "0007_phase7_intake_ownership")
+    order_id, event_id, delivery_id = asyncio.run(
+        _insert_existing_approval_delivery(migration_test_database_url)
+    )
+
+    _run_alembic(migration_test_database_url, "upgrade", "head")
+    assert CURRENT_HEAD_REVISION in _run_alembic(migration_test_database_url, "current")
+    asyncio.run(
+        _assert_phase12_notification_constraint_and_preservation(
+            migration_test_database_url, order_id, event_id, delivery_id
+        )
+    )
 
 
 def _run_alembic(database_url: str, *arguments: str) -> str:
@@ -78,6 +104,81 @@ def _run_alembic(database_url: str, *arguments: str) -> str:
         check=True,
     )
     return f"{result.stdout}\n{result.stderr}"
+
+
+async def _insert_existing_approval_delivery(database_url: str) -> tuple[object, object, object]:
+    engine = create_async_engine(database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    order_id, event_id, delivery_id = uuid4(), uuid4(), uuid4()
+    async with session_factory() as session:
+        session.add(OrderModel(id=order_id, state="APPROVED", created_at=_NOW))
+        await session.flush()
+        session.add(
+            AuditEventModel(
+                id=event_id,
+                order_id=order_id,
+                event_type="ORDER_APPROVED",
+                actor="reviewer",
+                occurred_at=_NOW,
+                description="Order approved for processing.",
+            )
+        )
+        await session.flush()
+        session.add(
+            _delivery_row(
+                order_id,
+                event_id,
+                id=delivery_id,
+                channel="GMAIL",
+                kind="ORDER_APPROVED",
+                payload={"message_id": "persisted-source-id", "body": "Approved."},
+            )
+        )
+        await session.commit()
+    await engine.dispose()
+    return order_id, event_id, delivery_id
+
+
+async def _assert_phase12_notification_constraint_and_preservation(
+    database_url: str, order_id: object, event_id: object, delivery_id: object
+) -> None:
+    engine = create_async_engine(database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            existing = await session.get(NotificationDeliveryModel, delivery_id)
+            assert existing is not None
+            assert existing.order_id == order_id
+            assert existing.trigger_audit_event_id == event_id
+            assert existing.channel == "GMAIL"
+            assert existing.kind == "ORDER_APPROVED"
+            assert existing.payload == {
+                "message_id": "persisted-source-id",
+                "body": "Approved.",
+            }
+
+            session.add(
+                _delivery_row(
+                    order_id,
+                    event_id,
+                    channel="SLACK",
+                    kind="ORDER_SYNC_COMPLETED",
+                    payload={"text": "Order synchronization completed."},
+                )
+            )
+            await session.commit()
+
+        async with session_factory() as session:
+            session.add(_delivery_row(order_id, event_id, kind="SYNC_FAILED"))
+            with pytest.raises(DBAPIError):
+                await session.flush()
+            await session.rollback()
+
+        async with session_factory() as session:
+            await session.execute(delete(OrderModel).where(OrderModel.id == order_id))
+            await session.commit()
+    finally:
+        await engine.dispose()
 
 
 def _delivery_row(

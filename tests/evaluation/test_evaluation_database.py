@@ -41,7 +41,7 @@ from opsflow.persistence.models import (
 )
 from opsflow.settings import Settings
 
-EXPECTED_HEAD = "0007_phase7_intake_ownership"
+EXPECTED_HEAD = "0008_phase12_completion_notifications"
 EVALUATION_URL = "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow_evaluation"
 NORMAL_URL = "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow"
 MIGRATION_URL = "postgresql+asyncpg://opsflow:opsflow@127.0.0.1:5432/opsflow_migration_test"

@@ -24,7 +24,7 @@ from opsflow.persistence.models import (
 REPOSITORY_ROOT = Path(__file__).parents[2]
 PHASE_8_REVISION = "0005_phase8_notification_deliveries"
 PHASE_9_REVISION = "0006_phase9_order_syncs"
-CURRENT_HEAD_REVISION = "0007_phase7_intake_ownership"
+CURRENT_HEAD_REVISION = "0008_phase12_completion_notifications"
 _NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 
 

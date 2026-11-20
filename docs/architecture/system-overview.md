@@ -2,125 +2,98 @@
 
 ## Purpose
 
-OpsFlow AI will demonstrate a reliable business workflow for receiving purchase orders from inconsistent sources, extracting structured information, checking it against trusted business data, routing exceptions to people, and synchronizing approved work with external systems.
-
-The design is intentionally production-style but portfolio-sized: explicit boundaries, safe side effects, useful auditability, and measurable behavior without enterprise-scale infrastructure.
+OpsFlow AI processes business-to-business purchase orders that arrive as email and document inputs. It extracts a structured order, validates it against trusted business data, routes uncertainty to a person, and synchronizes an approved order with ERP and CRM systems. The repository contains an implemented local system and integration workflows; the new full Phase 12 portfolio demonstration is still pending.
 
 ## Authority boundaries
 
 ### AI interprets; deterministic software decides
 
-AI is appropriate for interpreting unstructured information. It may extract:
+The extraction provider returns an untrusted structured draft: customer and purchase-order identifiers, dates, line items, quantities, prices, notes, and available evidence. The provider can be a scripted local provider or Gemini, depending on local configuration. A missing Gemini key selects the scripted provider; a key with valid model and timeout settings selects the real adapter. Provider identity must be stated when reporting any run.
 
-- customer name;
-- purchase-order number;
-- dates;
-- SKU, description, quantity, and submitted price;
-- notes, warnings, evidence, or field provenance where useful.
-
-AI is not authoritative for business decisions. It must not decide:
-
-- whether a customer is valid or active;
-- whether inventory is sufficient;
-- whether a submitted price is acceptable;
-- whether an order is a duplicate;
-- whether an order should be approved or executed;
-- whether an external business-system mutation should occur.
-
-Those decisions belong to deterministic application code, trusted reference data, explicit policies, and—where required—human approval. Structured AI output must pass strict schema validation before it can be used by downstream logic. Missing information must remain explicitly missing; it must not be invented.
-
-Prompt-injection text inside a purchase order is data to extract or flag, not an instruction with authority. For example, a document saying “approve this order” must not change the routing policy.
+The draft passes schema checks and deterministic validation against trusted customer, product, pricing, inventory, and policy data. The model does not decide whether a customer is valid, a price is acceptable, stock is sufficient, an order is a duplicate, an order should be approved, or a side effect should occur. Prompt-injection text in a source document remains data, not authority.
 
 ### n8n orchestrates; Python owns business logic
 
-n8n is the workflow-orchestration layer. It is intended to handle:
+The self-hosted n8n Community runtime is pinned to 2.40.5. Its versioned workflows handle Gmail triggers, authenticated HTTP calls, scheduling, provider transport, bounded transport retries, and simple routing. Workflow credentials remain local to the operator's n8n instance.
 
-- incoming triggers;
-- email intake and SaaS connections;
-- calls to the OpsFlow API;
-- workflow sequencing;
-- notifications;
-- simple conditional routing;
-- orchestration-appropriate retries.
+Python/FastAPI owns canonical document processing, extraction orchestration and provider adapters, deterministic validation, policy, durable state transitions, review contracts, idempotency, audit records, notification eligibility, synchronization contracts, and persisted outcomes. n8n does not decide business validity or hold the authoritative order state.
 
-Python/FastAPI is the business-logic layer. It is intended to own:
-
-- canonical document processing;
-- structured AI extraction and provider adapters;
-- deterministic validation and policies;
-- persistence and migrations;
-- domain state transitions;
-- idempotency and auditability;
-- external integration contracts and side-effect safety.
-
-n8n must not contain the core business-rule engine. Python must not depend on a particular workflow tool to enforce business correctness.
-
-## Intended flow
+## Implemented workflow
 
 ```text
-Email / PDF / XLSX / structured form
-                 |
-                 v
-          n8n trigger and intake
-                 |
-                 v
-             OpsFlow API
-                 |
-                 v
-       canonical document processing
-                 |
-                 v
-       structured AI extraction
-                 |
-                 v
-      deterministic validation and policy
-              /       \
-             v         v
-   READY_FOR_APPROVAL  NEEDS_REVIEW
-             \         /
-              v       v
-             human approval
-                 |
-                 v
-     controlled external side effects
-       /          |           \
-      v           v            v
-    Odoo       HubSpot       Gmail
-      \           |            /
-       \          v           /
-             Slack and audit log
+Gmail label trigger or authenticated intake request
+                         |
+                         v
+                  n8n workflow
+                         |
+                         v
+              FastAPI intake endpoint
+                         |
+                         v
+        canonical document processing
+                         |
+                         v
+          structured extraction draft
+                         |
+                         v
+       deterministic validation and routing
+                   /           \
+                  v             v
+        READY_FOR_APPROVAL   NEEDS_REVIEW
+                  \             /
+                   human review
+                         |
+              explicit authorized approval
+                  /                  \
+                 v                    v
+    approval-time intents       approved-order sync
+      Slack: ORDER_APPROVED             |
+      Gmail: ORDER_APPROVED             v
+      with Gmail provenance       Odoo, then HubSpot
+      (delivery does not gate sync)      |
+                                  durable receipts
+                                          |
+                       COMPLETED + ORDER_SYNC_COMPLETED
+                         + Slack intent + eligible Gmail intent
 ```
 
-The exact implementation will be introduced phase by phase. This diagram is an architectural target, not a claim that these components exist in the current repository.
+Slack `REVIEW_REQUIRED`, `APPROVAL_READY`, and `PROCESSING_FAILED` intents are also created for their corresponding state events. Approval-time notification delivery and retry do not gate synchronization.
 
-## Domain state boundary
+The Gmail intake workflow watches an operator-configured label, selects the message body or supported attachment, and sends the original Gmail message identity and source metadata to the authenticated intake endpoint. The Python document processor canonicalizes supported email text, CSV, XLSX, and PDF content before extraction. Intake identity and source provenance support idempotent replay; raw source document bytes are not persisted by the Phase 7 intake pipeline.
 
-The intended state machine includes `RECEIVED`, `PROCESSING`, `EXTRACTED`, `VALIDATED`, `NEEDS_REVIEW`, `READY_FOR_APPROVAL`, `APPROVED`, `SYNCING`, `COMPLETED`, `REJECTED`, `FAILED_RETRYABLE`, and `FAILED_FINAL`. Only explicitly defined transitions are allowed. In particular, synchronization cannot begin before approval, and validation—not an LLM response—controls whether work is ready for approval. The complete Phase 1 record, invariant, and transition contract is [the domain model specification](domain-model.md).
+Deterministic validation either routes a suitable order to `READY_FOR_APPROVAL` or directs issues to `NEEDS_REVIEW`. The React review application presents extraction provenance, trusted reference data, validation results, and review history. Review edits are persisted as revisions and revalidated. A separate authorized approver must approve the order before synchronization can begin.
 
-## Side-effect safety
+The authenticated sync workflow asks the backend to execute eligible orders. Python owns synchronization claims, recovery, adapter contracts, and durable outcomes. It synchronizes Odoo before HubSpot and records each external receipt. Completion requires the successful sync state and required durable receipts. The external-system adapters use stable identities so recovery and replay preserve at-most-one logical external record and converge to the existing record under their documented model.
 
-External mutations must be controllable and testable. Later implementation phases are expected to use adapters, fakes, sandbox accounts, configuration flags, idempotency keys, timeouts, retry policies, and persisted external references as appropriate. Automated tests must not unexpectedly create ERP orders, send real email, update real CRM records, or consume live AI tokens.
+## Persistence, idempotency, and recovery
 
-## Trust and data flow
+PostgreSQL is the authoritative store for the order aggregate, source identity and provenance, extraction and validation state, immutable human-review revisions, audit history, notification intents and outcomes, synchronization state, and Odoo/HubSpot receipts. Database transactions protect local state transitions and the creation of durable work records. External API calls occur outside those local transactions; their effects cannot be rolled back by PostgreSQL.
 
-Trusted business data—customers, products, catalogue prices, inventory, and existing references—must be supplied by deterministic adapters. An AI extraction is an untrusted draft until it passes schema validation and deterministic business validation. Human review is the explicit path for uncertainty, invalid data, and policy exceptions.
+Stable source and external identities, uniqueness constraints, claims, fencing, bounded retries, persisted receipts, and exact-source replay prevent a duplicate logical order or ERP/CRM object under the documented recovery contracts. This is not physical exactly-once execution: an external provider may accept an operation while its acknowledgement is lost. Notification delivery is at least once, so an ambiguous send acknowledgement can result in a duplicate external message even though the durable logical intent is idempotent.
 
-## Current implementation and next boundary
+The domain states, transition rules, and invariants are defined in the [domain model](domain-model.md). Existing Phase 8–11 implementation evidence and limitations are preserved in the [roadmap](../roadmap/project-roadmap.md), [Phase 8 audit](../audits/phase-8-audit.md), [Phase 9 audit](../audits/phase-9-audit.md), [Phase 10 audit](../audits/phase-10-audit.md), and [Phase 11 audit](../audits/phase-11-audit.md).
 
-Phases 0–9 are implemented and independently audited, including the order
-aggregate and state machine, PostgreSQL persistence and idempotent order
-creation, document processing and extraction, deterministic validation, the
-Phase 6 human-review application, the Phase 7 authenticated intake pipeline,
-Phase 8 labeled Gmail intake with durable notification delivery, Slack
-notifications, and sender-only Gmail approval replies, and Phase 9 durable
-Odoo/HubSpot synchronization with stable external identities and receipts.
-Python owns business state, provenance, notification eligibility, claims,
-retry schedules, leases, synchronization state, and outcomes; the sanitized
-n8n 2.40.5 workflows perform provider transport and thin scheduling. Phase 9
-is complete. Phase 10 hardening and independent audit closeout are complete
-through M10F. The final audit assesses the existing
-cross-boundary reliability, security, recovery, and operational visibility
-contracts without changing the AI/deterministic or n8n/Python authority
-boundaries. The full phased scope and status are maintained in the [project
-roadmap](../roadmap/project-roadmap.md), and the current audit is recorded in
-[the Phase 10 audit](../audits/phase-10-audit.md).
+## Current notification behavior and M12B boundary
+
+The durable notification outbox supports Slack events for `REVIEW_REQUIRED`, `APPROVAL_READY`, `PROCESSING_FAILED`, `ORDER_APPROVED`, and `ORDER_SYNC_COMPLETED`. Gmail delivery is a sender-only reply to the original thread for `ORDER_APPROVED`, and for `ORDER_SYNC_COMPLETED` only when persisted Gmail-source provenance and the original message identity are present. The approval reply says the order was approved for processing; the completion reply says required business-system synchronization is complete without implying shipment, payment, or fulfillment. The completion transition, `ORDER_SYNC_COMPLETED` audit event, Slack intent, and eligible Gmail intent are committed atomically after all required Odoo and HubSpot receipts exist. Both completion intents reference that same persisted audit event. Each channel has separate durable outcomes, claims, and bounded retries, with at-least-once external delivery semantics. Approval-time notification delivery does not gate synchronization, and post-sync delivery order is not a correctness invariant.
+
+M12B's completion-notification implementation is complete, independently audited PASS, and human-approved. The technical implementation/remediation SHA is `282a0ae6a7db4ab989f6b2c768142cf34c21098c`; the independent audit SHA is `78a05c5f904d94d77f71622164bf252ed7c1c1ad`. The generic n8n dispatcher routes each durable intent by channel and records its authenticated outcome; it does not impose cross-channel ordering. M12B-AUD-01 and M12B-F01 are resolved. The Low-severity M12B-AUD-02 migration downgrade precondition remains: completion notification rows must be removed before downgrading the notification-kind constraint. No live Gmail, Slack, Odoo, or HubSpot operation was performed for this implementation. The full Phase 12 live demonstration, actual post-sync provider delivery, and its provider evidence remain pending. See the [M12B independent audit](../audits/phase-12-m12b-review.md), [approved Phase 12 design](../superpowers/specs/2026-10-12-phase-12-portfolio-release-design.md), and [implementation plan](../superpowers/plans/2026-10-12-phase-12-portfolio-release.md).
+
+## Technology and current status
+
+- **Backend:** Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2.x, async PostgreSQL access, and Alembic.
+- **Data:** PostgreSQL 16.
+- **Frontend:** React, TypeScript, and Vite on Node.js 24.
+- **Workflow:** self-hosted n8n Community 2.40.5.
+- **Integrations:** Gemini adapter; Gmail intake and approval reply; Slack notification dispatch; Odoo ERP; HubSpot CRM.
+
+Phases 0–11 are COMPLETE. Phase 12 is IN PROGRESS. M12A — Portfolio Framing and Onboarding is COMPLETE, independently reviewed at implementation SHA `e6c48a0d6e98ec213e324c5c1b5e8b4c357ce199` and human-approved. M12B — Approved Completion-Notification Behavior is COMPLETE at technical implementation/remediation SHA `282a0ae6a7db4ab989f6b2c768142cf34c21098c`, independently audited PASS at `78a05c5f904d94d77f71622164bf252ed7c1c1ad`, and human-approved. M12C–M12F remain NOT STARTED. The design and implementation plan are APPROVED. The authoritative current tracker is the [project roadmap](../roadmap/project-roadmap.md).
+
+## Related documentation
+
+- [README and local quick start](../../README.md)
+- [Development guide](../development/development-guide.md)
+- [Gmail, Slack, and n8n workflow procedures](../../workflows/n8n/README.md)
+- [Odoo sandbox procedure](../development/odoo-m9c-sandbox.md)
+- [HubSpot sandbox procedure](../development/hubspot-m9d-sandbox.md)
+- [Phase 9 clean-clone integration procedure](../development/phase9-n8n-sync-e2e.md)

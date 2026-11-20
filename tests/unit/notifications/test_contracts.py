@@ -46,6 +46,7 @@ def test_notification_enum_values_match_phase8_contract() -> None:
         "APPROVAL_READY",
         "PROCESSING_FAILED",
         "ORDER_APPROVED",
+        "ORDER_SYNC_COMPLETED",
     ]
     assert [value.value for value in NotificationStatus] == [
         "PENDING",

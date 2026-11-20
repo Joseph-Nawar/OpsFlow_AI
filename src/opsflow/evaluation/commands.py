@@ -50,7 +50,7 @@ from .runner import run_corpus
 
 CORPUS_ROOT = Path("evals/corpus/v1")
 PRICING_SNAPSHOT_PATH = Path("evals/pricing/2026-10-10-google-gemini-3.8-flash-standard-paid.json")
-EXPECTED_MIGRATION_HEAD = "0007_phase7_intake_ownership"
+EXPECTED_MIGRATION_HEAD = "0008_phase12_completion_notifications"
 EXPECTED_CORPUS_VERSION = "3.0.0"
 EXPECTED_CASE_COUNT = 36
 RESULTS_DIRECTORY = Path("evals/results")
