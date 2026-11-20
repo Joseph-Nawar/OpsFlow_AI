@@ -9,7 +9,8 @@ The API accepts it as `EMAIL_BODY` text through the authenticated intake route;
 there is no customer-facing upload screen. The workflow uses an isolated local
 PostgreSQL database, a deterministic `FakeProvider` fixture, and the existing
 review UI. The browser recording is a real Playwright capture at 1440×900 and
-60.64 seconds, with a caption track and sidecar subtitles.
+60.64 seconds. It has a sidecar SRT and a separate browser-ready MP4 with the
+same captions burned in.
 
 No live Gemini, Gmail, Slack, Odoo, HubSpot, or n8n service was called. The
 audit event's `orchestration:n8n` actor is the application's fixed service
@@ -81,15 +82,22 @@ It uses the existing UI routes and does not create mock screens.
 ## Recording
 
 - [`opsflow-local-synthetic-review.mp4`](../../docs/assets/phase12-synthetic-fakeprovider/opsflow-local-synthetic-review.mp4) is H.264 video with an embedded `mov_text` caption track, title and synthetic-provider metadata.
+- [`opsflow-local-synthetic-review-captioned.mp4`](../../docs/assets/phase12-synthetic-fakeprovider/opsflow-local-synthetic-review-captioned.mp4) is the recommended browser/mobile version. It preserves the recorded sequence and burns in the same SRT captions so the qualifications remain visible when a browser does not expose the embedded text track.
 - [`opsflow-local-synthetic-review.webm`](../../docs/assets/phase12-synthetic-fakeprovider/opsflow-local-synthetic-review.webm) is the original Chromium recording.
 - [`opsflow-local-synthetic-review.srt`](../../docs/assets/phase12-synthetic-fakeprovider/opsflow-local-synthetic-review.srt) contains the same captions separately.
 
 The silent recording shows the local queue, the existing order detail and
 source evidence, deterministic exception, reviewer edit and revalidation,
-separate approver session, approval result, and audit inspection. The MP4
-duration, 1440×900 dimensions, H.264 stream, subtitle stream, and metadata were
-verified with `ffprobe`. The SRT explicitly identifies FakeProvider, synthetic
-input, API intake, and integrations not exercised.
+separate approver session, approval result, and audit inspection. The
+embedded-caption MP4's 60.64-second duration, 1440×900 dimensions, H.264 and
+subtitle streams, and metadata were verified with `ffprobe`. Chromium desktop
+and mobile-size playback checks confirmed that its HTML video element did not
+expose the embedded `mov_text` track. That version alone is not a reliable
+browser presentation.
+The browser-ready variant has the SRT text burned into the picture and was
+decoded through the complete 60.64-second duration without a media error. The
+sidecar SRT remains available as readable caption text. The captions identify
+FakeProvider, synthetic input, API intake, and integrations not exercised.
 
 ## Frozen Phase 11 evaluation evidence
 
@@ -156,7 +164,7 @@ npm run capture --prefix scripts/phase12_capture -- /tmp/opsflow-phase12-demo/st
 ```
 
 The capture script creates the original WebM and PNGs. To recreate the
-captioned MP4, with `ffmpeg` installed, run:
+embedded-caption MP4, with `ffmpeg` installed, run:
 
 ```sh
 ffmpeg -hide_banner -loglevel error -y \
@@ -169,6 +177,10 @@ ffmpeg -hide_banner -loglevel error -y \
   -movflags +faststart -shortest \
   docs/assets/phase12-synthetic-fakeprovider/opsflow-local-synthetic-review.mp4
 ```
+
+The browser-ready burn-in file is a derivative of that MP4 and the SRT, with
+the cue text rendered as high-contrast caption overlays before H.264 encoding.
+The original WebM and embedded-caption MP4 remain unchanged.
 
 `init` creates random local-only operator and intake credentials in a `0600`
 state file under a `0700` directory. It never prints the credential values.
