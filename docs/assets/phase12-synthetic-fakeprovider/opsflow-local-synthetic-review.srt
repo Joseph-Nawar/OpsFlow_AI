@@ -1,0 +1,27 @@
+1
+00:00:00,000 --> 00:00:08,000
+Fictional synthetic order. This runs locally against the existing review app; there is no customer-facing upload screen.
+
+2
+00:00:08,000 --> 00:00:16,000
+The source is submitted to the authenticated intake API as EMAIL_BODY text. No Gmail workflow is used.
+
+3
+00:00:16,000 --> 00:00:25,000
+Extraction output comes from a deterministic FakeProvider fixture. Quotes are checked against canonical source text; this is not live model inference.
+
+4
+00:00:25,000 --> 00:00:34,000
+Python compares the extracted $15.00 unit price with a $10 catalog value. A 5% tolerance creates PRICE_OUTSIDE_TOLERANCE.
+
+5
+00:00:34,000 --> 00:00:42,000
+A reviewer changes the untrusted draft to $10.00 and saves it for deterministic revalidation.
+
+6
+00:00:42,000 --> 00:00:50,000
+Revalidation passes; a separate approval role signs in, and the server accepts the approval.
+
+7
+00:00:50,000 --> 00:01:00,640
+The persisted audit records intake, validation, reviewer revision, revalidation, and approval. No Odoo or HubSpot sync was performed.

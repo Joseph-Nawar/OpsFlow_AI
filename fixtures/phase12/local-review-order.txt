@@ -1,0 +1,15 @@
+SYNTHETIC DEMO PURCHASE ORDER
+
+Customer: Acme Industries
+Customer reference: CUST-001
+PO number: PO-DEMO-2041
+Order date: 2026-11-19
+Requested delivery date: 2026-11-30
+Currency: USD
+
+Line 1 SKU: SKU-001
+Line 1 description: Widget
+Line 1 quantity: 3
+Line 1 submitted unit price: $15.00
+
+All organizations, identifiers, dates, and order values in this fixture are fictional.
