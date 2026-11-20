@@ -1,6 +1,6 @@
 """FastAPI application entry point."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime
@@ -23,6 +23,7 @@ from opsflow.application.errors import (
 )
 from opsflow.application.orchestration import execute_orchestration_intake
 from opsflow.database import create_engine, create_sessionmaker, database_is_available
+from opsflow.extraction.provider import LLMProvider
 from opsflow.http_limits import RequestBodyLimitMiddleware
 from opsflow.hubspot import HubSpotCRMAdapter
 from opsflow.observability.middleware import RequestCorrelationMiddleware
@@ -56,8 +57,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await engine.dispose()
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Create the application with environment-driven database settings."""
+def create_app(
+    settings: Settings | None = None,
+    *,
+    extraction_provider_factory: Callable[[], LLMProvider] | None = None,
+) -> FastAPI:
+    """Create the app, allowing explicit provider injection for isolated runtimes."""
 
     resolved_settings = settings or get_settings()
     engine = create_engine(resolved_settings)
@@ -97,10 +102,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             hubspot=hubspot_adapter,
         )
     app.state.review_runtime = review_runtime
-    orchestration_runtime = build_orchestration_runtime(
-        resolved_settings,
-        review_runtime=review_runtime,
-    )
+    if extraction_provider_factory is None:
+        orchestration_runtime = build_orchestration_runtime(
+            resolved_settings,
+            review_runtime=review_runtime,
+        )
+    else:
+        orchestration_runtime = build_orchestration_runtime(
+            resolved_settings,
+            extraction_provider_factory=extraction_provider_factory,
+            review_runtime=review_runtime,
+        )
     app.state.orchestration_runtime = orchestration_runtime
     app.state.review_dev_operators = resolved_settings.review_dev_operators
     app.state.orchestration_token = resolved_settings.orchestration_token

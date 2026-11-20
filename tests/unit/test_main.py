@@ -4,6 +4,8 @@ import asyncio
 
 import pytest
 
+from opsflow.extraction.fake import FakeProvider
+from opsflow.extraction.provider import StructuredGenerationResult
 from opsflow.main import create_app
 from opsflow.odoo import OdooERPAdapter
 from opsflow.review.composition import ReviewRuntime
@@ -44,6 +46,22 @@ def test_missing_odoo_configuration_leaves_executor_unset() -> None:
     try:
         assert app.state.order_sync_step_executor is None
         assert app.state.odoo_adapter is None
+    finally:
+        asyncio.run(app.state.database_engine.dispose())
+
+
+def test_create_app_accepts_an_explicit_extraction_provider_factory() -> None:
+    provider = FakeProvider((StructuredGenerationResult(payload={}),))
+
+    def provider_factory() -> FakeProvider:
+        return provider
+
+    app = create_app(
+        Settings(_env_file=None),
+        extraction_provider_factory=provider_factory,
+    )
+    try:
+        assert app.state.orchestration_runtime.extraction_provider_factory is provider_factory
     finally:
         asyncio.run(app.state.database_engine.dispose())
 
